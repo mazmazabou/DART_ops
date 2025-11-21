@@ -483,44 +483,13 @@ function buildGraceInfo(ride) {
 
 // ----- Forms -----
 function initForms() {
-  const shiftForm = document.getElementById('shift-form');
-
-  // Populate time options
-  const startSelect = document.getElementById('shift-start');
-  const endSelect = document.getElementById('shift-end');
-  generateTimeSlots().forEach((slot) => {
-    const opt1 = document.createElement('option');
-    opt1.value = slot;
-    opt1.textContent = slot;
-    startSelect.appendChild(opt1);
-    const opt2 = document.createElement('option');
-    opt2.value = slot;
-    opt2.textContent = slot;
-    endSelect.appendChild(opt2);
-  });
-
-  shiftForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = {
-      employeeId: document.getElementById('shift-employee').value,
-      dayOfWeek: Number(document.getElementById('shift-day').value),
-      startTime: document.getElementById('shift-start').value,
-      endTime: document.getElementById('shift-end').value
-    };
-    await fetch('/api/shifts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    shiftForm.reset();
-    await loadShifts();
-  });
-
   const driverSelect = document.getElementById('driver-select');
-  driverSelect.addEventListener('change', (e) => {
-    selectedDriverId = e.target.value || null;
-    renderDriverConsole();
-  });
+  if (driverSelect) {
+    driverSelect.addEventListener('change', (e) => {
+      selectedDriverId = e.target.value || null;
+      renderDriverConsole();
+    });
+  }
 
   // Dev: Load sample rides button
   const loadSampleBtn = document.getElementById('load-sample-rides');
