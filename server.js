@@ -9,10 +9,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory data stores
 let employees = [
-  { id: 'emp1', name: 'Jamie Driver', role: 'driver', active: false },
-  { id: 'emp2', name: 'Avery Dispatcher', role: 'dispatcher', active: false },
-  { id: 'emp3', name: 'Casey Supervisor', role: 'supervisor', active: false },
-  { id: 'emp4', name: 'Chris Driver', role: 'driver', active: false }
+  { id: 'emp1', name: 'Jamie', active: false },
+  { id: 'emp2', name: 'Avery', active: false },
+  { id: 'emp3', name: 'Casey', active: false },
+  { id: 'emp4', name: 'Chris', active: false }
 ];
 
 let shifts = [
@@ -147,17 +147,6 @@ app.post('/api/rides/:id/deny', (req, res) => {
   res.json(ride);
 });
 
-app.post('/api/rides/:id/assign', (req, res) => {
-  const ride = rideRequests.find((r) => r.id === req.params.id);
-  if (!ride) return res.status(404).json({ error: 'Ride not found' });
-  const { driverId } = req.body;
-  const driver = employees.find((e) => e.id === driverId && e.role === 'driver');
-  if (!driver) return res.status(400).json({ error: 'Driver not found' });
-  if (!driver.active) return res.status(400).json({ error: 'Driver is not clocked in' });
-  ride.assignedDriverId = driverId;
-  ride.status = 'scheduled';
-  res.json(ride);
-});
 
 app.post('/api/rides/:id/status', (req, res) => {
   const ride = rideRequests.find((r) => r.id === req.params.id);
@@ -217,7 +206,7 @@ app.post('/api/rides/:id/claim', (req, res) => {
   if (ride.status !== 'approved') return res.status(400).json({ error: 'Only approved rides can be claimed' });
   if (ride.assignedDriverId) return res.status(400).json({ error: 'Ride already assigned' });
   const { driverId } = req.body;
-  const driver = employees.find((e) => e.id === driverId && e.role === 'driver');
+  const driver = employees.find((e) => e.id === driverId);
   if (!driver) return res.status(400).json({ error: 'Driver not found' });
   if (!driver.active) return res.status(400).json({ error: 'Driver must be clocked in to claim rides' });
   ride.assignedDriverId = driverId;

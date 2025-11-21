@@ -34,7 +34,7 @@ function renderEmployees() {
     row.className = 'employee-row' + (emp.active ? ' active' : '');
     row.innerHTML = `
       <div>
-        <strong>${emp.name}</strong> (${emp.role})
+        <strong>${emp.name}</strong>
         ${emp.active ? '<span class="badge">On shift</span>' : ''}
       </div>
       <div class="flex-row">
@@ -71,9 +71,8 @@ function populateEmployeeSelects() {
 
 function renderDriverSelect() {
   const select = document.getElementById('driver-select');
-  const activeDrivers = employees.filter((e) => e.role === 'driver');
   select.innerHTML = '<option value="">-- Select Driver --</option>';
-  activeDrivers.forEach((d) => {
+  employees.forEach((d) => {
     const opt = document.createElement('option');
     opt.value = d.id;
     opt.textContent = `${d.name}${d.active ? ' (clocked in)' : ''}`;
@@ -170,22 +169,13 @@ function renderRideLists() {
   approved.forEach((ride) => {
     const item = document.createElement('div');
     item.className = 'item';
-    const driverSelect = buildDriverDropdown(ride.assignedDriverId);
     const driverName = employees.find((e) => e.id === ride.assignedDriverId)?.name || 'Unassigned';
     item.innerHTML = `
       <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong>${ride.riderName}</strong></div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
       <div class="small-text">Driver: ${driverName}</div>
-      <div class="flex-row driver-assign"></div>
     `;
-    const assignWrap = item.querySelector('.driver-assign');
-    assignWrap.appendChild(driverSelect);
-    const assignBtn = document.createElement('button');
-    assignBtn.className = 'btn primary';
-    assignBtn.textContent = 'Assign Driver';
-    assignBtn.onclick = () => assignDriver(ride.id, driverSelect.value);
-    assignWrap.appendChild(assignBtn);
     approvedEl.appendChild(item);
   });
 
@@ -202,43 +192,11 @@ function renderRideLists() {
   });
 }
 
-function buildDriverDropdown(selected) {
-  const select = document.createElement('select');
-  const activeDrivers = employees.filter((e) => e.role === 'driver' && e.active);
-  activeDrivers.forEach((d) => {
-    const opt = document.createElement('option');
-    opt.value = d.id;
-    opt.textContent = d.name;
-    if (selected === d.id) opt.selected = true;
-    select.appendChild(opt);
-  });
-  if (!activeDrivers.length) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'No drivers clocked in';
-    select.appendChild(opt);
-  }
-  return select;
-}
-
 async function updateRide(url) {
   const res = await fetch(url, { method: 'POST' });
   if (!res.ok) {
     const err = await res.json();
     alert(err.error || 'Failed to update ride');
-  }
-  await loadRides();
-}
-
-async function assignDriver(rideId, driverId) {
-  const res = await fetch(`/api/rides/${rideId}/assign`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ driverId })
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    alert(err.error || 'Cannot assign driver');
   }
   await loadRides();
 }
