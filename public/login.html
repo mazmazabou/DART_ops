@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - USC DART</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { display: flex; flex-direction: column; min-height: 100vh; margin: 0; }
+    .login-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+    .login-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); width: 100%; max-width: 360px; }
+    .login-card h2 { margin-top: 0; color: #990000; text-align: center; }
+    .login-card input { width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; margin-top: 0.25rem; box-sizing: border-box; }
+    .login-card button { width: 100%; padding: 0.75rem; font-size: 1rem; margin-top: 1rem; }
+    .login-error { color: #990000; background: #ffe6e6; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+    .login-error.show { display: block; }
+    .login-hint { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.85rem; color: #666; }
+  </style>
+</head>
+<body>
+  <header class="header"><div><h1>USC DART</h1><p>Disabled Access To Road Transportation</p></div></header>
+  <div class="login-container">
+    <div class="login-card">
+      <h2>Sign In</h2>
+      <div id="login-error" class="login-error"></div>
+      <form id="login-form">
+        <label>Username<input type="text" id="username" required autocomplete="username"></label>
+        <label>Password<input type="password" id="password" required autocomplete="current-password"></label>
+        <button type="submit" class="btn primary">Sign In</button>
+      </form>
+      <div class="login-hint"><strong>Test accounts:</strong><br>Drivers: jamie, avery, casey, chris<br>Office: office<br>Password: dart123</div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('login-error');
+      errorEl.classList.remove('show');
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: document.getElementById('username').value, password: document.getElementById('password').value })
+        });
+        if (!res.ok) { const data = await res.json(); errorEl.textContent = data.error || 'Login failed'; errorEl.classList.add('show'); return; }
+        const user = await res.json();
+        window.location.href = user.role === 'office' ? '/office' : '/driver';
+      } catch { errorEl.textContent = 'Connection error'; errorEl.classList.add('show'); }
+    });
+  </script>
+</body>
+</html>

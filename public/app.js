@@ -3,6 +3,20 @@ let shifts = [];
 let rides = [];
 let selectedDriverId = null;
 
+// ----- Auth -----
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) { window.location.href = '/login'; return false; }
+    return true;
+  } catch { window.location.href = '/login'; return false; }
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
+
 // ----- Data Loading -----
 async function loadEmployees() {
   const res = await fetch('/api/employees');
@@ -394,6 +408,7 @@ function formatDate(dateStr) {
 
 // ----- Initialize -----
 document.addEventListener('DOMContentLoaded', async () => {
+  if (!await checkAuth()) return;
   initForms();
   await loadEmployees();
   await loadShifts();

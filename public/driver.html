@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Driver - USC DART</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { margin: 0; padding: 0; background: #f5f5f5; }
+    .driver-header { background: #990000; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .driver-header h1 { margin: 0; font-size: 1.25rem; }
+    .driver-content { padding: 1rem; max-width: 600px; margin: 0 auto; }
+    .status-bar { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+    .status-bar .status.active { color: #228b22; font-weight: bold; }
+    .status-bar .status.inactive { color: #990000; font-weight: bold; }
+    .section { background: white; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+    .section-header { background: #ffcc00; color: #333; padding: 0.75rem 1rem; font-weight: bold; }
+    .section-content { padding: 1rem; }
+    .ride-card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafafa; }
+    .ride-card:last-child { margin-bottom: 0; }
+    .ride-card .rider-name { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .ride-card .route { margin-bottom: 0.5rem; }
+    .ride-card .time { color: #666; font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .ride-card .status-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.75rem; }
+    .ride-card .status-badge.scheduled { background: #d4edda; color: #155724; }
+    .ride-card .status-badge.driver_on_the_way { background: #fff3cd; color: #856404; }
+    .ride-card .status-badge.driver_arrived_grace { background: #cce5ff; color: #004085; }
+    .ride-card .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .ride-card .actions button { flex: 1; min-width: 100px; padding: 0.75rem; font-size: 0.9rem; }
+    .grace-timer { background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; font-size: 0.9rem; }
+    .empty-message { color: #666; text-align: center; padding: 2rem; }
+    .btn-logout { background: transparent; border: 1px solid white; color: white; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header class="driver-header">
+    <div><h1>DART Driver</h1><div id="user-name"></div></div>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </header>
+  <div class="driver-content">
+    <div class="status-bar">
+      <div>Status: <span id="clock-status" class="status inactive">Clocked Out</span></div>
+      <button id="clock-btn" class="btn primary" onclick="toggleClock()">Clock In</button>
+    </div>
+    <div class="section"><div class="section-header">My Rides Today</div><div class="section-content" id="my-rides"></div></div>
+    <div class="section" id="available-section"><div class="section-header">Available to Claim</div><div class="section-content" id="available-rides"></div></div>
+  </div>
+  <script>
+    let currentUser = null, employees = [], rides = [];
+    async function init() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) { window.location.href = '/login'; return; }
+        currentUser = await res.json();
+        document.getElementById('user-name').textContent = currentUser.name;
+        await loadData();
+        setInterval(loadData, 3000);
+        setInterval(updateGraceTimers, 1000);
+      } catch { window.location.href = '/login'; }
+    }
+    async function loadData() {
+      const [empRes, ridesRes] = await Promise.all([fetch('/api/employees'), fetch('/api/rides')]);
+      employees = await empRes.json();
+      rides = await ridesRes.json();
+      render();
+    }
+    function render() {
+      const me = employees.find(e => e.id === currentUser.id);
+      const isActive = me?.active || false;
+      document.getElementById('clock-status').textContent = isActive ? 'Clocked In' : 'Clocked Out';
+      document.getElementById('clock-status').className = 'status ' + (isActive ? 'active' : 'inactive');
+      document.getElementById('clock-btn').textContent = isActive ? 'Clock Out' : 'Clock In';
+      document.getElementById('clock-btn').className = 'btn ' + (isActive ? 'secondary' : 'primary');
+      const today = new Date().toISOString().split('T')[0];
+      const myRides = rides.filter(r => r.assignedDriverId === currentUser.id && r.requestedTime?.startsWith(today) && ['scheduled','driver_on_the_way','driver_arrived_grace'].includes(r.status));
+      const myRidesEl = document.getElementById('my-rides');
+      myRidesEl.innerHTML = myRides.length ? myRides.map(r => renderRide(r, true)).join('') : '<p class="empty-message">No rides assigned today.</p>';
+      const availableSection = document.getElementById('available-section');
+      const availableEl = document.getElementById('available-rides');
+      if (!isActive) { availableSection.style.display = 'none'; }
+      else {
+        availableSection.style.display = 'block';
+        const avail = rides.filter(r => r.status === 'approved' && !r.assignedDriverId && r.requestedTime?.startsWith(today));
+        availableEl.innerHTML = avail.length ? avail.map(r => renderRide(r, false)).join('') : '<p class="empty-message">No rides available.</p>';
+      }
+    }
+    function renderRide(ride, assigned) {
+      const labels = { approved: 'Available', scheduled: 'Scheduled', driver_on_the_way: 'On The Way', driver_arrived_grace: 'Waiting' };
+      let grace = '', actions = '';
+      if (ride.status === 'driver_arrived_grace' && ride.graceStartTime) grace = `<div class="grace-timer" data-grace="${ride.graceStartTime}"></div>`;
+      if (assigned) {
+        if (ride.status === 'scheduled') actions = `<button class="btn primary" onclick="action('${ride.id}','on-the-way')">On My Way</button>`;
+        else if (ride.status === 'driver_on_the_way') actions = `<button class="btn secondary" onclick="action('${ride.id}','here')">I'm Here</button><button class="btn primary" onclick="action('${ride.id}','complete')">Complete</button>`;
+        else if (ride.status === 'driver_arrived_grace') { const canNo = (Date.now() - new Date(ride.graceStartTime).getTime()) / 1000 >= 300; actions = `<button class="btn primary" onclick="action('${ride.id}','complete')">Complete</button><button class="btn danger" onclick="action('${ride.id}','no-show')" ${canNo ? '' : 'disabled'}>No-Show</button>`; }
+      } else actions = `<button class="btn primary" onclick="claim('${ride.id}')">Claim</button>`;
+      return `<div class="ride-card"><div class="status-badge ${ride.status}">${labels[ride.status]||ride.status}</div><div class="rider-name">${ride.riderName}</div><div class="route">${ride.pickupLocation} → ${ride.dropoffLocation}</div><div class="time">${new Date(ride.requestedTime).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>${grace}<div class="actions">${actions}</div></div>`;
+    }
+    function updateGraceTimers() {
+      document.querySelectorAll('.grace-timer').forEach(el => {
+        const elapsed = (Date.now() - new Date(el.dataset.grace).getTime()) / 1000, remaining = Math.max(0, 300 - elapsed);
+        if (remaining <= 0) { el.textContent = 'Grace expired - can mark no-show'; el.style.background = '#f8d7da'; const btn = el.closest('.ride-card')?.querySelector('.btn.danger'); if (btn) btn.disabled = false; }
+        else el.textContent = `Grace: ${Math.floor(remaining/60)}:${String(Math.floor(remaining%60)).padStart(2,'0')}`;
+      });
+    }
+    async function toggleClock() {
+      const me = employees.find(e => e.id === currentUser.id);
+      await fetch(`/api/employees/${me?.active ? 'clock-out' : 'clock-in'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId: currentUser.id }) });
+      await loadData();
+    }
+    async function claim(id) { const r = await fetch(`/api/rides/${id}/claim`, { method: 'POST' }); if (!r.ok) alert((await r.json()).error); await loadData(); }
+    async function action(id, act) { const r = await fetch(`/api/rides/${id}/${act}`, { method: 'POST' }); if (!r.ok) alert((await r.json()).error); await loadData(); }
+    async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }
+    init();
+  </script>
+</body>
+</html>

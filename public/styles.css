@@ -11,6 +11,24 @@ body {
   padding: 16px 24px;
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header > div { flex: 1; }
+
+.btn-logout {
+  background: transparent;
+  border: 1px solid #FFCC00;
+  color: #FFCC00;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-logout:hover {
+  background: rgba(255, 204, 0, 0.2);
 }
 
 .layout {
