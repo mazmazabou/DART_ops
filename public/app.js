@@ -255,8 +255,17 @@ function renderRideLists() {
   unassigned.forEach((ride) => {
     const item = document.createElement('div');
     item.className = 'item';
+    const contactButtons = ride.riderPhone
+      ? `<div class="contact-buttons">
+           <a href="tel:${ride.riderPhone}" class="contact-link" title="Call rider">📱</a>
+           <a href="sms:${ride.riderPhone}" class="contact-link" title="Text rider">💬</a>
+         </div>`
+      : '';
     item.innerHTML = `
-      <div><strong>${ride.riderName}</strong></div>
+      <div class="flex-row" style="justify-content: space-between; align-items: center;">
+        <strong>${ride.riderName}</strong>
+        ${contactButtons}
+      </div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">Time: ${formatDate(ride.requestedTime)}</div>
     `;
@@ -274,8 +283,17 @@ function renderRideLists() {
     const item = document.createElement('div');
     item.className = 'item';
     const terminated = ride.consecutiveMisses >= 5;
+    const contactButtons = ride.riderPhone
+      ? `<div class="contact-buttons">
+           <a href="tel:${ride.riderPhone}" class="contact-link" title="Call rider">📱</a>
+           <a href="sms:${ride.riderPhone}" class="contact-link" title="Text rider">💬</a>
+         </div>`
+      : '';
     item.innerHTML = `
-      <div><span class="status-tag pending">Pending</span> <strong>${ride.riderName}</strong> (${ride.riderEmail})</div>
+      <div class="flex-row" style="justify-content: space-between; align-items: center;">
+        <div><span class="status-tag pending">Pending</span> <strong>${ride.riderName}</strong> (${ride.riderEmail})</div>
+        ${contactButtons}
+      </div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">Requested: ${formatDate(ride.requestedTime)}</div>
       ${terminated ? '<div class="alert">SERVICE TERMINATED after five consecutive no-shows.</div>' : ''}
@@ -293,8 +311,17 @@ function renderRideLists() {
     const item = document.createElement('div');
     item.className = 'item';
     const driverName = employees.find((e) => e.id === ride.assignedDriverId)?.name || 'Unassigned';
+    const contactButtons = ride.riderPhone
+      ? `<div class="contact-buttons">
+           <a href="tel:${ride.riderPhone}" class="contact-link" title="Call rider">📱</a>
+           <a href="sms:${ride.riderPhone}" class="contact-link" title="Text rider">💬</a>
+         </div>`
+      : '';
     item.innerHTML = `
-      <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong>${ride.riderName}</strong></div>
+      <div class="flex-row" style="justify-content: space-between; align-items: center;">
+        <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong>${ride.riderName}</strong></div>
+        ${contactButtons}
+      </div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
       <div class="small-text">Driver: ${driverName}</div>
@@ -305,8 +332,17 @@ function renderRideLists() {
   history.forEach((ride) => {
     const item = document.createElement('div');
     item.className = 'item';
+    const contactButtons = ride.riderPhone
+      ? `<div class="contact-buttons">
+           <a href="tel:${ride.riderPhone}" class="contact-link" title="Call rider">📱</a>
+           <a href="sms:${ride.riderPhone}" class="contact-link" title="Text rider">💬</a>
+         </div>`
+      : '';
     item.innerHTML = `
-      <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong>${ride.riderName}</strong></div>
+      <div class="flex-row" style="justify-content: space-between; align-items: center;">
+        <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong>${ride.riderName}</strong></div>
+        ${contactButtons}
+      </div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
       <div class="small-text">Misses: ${ride.consecutiveMisses || 0}</div>
