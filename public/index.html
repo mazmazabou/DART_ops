@@ -13,14 +13,31 @@
       <div class="brand">
         <div class="brand-title">USC DART Ops</div>
         <div class="brand-sub">Dispatch + Driver</div>
+        <div class="brand-collapsed">DT</div>
+        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&laquo;</button>
       </div>
-      <button class="nav-btn active" data-target="staff-panel">Staff &amp; Shifts</button>
-      <button class="nav-btn" data-target="rides-panel">Ride Requests</button>
-      <button class="nav-btn" data-target="driver-panel">Dispatch &amp; Monitoring</button>
-      <button class="nav-btn" data-target="admin-panel">Admin Settings</button>
-      <button class="nav-btn" data-target="profile-panel">Profile</button>
+      <button class="nav-btn active" data-target="staff-panel" title="Staff &amp; Shifts">
+        <span class="nav-icon">&#x1F465;</span><span class="nav-label">Staff &amp; Shifts</span>
+      </button>
+      <button class="nav-btn" data-target="rides-panel" title="Ride Requests">
+        <span class="nav-icon">&#x1F697;</span><span class="nav-label">Ride Requests</span>
+      </button>
+      <button class="nav-btn" data-target="driver-panel" title="Dispatch &amp; Monitoring">
+        <span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Dispatch &amp; Monitoring</span>
+      </button>
+      <button class="nav-btn" data-target="admin-panel" title="Admin Settings">
+        <span class="nav-icon">&#x2699;&#xFE0F;</span><span class="nav-label">Admin Settings</span>
+      </button>
+      <button class="nav-btn" data-target="profile-panel" title="Profile">
+        <span class="nav-icon">&#x1F464;</span><span class="nav-label">Profile</span>
+      </button>
+      <button class="nav-btn" onclick="showRulesModal()" title="Program Rules">
+        <span class="nav-icon">&#x1F4CB;</span><span class="nav-label">Rules</span>
+      </button>
       <div class="spacer"></div>
-      <button class="nav-btn" onclick="logout()">Logout</button>
+      <button class="nav-btn" onclick="logout()" title="Logout">
+        <span class="nav-icon">&#x1F6AA;</span><span class="nav-label">Logout</span>
+      </button>
     </aside>
 
     <main class="content-area">
@@ -33,67 +50,67 @@
 
       <section class="panel tab-panel active" id="staff-panel">
         <h2>Staff &amp; Shifts</h2>
-        <div id="employee-list" class="card"></div>
-        <div class="card">
-          <div class="card-header-row">
-            <h3>Schedule View</h3>
-            <div class="schedule-toggle">
-              <button class="btn toggle-btn active" data-schedule-mode="weekly" onclick="setScheduleMode('weekly')">Weekly</button>
-              <button class="btn toggle-btn" data-schedule-mode="daily" onclick="setScheduleMode('daily')">Daily</button>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-subtarget="staff-schedule-view">Schedule</button>
+          <button class="sub-tab" data-subtarget="staff-shifts-view">Edit Shifts</button>
+        </div>
+        <div class="sub-panel" id="staff-schedule-view">
+          <div class="card"><div id="employee-bar" class="employee-bar"></div></div>
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Schedule View</h3>
+              <div class="schedule-toggle">
+                <button class="btn toggle-btn active" data-schedule-mode="weekly" onclick="setScheduleMode('weekly')">Weekly</button>
+                <button class="btn toggle-btn" data-schedule-mode="daily" onclick="setScheduleMode('daily')">Daily</button>
+              </div>
             </div>
-          </div>
-          <div class="schedule-nav">
-            <div class="nav-left">
-              <button class="btn" onclick="changeScheduleWeek(-1)">&laquo; Prev Week</button>
-              <button class="btn" onclick="changeScheduleDay(-1)">&lt; Prev Day</button>
+            <div class="schedule-nav">
+              <div class="nav-left">
+                <button class="btn" onclick="changeScheduleWeek(-1)">&laquo; Prev Week</button>
+                <button class="btn" onclick="changeScheduleDay(-1)">&lt; Prev Day</button>
+              </div>
+              <input type="date" id="schedule-date" onchange="onScheduleDateChange()">
+              <div class="nav-right">
+                <button class="btn" onclick="changeScheduleDay(1)">Next Day &gt;</button>
+                <button class="btn" onclick="changeScheduleWeek(1)">Next Week &raquo;</button>
+              </div>
             </div>
-            <input type="date" id="schedule-date" onchange="onScheduleDateChange()">
-            <div class="nav-right">
-              <button class="btn" onclick="changeScheduleDay(1)">Next Day &gt;</button>
-              <button class="btn" onclick="changeScheduleWeek(1)">Next Week &raquo;</button>
+            <div id="day-schedule" class="day-schedule"></div>
+            <div class="schedule-legend">
+              <span class="legend-item"><span class="legend-color shift"></span> Driver on shift</span>
+              <span class="legend-item"><span class="legend-color ride"></span> Scheduled ride</span>
             </div>
-          </div>
-          <div id="day-schedule" class="day-schedule"></div>
-          <div class="schedule-legend">
-            <span class="legend-item"><span class="legend-color shift"></span> Driver on shift</span>
-            <span class="legend-item"><span class="legend-color ride"></span> Scheduled ride</span>
           </div>
         </div>
-        <div class="card">
-          <h3>Add/Edit Shifts</h3>
-          <p class="small-text">Click and drag on the grid to add shifts. Click existing shifts to remove.</p>
-          <label>Employee
-            <div class="flex-row">
-              <select id="shift-employee"></select>
-              <button class="btn secondary" id="shift-employee-profile" type="button">View Profile</button>
-            </div>
-          </label>
-          <div id="shift-grid" class="shift-grid"></div>
+        <div class="sub-panel" id="staff-shifts-view" style="display:none;">
+          <div class="card">
+            <h3>Add/Edit Shifts</h3>
+            <p class="small-text">Click and drag on the grid to add shifts. Click existing shifts to remove.</p>
+            <label>Employee
+              <div class="flex-row">
+                <select id="shift-employee"></select>
+                <button class="btn secondary" id="shift-employee-profile" type="button">View Profile</button>
+              </div>
+            </label>
+            <div id="shift-grid" class="shift-grid"></div>
+          </div>
         </div>
       </section>
 
       <section class="panel tab-panel" id="rides-panel">
       <h2>Ride Requests</h2>
-      <div style="margin-bottom:12px;">
-        <input type="text" id="ride-filter-input" placeholder="Filter rides by name, location, or status..." style="width:100%;">
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-subtarget="rides-active-view">Active Rides</button>
+        <button class="sub-tab" data-subtarget="rides-calendar-view">Calendar</button>
+        <button class="sub-tab" data-subtarget="rides-history-view">History</button>
       </div>
-      <div class="card" id="sample-rides-card" data-dev-only hidden aria-hidden="true">
-        <button id="load-sample-rides" class="btn secondary">Load Sample Rides (Dev)</button>
-      </div>
-      <div class="card">
-        <h3>Weekly Ride Schedule</h3>
-        <p class="small-text">Color-coded ride grid (08:00–19:00, Mon–Fri).</p>
-        <div class="schedule-nav">
-          <div class="nav-left">
-            <button class="btn" id="ride-week-prev" type="button">&laquo; Prev Week</button>
-          </div>
-          <div class="small-text" id="ride-week-label"></div>
-          <div class="nav-right">
-            <button class="btn" id="ride-week-next" type="button">Next Week &raquo;</button>
-          </div>
+      <div class="sub-panel" id="rides-active-view">
+        <div style="margin-bottom:12px;">
+          <input type="text" id="ride-filter-input" placeholder="Filter rides by name, location, or status..." style="width:100%;">
         </div>
-        <div id="ride-schedule-grid"></div>
-      </div>
+        <div class="card" id="sample-rides-card" data-dev-only hidden aria-hidden="true">
+          <button id="load-sample-rides" class="btn secondary">Load Sample Rides (Dev)</button>
+        </div>
         <div class="card" id="unassigned-list">
           <h3>Unassigned Rides (Today)</h3>
           <div class="list" id="unassigned-items"></div>
@@ -106,10 +123,29 @@
           <h3>Approved / Scheduled</h3>
           <div class="list" id="approved-items"></div>
         </div>
+      </div>
+      <div class="sub-panel" id="rides-calendar-view" style="display:none;">
+        <div class="card">
+          <h3>Weekly Ride Schedule</h3>
+          <p class="small-text">Color-coded ride grid (08:00–19:00, Mon–Fri).</p>
+          <div class="schedule-nav">
+            <div class="nav-left">
+              <button class="btn" id="ride-week-prev" type="button">&laquo; Prev Week</button>
+            </div>
+            <div class="small-text" id="ride-week-label"></div>
+            <div class="nav-right">
+              <button class="btn" id="ride-week-next" type="button">Next Week &raquo;</button>
+            </div>
+          </div>
+          <div id="ride-schedule-grid"></div>
+        </div>
+      </div>
+      <div class="sub-panel" id="rides-history-view" style="display:none;">
         <div class="card" id="history-list">
           <h3>Completed &amp; No-Show History</h3>
           <div class="list" id="history-items"></div>
         </div>
+      </div>
       </section>
 
       <section class="panel tab-panel" id="driver-panel">
@@ -203,19 +239,6 @@
         <div id="admin-profile-content" class="card"></div>
       </section>
 
-      <section class="rules">
-        <div class="toggle-header" onclick="toggleRulesSection(this)" style="cursor:pointer;">
-          <h2 style="margin:0;">Program Rules &amp; Guidelines</h2>
-          <button class="toggle-btn-slim" type="button" style="color:#FFCC00;">&#9656;</button>
-        </div>
-        <ul id="rules-list" style="display:none;">
-          <li>DART is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am–7:00pm, Monday–Friday.</li>
-          <li>DART vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.</li>
-          <li>Riders must be able to independently get in and out of a standard golf cart. Drivers cannot assist with lifting/carrying medical equipment (crutches, wheelchairs, etc.). A wheelchair-accessible golf cart is available upon request.</li>
-          <li>Due to high demand, drivers cannot wait more than five (5) minutes past a scheduled pick-up time. After that grace period, they may leave to continue other assignments.</li>
-          <li>Service is automatically terminated after five (5) consecutive missed pick-ups.</li>
-        </ul>
-      </section>
     </main>
   </div>
   <script src="/utils.js"></script>

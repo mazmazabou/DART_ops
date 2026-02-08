@@ -27,7 +27,9 @@ body {
   display: grid;
   grid-template-columns: 220px 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 0.2s ease;
 }
+.shell.sidebar-collapsed { grid-template-columns: 60px 1fr; }
 
 .side-nav {
   background: linear-gradient(180deg, var(--cardinal), var(--cardinal-deep));
@@ -36,16 +38,28 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: padding 0.2s ease;
+  overflow: hidden;
 }
 
 .brand {
   padding: 12px 8px;
   border-bottom: 1px solid rgba(255,255,255,0.2);
   margin-bottom: 8px;
+  position: relative;
 }
 
 .brand-title { font-weight: 700; font-size: 1.1rem; }
 .brand-sub { font-size: 0.9rem; opacity: 0.8; }
+.brand-collapsed { display: none; font-weight: 700; font-size: 1.2rem; text-align: center; }
+
+.sidebar-toggle {
+  position: absolute; top: 8px; right: 4px;
+  background: transparent; border: none; color: var(--gold);
+  font-size: 1rem; cursor: pointer; opacity: 0.7;
+  padding: 2px 6px; border-radius: 4px;
+}
+.sidebar-toggle:hover { opacity: 1; background: rgba(255,255,255,0.1); }
 
 .nav-btn {
   background: rgba(255,255,255,0.08);
@@ -64,6 +78,20 @@ body {
 }
 .nav-btn:hover { transform: translateY(-1px); }
 .spacer { flex: 1; }
+
+/* Sidebar icons — hidden when expanded */
+.side-nav:not(.collapsed) .nav-icon { display: none; }
+
+/* Collapsed sidebar */
+.side-nav.collapsed { padding: 8px; }
+.side-nav.collapsed .brand-title,
+.side-nav.collapsed .brand-sub { display: none; }
+.side-nav.collapsed .brand-collapsed { display: block; }
+.side-nav.collapsed .sidebar-toggle { position: static; display: block; margin: 4px auto 0; }
+.side-nav.collapsed .nav-label { display: none; }
+.side-nav.collapsed .nav-btn {
+  padding: 10px; text-align: center; font-size: 1.2rem; justify-content: center;
+}
 
 .btn-logout {
   background: rgba(255,255,255,0.1);
@@ -100,6 +128,20 @@ body {
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+
+/* Sub-tabs within panels */
+.sub-tabs {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  border-bottom: 2px solid var(--border); padding-bottom: 0;
+}
+.sub-tab {
+  background: transparent; border: none;
+  border-bottom: 3px solid transparent;
+  padding: 8px 16px; font-weight: 700; font-size: 14px;
+  color: var(--muted); cursor: pointer; transition: all 0.15s ease;
+}
+.sub-tab.active { color: var(--cardinal); border-bottom-color: var(--cardinal); }
+.sub-tab:hover { color: var(--ink); }
 
 .card {
   background: var(--card);
@@ -216,6 +258,26 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 4px 10px rgba(0,0,0,0.04);
 }
 .employee-row.active { border-color: #008000; background: #e8f7e8; }
+
+/* Compact employee status bar */
+.employee-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.emp-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid var(--border);
+  border-radius: 20px; background: #fff; font-size: 13px;
+  transition: all 0.15s ease;
+}
+.emp-chip.active { border-color: #28a745; background: #f0fff4; }
+.emp-dot { width: 8px; height: 8px; border-radius: 50%; background: #dc3545; flex-shrink: 0; }
+.emp-dot.active { background: #28a745; }
+.emp-name { font-weight: 700; cursor: pointer; }
+.emp-name:hover { text-decoration: underline; }
+.emp-toggle {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 12px; padding: 2px 8px; font-size: 12px;
+  cursor: pointer; font-weight: 600; transition: all 0.15s ease;
+}
+.emp-toggle:hover { background: var(--surface); }
 
 .list .item { border-bottom: 1px solid #eadfd4; padding: 8px 0; }
 .list .item:last-child { border-bottom: none; }

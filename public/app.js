@@ -205,26 +205,25 @@ async function createAdminUser() {
 
 // ----- Employee UI -----
 function renderEmployees() {
-  const container = document.getElementById('employee-list');
-  container.innerHTML = '<h3>Employees</h3>';
+  const container = document.getElementById('employee-bar');
+  if (!container) return;
+  container.innerHTML = '';
   employees.forEach((emp) => {
-    const row = document.createElement('div');
-    row.className = 'employee-row' + (emp.active ? ' active' : '');
-    row.innerHTML = `
-      <div>
-        <strong>${emp.name}</strong>
-        ${emp.active ? '<span class="badge">On shift</span>' : ''}
-      </div>
-      <div class="flex-row">
-        <button class="btn secondary" data-action="clock-in">Clock In</button>
-        <button class="btn" data-action="clock-out">Clock Out</button>
-      </div>
+    const chip = document.createElement('div');
+    chip.className = 'emp-chip' + (emp.active ? ' active' : '');
+    chip.title = `${emp.name} — ${emp.active ? 'Clocked In' : 'Clocked Out'}`;
+    chip.innerHTML = `
+      <span class="emp-dot${emp.active ? ' active' : ''}"></span>
+      <span class="emp-name">${emp.name}</span>
     `;
-    row.querySelector('strong').style.cursor = 'pointer';
-    row.querySelector('strong').onclick = () => openProfileById(emp.id);
-    row.querySelector('[data-action="clock-in"]').onclick = () => clockEmployee(emp.id, true);
-    row.querySelector('[data-action="clock-out"]').onclick = () => clockEmployee(emp.id, false);
-    container.appendChild(row);
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'emp-toggle';
+    toggleBtn.title = emp.active ? `Clock out ${emp.name}` : `Clock in ${emp.name}`;
+    toggleBtn.textContent = emp.active ? '\u2600\uFE0F In' : '\uD83C\uDF19 Out';
+    toggleBtn.onclick = () => clockEmployee(emp.id, !emp.active);
+    chip.querySelector('.emp-name').onclick = () => openProfileById(emp.id);
+    chip.appendChild(toggleBtn);
+    container.appendChild(chip);
   });
 }
 
@@ -1540,17 +1539,62 @@ function openProfileById(id) {
   loadUserProfile(targetId);
 }
 
-function toggleRulesSection(header) {
-  const rulesList = document.getElementById('rules-list');
-  if (!rulesList) return;
-  const isHidden = rulesList.style.display === 'none';
-  rulesList.style.display = isHidden ? 'block' : 'none';
-  const btn = header.querySelector('.toggle-btn-slim');
-  if (btn) btn.innerHTML = isHidden ? '&#9662;' : '&#9656;';
+function showRulesModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:600px;">
+      <div class="modal-title">Program Rules &amp; Guidelines</div>
+      <ul style="padding-left:20px; line-height:1.8; color:var(--muted); font-size:14px;">
+        <li>DART is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am\u20137:00pm, Monday\u2013Friday.</li>
+        <li>DART vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.</li>
+        <li>Riders must be able to independently get in and out of a standard golf cart. Drivers cannot assist with lifting/carrying medical equipment (crutches, wheelchairs, etc.). A wheelchair-accessible golf cart is available upon request.</li>
+        <li>Due to high demand, drivers cannot wait more than five (5) minutes past a scheduled pick-up time. After that grace period, they may leave to continue other assignments.</li>
+        <li>Service is automatically terminated after five (5) consecutive missed pick-ups.</li>
+      </ul>
+      <div class="modal-actions">
+        <button class="btn primary modal-close-btn">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  const close = () => {
+    overlay.classList.remove('show');
+    overlay.classList.add('hiding');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  overlay.querySelector('.modal-close-btn').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+}
+
+function initSubTabs() {
+  document.querySelectorAll('.sub-tabs').forEach((strip) => {
+    strip.querySelectorAll('.sub-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        strip.querySelectorAll('.sub-tab').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const panel = strip.closest('.tab-panel') || strip.parentElement;
+        panel.querySelectorAll(':scope > .sub-panel').forEach((p) => p.style.display = 'none');
+        const target = document.getElementById(btn.dataset.subtarget);
+        if (target) target.style.display = 'block';
+      });
+    });
+  });
+}
+
+function toggleSidebar() {
+  const shell = document.querySelector('.shell');
+  const nav = document.querySelector('.side-nav');
+  const btn = document.querySelector('.sidebar-toggle');
+  const collapsed = nav.classList.toggle('collapsed');
+  shell.classList.toggle('sidebar-collapsed', collapsed);
+  btn.textContent = collapsed ? '\u00BB' : '\u00AB';
+  localStorage.setItem('dart-sidebar-collapsed', collapsed ? '1' : '');
 }
 
 function initTabs() {
-  const buttons = document.querySelectorAll('.nav-btn');
+  const buttons = document.querySelectorAll('.nav-btn[data-target]');
   const panels = document.querySelectorAll('.tab-panel');
   buttons.forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1580,6 +1624,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   initTabs();
+  initSubTabs();
+  // Restore sidebar collapsed state
+  if (localStorage.getItem('dart-sidebar-collapsed') === '1') {
+    document.querySelector('.side-nav')?.classList.add('collapsed');
+    document.querySelector('.shell')?.classList.add('sidebar-collapsed');
+    const sidebarBtn = document.querySelector('.sidebar-toggle');
+    if (sidebarBtn) sidebarBtn.textContent = '\u00BB';
+  }
   await initForms();
 
   // Ride filter input
