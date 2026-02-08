@@ -31,6 +31,9 @@
       <button class="nav-btn" data-target="profile-panel" title="Profile">
         <span class="nav-icon">&#x1F464;</span><span class="nav-label">Profile</span>
       </button>
+      <button class="nav-btn" data-target="analytics-panel" title="Analytics">
+        <span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Analytics</span>
+      </button>
       <button class="nav-btn" onclick="showRulesModal()" title="Program Rules">
         <span class="nav-icon">&#x1F4CB;</span><span class="nav-label">Rules</span>
       </button>
@@ -105,8 +108,9 @@
         <button class="sub-tab" data-subtarget="rides-history-view">History</button>
       </div>
       <div class="sub-panel" id="rides-active-view">
-        <div style="margin-bottom:12px;">
-          <input type="text" id="ride-filter-input" placeholder="Filter rides by name, location, or status..." style="width:100%;">
+        <div class="rides-filter-bar">
+          <input type="text" id="ride-filter-input" placeholder="Search rides by name, location, or status...">
+          <span class="ride-filter-count" id="ride-filter-count"></span>
         </div>
         <div class="card" id="sample-rides-card" data-dev-only hidden aria-hidden="true">
           <button id="load-sample-rides" class="btn secondary">Load Sample Rides (Dev)</button>
@@ -141,6 +145,9 @@
         </div>
       </div>
       <div class="sub-panel" id="rides-history-view" style="display:none;">
+        <div style="margin-bottom:12px;">
+          <input type="text" id="history-filter-input" placeholder="Filter history by name, location, or status..." style="width:100%;">
+        </div>
         <div class="card" id="history-list">
           <h3>Completed &amp; No-Show History</h3>
           <div class="list" id="history-items"></div>
@@ -185,51 +192,56 @@
 
       <section class="panel tab-panel" id="admin-panel">
         <h2>Admin Settings</h2>
-        <div class="card">
-          <h3>Search by USC ID</h3>
-          <div class="flex-row">
-            <input type="text" id="admin-usc-search" placeholder="Enter 10-digit USC ID" maxlength="10" pattern="[0-9]{10}">
-            <button class="btn primary" id="admin-usc-search-btn" type="button">Search</button>
-          </div>
-          <div id="admin-search-result" class="small-text"></div>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-subtarget="admin-users-view">Users</button>
+          <button class="sub-tab" data-subtarget="admin-create-view">Create User</button>
         </div>
-        <div class="card">
-          <h3>Create User</h3>
-          <div class="form-grid">
-            <label>Name<input type="text" id="admin-new-name" required></label>
-            <label>USC Email<input type="email" id="admin-new-email" required></label>
-            <label>Phone<input type="tel" id="admin-new-phone"></label>
-            <label>USC ID (10 digits)<input type="text" id="admin-new-uscid" maxlength="10" required></label>
-            <label>Role
-              <select id="admin-new-role">
-                <option value="rider">rider</option>
-                <option value="driver">driver</option>
-                <option value="office">office</option>
-              </select>
-            </label>
-            <label>Temp Password<input type="password" id="admin-new-password" required></label>
+        <div class="sub-panel" id="admin-users-view">
+          <div class="rides-filter-bar">
+            <input type="text" id="admin-user-filter" placeholder="Search by name, email, phone, USC ID, or role...">
+            <span class="ride-filter-count" id="admin-user-filter-count"></span>
           </div>
-          <button class="btn primary" id="admin-create-btn" type="button">Create User</button>
-          <div id="admin-create-message" class="small-text"></div>
+          <div class="card">
+            <h3>Users</h3>
+            <div class="small-text">Manage riders, drivers, and office accounts. You cannot delete your own office account.</div>
+            <div class="table-responsive">
+              <table class="grid-table" id="admin-users-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>USC Email</th>
+                    <th>USC ID</th>
+                    <th>Phone</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </div>
-        <div class="card">
-          <h3>Users</h3>
-          <div class="small-text">Manage riders, drivers, and office accounts. You cannot delete your own office account.</div>
-          <div class="table-responsive">
-            <table class="grid-table" id="admin-users-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Username</th>
-                  <th>Role</th>
-                  <th>USC Email</th>
-                  <th>USC ID</th>
-                  <th>Phone</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
+        <div class="sub-panel" id="admin-create-view" style="display:none;">
+          <div class="card">
+            <h3>Create User</h3>
+            <div id="admin-email-status" class="small-text" style="margin-bottom:8px;"></div>
+            <div class="form-grid">
+              <label>Name<input type="text" id="admin-new-name" required></label>
+              <label>USC Email<input type="email" id="admin-new-email" required></label>
+              <label>Phone<input type="tel" id="admin-new-phone"></label>
+              <label>USC ID (10 digits)<input type="text" id="admin-new-uscid" maxlength="10" required></label>
+              <label>Role
+                <select id="admin-new-role">
+                  <option value="rider">rider</option>
+                  <option value="driver">driver</option>
+                  <option value="office">office</option>
+                </select>
+              </label>
+              <label>Temp Password<input type="password" id="admin-new-password" required></label>
+            </div>
+            <button class="btn primary" id="admin-create-btn" type="button">Create User</button>
+            <div id="admin-create-message" class="small-text"></div>
           </div>
         </div>
       </section>
@@ -237,6 +249,74 @@
       <section class="panel tab-panel" id="profile-panel">
         <h2>User Profile</h2>
         <div id="admin-profile-content" class="card"></div>
+      </section>
+
+      <section class="panel tab-panel" id="analytics-panel">
+        <h2>Analytics &amp; Reports</h2>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-subtarget="analytics-dashboard-view">Dashboard</button>
+          <button class="sub-tab" data-subtarget="analytics-hotspots-view">Hotspots</button>
+          <button class="sub-tab" data-subtarget="analytics-vehicles-view">Vehicles</button>
+          <button class="sub-tab" data-subtarget="analytics-milestones-view">Milestones</button>
+          <button class="sub-tab" data-subtarget="analytics-reports-view">Reports</button>
+        </div>
+
+        <div class="sub-panel" id="analytics-dashboard-view">
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Overview</h3>
+              <div class="analytics-date-range">
+                <label class="inline-label">From <input type="date" id="analytics-from"></label>
+                <label class="inline-label">To <input type="date" id="analytics-to"></label>
+                <button class="btn secondary small" id="analytics-refresh-btn" type="button">Refresh</button>
+              </div>
+            </div>
+          </div>
+          <div class="kpi-grid" id="analytics-kpi-grid"></div>
+          <div class="card"><h3>Rides by Day of Week</h3><div id="chart-dow"></div></div>
+          <div class="card"><h3>Rides by Hour</h3><div id="chart-hour"></div></div>
+          <div class="card"><h3>Daily Volume (Recent)</h3><div id="chart-daily"></div></div>
+          <div class="card"><h3>Status Breakdown</h3><div id="chart-status"></div></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-hotspots-view" style="display:none;">
+          <div class="card"><h3>Top Pickup Locations</h3><div id="hotspot-pickups"></div></div>
+          <div class="card"><h3>Top Dropoff Locations</h3><div id="hotspot-dropoffs"></div></div>
+          <div class="card"><h3>Most Popular Routes</h3><div id="hotspot-routes"></div></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-vehicles-view" style="display:none;">
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Fleet Management</h3>
+              <button class="btn primary small" id="add-vehicle-btn" type="button">Add Vehicle</button>
+            </div>
+          </div>
+          <div id="vehicles-grid" class="vehicles-grid"></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-milestones-view" style="display:none;">
+          <div class="card"><h3>Driver Milestones</h3><div id="driver-milestones"></div></div>
+          <div class="card"><h3>Rider Milestones</h3><div id="rider-milestones"></div></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-reports-view" style="display:none;">
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Semester Report</h3>
+              <button class="btn secondary small" id="export-csv-btn" type="button">Export CSV</button>
+            </div>
+            <div id="semester-report-content"></div>
+          </div>
+          <div class="card">
+            <h3>DART Wrapped</h3>
+            <div id="dart-wrapped-content"></div>
+          </div>
+          <div class="card">
+            <h3>Budget Forecast</h3>
+            <p class="small-text">Budget forecasting features are coming soon. After meetings with transportation managers, this section will include cost-per-ride analysis, projected demand, and funding justification reports.</p>
+          </div>
+        </div>
       </section>
 
     </main>

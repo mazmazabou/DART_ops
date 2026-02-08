@@ -56,6 +56,15 @@
       </div>
       <button class="btn primary" id="profile-save">Save Changes</button>
       <div id="profile-message" class="small-text"></div>
+      <hr style="margin:16px 0; border:none; border-top:1px solid #ddd;">
+      <h4 style="margin:0 0 8px;">Change Password</h4>
+      <div class="two-col">
+        <label>Current Password<input type="password" id="pw-current"></label>
+        <label>New Password (min 8 chars)<input type="password" id="pw-new"></label>
+        <label>Confirm New Password<input type="password" id="pw-confirm"></label>
+      </div>
+      <button class="btn secondary" id="pw-change-btn">Update Password</button>
+      <div id="pw-message" class="small-text"></div>
       </div>
     </section>
 
@@ -209,6 +218,8 @@
       } catch {}
       const saveBtn = document.getElementById('profile-save');
       if (saveBtn) saveBtn.onclick = saveProfile;
+      const pwBtn = document.getElementById('pw-change-btn');
+      if (pwBtn) pwBtn.onclick = changePassword;
     }
 
     async function saveProfile() {
@@ -232,6 +243,51 @@
         <span class="inline-pill">${data.name}</span>
         <span class="inline-pill">${data.email || ''}</span>
       `;
+    }
+
+    async function changePassword() {
+      const msg = document.getElementById('pw-message');
+      msg.textContent = '';
+      msg.style.color = '';
+      const currentPassword = document.getElementById('pw-current').value;
+      const newPassword = document.getElementById('pw-new').value;
+      const confirm = document.getElementById('pw-confirm').value;
+      if (!currentPassword || !newPassword || !confirm) {
+        msg.textContent = 'All fields are required.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (newPassword.length < 8) {
+        msg.textContent = 'New password must be at least 8 characters.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (newPassword !== confirm) {
+        msg.textContent = 'Passwords do not match.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = data.error || 'Failed to change password';
+          msg.style.color = '#c62828';
+          return;
+        }
+        msg.textContent = 'Password updated successfully!';
+        msg.style.color = '#228b22';
+        document.getElementById('pw-current').value = '';
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-confirm').value = '';
+      } catch {
+        msg.textContent = 'Connection error';
+        msg.style.color = '#c62828';
+      }
     }
 
     function initRideTypeToggle() {

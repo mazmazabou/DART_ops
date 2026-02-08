@@ -86,10 +86,22 @@ async function initDb() {
       type TEXT NOT NULL,
       at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT DEFAULT 'standard',
+      status TEXT DEFAULT 'available',
+      total_miles NUMERIC DEFAULT 0,
+      last_maintenance_date DATE,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `;
   await query(schemaSql);
   await runMigrations();
   await seedDefaultUsers();
+  await seedDefaultVehicles();
 }
 
 async function runMigrations() {
@@ -101,6 +113,9 @@ async function runMigrations() {
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS consecutive_misses INTEGER DEFAULT 0;`,
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS notes TEXT;`,
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS cancelled_by TEXT;`,
+    `ALTER TABLE rides ADD COLUMN IF NOT EXISTS vehicle_id TEXT REFERENCES vehicles(id);`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;`,
     `CREATE TABLE IF NOT EXISTS recurring_rides (
       id TEXT PRIMARY KEY,
       rider_id TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -144,6 +159,21 @@ async function seedDefaultUsers() {
          role = EXCLUDED.role,
          active = EXCLUDED.active`,
       [user.id, user.username, defaultPasswordHash, user.name, user.email, user.usc_id || null, user.phone || null, user.role, user.active]
+    );
+  }
+}
+
+async function seedDefaultVehicles() {
+  const defaults = [
+    { id: 'veh_cart1', name: 'Cart 1', type: 'standard' },
+    { id: 'veh_cart2', name: 'Cart 2', type: 'standard' },
+    { id: 'veh_cart3', name: 'Cart 3', type: 'standard' },
+    { id: 'veh_accessible', name: 'Accessible Cart', type: 'accessible' }
+  ];
+  for (const v of defaults) {
+    await query(
+      `INSERT INTO vehicles (id, name, type) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+      [v.id, v.name, v.type]
     );
   }
 }
@@ -251,7 +281,8 @@ function mapRide(row) {
     consecutiveMisses: row.consecutive_misses || 0,
     notes: row.notes || '',
     recurringId: row.recurring_id || null,
-    cancelledBy: row.cancelled_by || null
+    cancelledBy: row.cancelled_by || null,
+    vehicleId: row.vehicle_id || null
   };
 }
 
@@ -334,7 +365,9 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
   setSessionFromUser(req, user);
-  res.json({ id: user.id, username: user.username, name: user.name, email: user.email, role: user.role });
+  const responseData = { id: user.id, username: user.username, name: user.name, email: user.email, role: user.role };
+  if (user.must_change_password) responseData.mustChangePassword = true;
+  res.json(responseData);
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -391,6 +424,29 @@ app.put('/api/me', requireAuth, async (req, res) => {
   // refresh session display name
   req.session.name = user.name;
   res.json(user);
+});
+
+// Change own password
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+  const userRes = await query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
+  const user = userRes.rows[0];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  const hash = bcrypt.hashSync(newPassword, 10);
+  await query(
+    `UPDATE users SET password_hash = $1, must_change_password = FALSE, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+    [hash, req.session.userId]
+  );
+  res.json({ success: true });
 });
 
 app.post('/api/auth/signup', async (req, res) => {
@@ -492,29 +548,53 @@ app.post('/api/admin/users', requireOffice, async (req, res) => {
   const id = generateId(role);
   const hash = bcrypt.hashSync(password, 10);
   await query(
-    `INSERT INTO users (id, username, password_hash, name, email, usc_id, phone, role, active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)`,
+    `INSERT INTO users (id, username, password_hash, name, email, usc_id, phone, role, active, must_change_password)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, TRUE)`,
     [id, username, hash, name, email.toLowerCase(), uscId, phone || null, role]
   );
+
+  // Fire-and-forget welcome email
+  let emailSent = false;
+  try {
+    const { isEmailEnabled, sendWelcomeEmail } = require('./email');
+    emailSent = isEmailEnabled();
+    if (emailSent) sendWelcomeEmail(email.toLowerCase(), name, username, password).catch(() => {});
+  } catch {}
+
   const result = await query(
     `SELECT id, username, name, email, usc_id, phone, role, active FROM users WHERE id = $1`,
     [id]
   );
-  res.json(result.rows[0]);
+  res.json({ ...result.rows[0], emailSent });
 });
 
 app.put('/api/admin/users/:id', requireOffice, async (req, res) => {
   const targetId = req.params.id;
   if (targetId === req.session.userId) return res.status(400).json({ error: 'Cannot edit your own office account here' });
-  const { name, phone } = req.body;
+  const { name, phone, email, uscId, role } = req.body;
   if (name && name.length > 120) return res.status(400).json({ error: 'Name too long' });
   if (!isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
+  if (email && !isUSCEmail(email)) return res.status(400).json({ error: 'A valid @usc.edu email is required' });
+  if (uscId && !isValidUSCID(uscId)) return res.status(400).json({ error: 'USC ID must be 10 digits' });
+  if (role && !['rider', 'driver', 'office'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+  // Uniqueness checks for email and usc_id
+  if (email) {
+    const dup = await query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.toLowerCase(), targetId]);
+    if (dup.rowCount) return res.status(400).json({ error: 'Email already in use by another user' });
+  }
+  if (uscId) {
+    const dup = await query('SELECT id FROM users WHERE usc_id = $1 AND id != $2', [uscId, targetId]);
+    if (dup.rowCount) return res.status(400).json({ error: 'USC ID already in use by another user' });
+  }
 
   const result = await query(
-    `UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), updated_at = NOW()
-     WHERE id = $3
+    `UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone),
+     email = COALESCE($3, email), usc_id = COALESCE($4, usc_id), role = COALESCE($5, role),
+     updated_at = NOW()
+     WHERE id = $6
      RETURNING id, username, name, email, usc_id, phone, role, active`,
-    [name || null, phone || null, targetId]
+    [name || null, phone || null, email ? email.toLowerCase() : null, uscId || null, role || null, targetId]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'User not found' });
   res.json(result.rows[0]);
@@ -534,7 +614,7 @@ app.get('/api/admin/users/:id/profile', requireOffice, async (req, res) => {
   if (user.role === 'rider') {
     const ridesRes = await query(
       `SELECT id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-              requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id
+              requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id, vehicle_id
        FROM rides
        WHERE rider_id = $1 OR rider_email = $2
        ORDER BY requested_time DESC`,
@@ -546,7 +626,7 @@ app.get('/api/admin/users/:id/profile', requireOffice, async (req, res) => {
   } else if (user.role === 'driver') {
     const ridesRes = await query(
       `SELECT id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-              requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id
+              requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id, vehicle_id
        FROM rides
        WHERE assigned_driver_id = $1
        ORDER BY requested_time DESC`,
@@ -558,6 +638,47 @@ app.get('/api/admin/users/:id/profile', requireOffice, async (req, res) => {
   }
 
   res.json({ user, upcoming, past });
+});
+
+// Admin reset password for another user
+app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) => {
+  const targetId = req.params.id;
+  if (targetId === req.session.userId) {
+    return res.status(400).json({ error: 'Use the change password feature for your own account' });
+  }
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+  const userRes = await query('SELECT id, name, email FROM users WHERE id = $1', [targetId]);
+  const user = userRes.rows[0];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  await query(
+    `UPDATE users SET password_hash = $1, must_change_password = TRUE, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+    [hash, targetId]
+  );
+
+  // Attempt email notification
+  let emailSent = false;
+  try {
+    const { isEmailEnabled, sendPasswordResetEmail } = require('./email');
+    emailSent = isEmailEnabled();
+    if (emailSent && user.email) sendPasswordResetEmail(user.email, user.name, newPassword).catch(() => {});
+  } catch {}
+
+  res.json({ success: true, emailSent });
+});
+
+// Email status check
+app.get('/api/admin/email-status', requireOffice, (req, res) => {
+  let enabled = false;
+  try {
+    const { isEmailEnabled } = require('./email');
+    enabled = isEmailEnabled();
+  } catch {}
+  res.json({ enabled });
 });
 
 // ----- Pages -----
@@ -658,7 +779,7 @@ app.get('/api/rides', requireStaff, async (req, res) => {
   const { status } = req.query;
   const baseSql = `
     SELECT id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-           requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by
+           requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by, vehicle_id
     FROM rides
   `;
   const result = status
@@ -692,14 +813,14 @@ app.post('/api/rides', requireAuth, async (req, res) => {
   const missCount = await getRiderMissCount(email);
   const rideId = generateId('ride');
   await query(
-    `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10)`,
+    `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10, NULL)`,
     [rideId, req.session.userId, name, email, phone, pickupLocation, dropoffLocation, notes || '', requestedTime, missCount]
   );
   await addRideEvent(rideId, req.session.userId, 'requested');
   const ride = await query(
     `SELECT id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-            requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses
+            requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id
      FROM rides WHERE id = $1`,
     [rideId]
   );
@@ -720,7 +841,7 @@ app.post('/api/rides/:id/approve', requireOffice, async (req, res) => {
   const result = await query(
     `UPDATE rides SET status = 'approved', updated_at = NOW() WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
     [ride.id]
   );
   await addRideEvent(ride.id, req.session.userId, 'approved');
@@ -734,7 +855,7 @@ app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
   const result = await query(
     `UPDATE rides SET status = 'denied', updated_at = NOW() WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
     [ride.id]
   );
   await addRideEvent(ride.id, req.session.userId, 'denied');
@@ -744,7 +865,7 @@ app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
 app.get('/api/my-rides', requireRider, async (req, res) => {
   const result = await query(
     `SELECT id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-            requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id
+            requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id, vehicle_id
      FROM rides WHERE rider_email = $1 ORDER BY requested_time DESC`,
     [req.session.email]
   );
@@ -787,7 +908,7 @@ app.post('/api/rides/:id/cancel', requireAuth, async (req, res) => {
      SET status = 'cancelled', assigned_driver_id = NULL, grace_start_time = NULL, cancelled_by = $2, updated_at = NOW()
      WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by, vehicle_id`,
     [ride.id, isOffice ? 'office' : 'rider']
   );
   await addRideEvent(ride.id, req.session.userId, isOffice ? 'cancelled_by_office' : 'cancelled');
@@ -807,10 +928,10 @@ app.post('/api/rides/:id/unassign', requireOffice, async (req, res) => {
 
   const result = await query(
     `UPDATE rides
-     SET assigned_driver_id = NULL, status = 'approved', grace_start_time = NULL, updated_at = NOW()
+     SET assigned_driver_id = NULL, vehicle_id = NULL, status = 'approved', grace_start_time = NULL, updated_at = NOW()
      WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, vehicle_id`,
     [ride.id]
   );
   await addRideEvent(ride.id, req.session.userId, 'unassigned');
@@ -840,7 +961,7 @@ app.post('/api/rides/:id/reassign', requireOffice, async (req, res) => {
      SET assigned_driver_id = $1, status = 'scheduled', grace_start_time = NULL, updated_at = NOW()
      WHERE id = $2
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, vehicle_id`,
     [driverId, ride.id]
   );
   await addRideEvent(ride.id, req.session.userId, 'reassigned');
@@ -888,8 +1009,8 @@ app.post('/api/recurring-rides', requireRider, async (req, res) => {
     const rideId = generateId('ride');
     const missCount = await getRiderMissCount(req.session.email);
     await query(
-      `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10, $11)`,
+      `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, vehicle_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10, $11, NULL)`,
       [rideId, req.session.userId, req.session.name, req.session.email, riderPhone || null, pickupLocation, dropoffLocation, notes || '', requestedTime, missCount, recurId]
     );
     await addRideEvent(rideId, req.session.userId, 'requested');
@@ -951,6 +1072,7 @@ app.post('/api/rides/:id/claim', requireAuth, async (req, res) => {
   }
 
   const driverId = req.session.role === 'driver' ? req.session.userId : req.body.driverId;
+  const vehicleId = req.body.vehicleId || null;
   const driverRes = await query(`SELECT id, active FROM users WHERE id = $1 AND role = 'driver'`, [driverId]);
   const driver = driverRes.rows[0];
   if (!driver) return res.status(400).json({ error: 'Driver not found' });
@@ -958,11 +1080,11 @@ app.post('/api/rides/:id/claim', requireAuth, async (req, res) => {
 
   const updated = await query(
     `UPDATE rides
-     SET assigned_driver_id = $1, status = 'scheduled', updated_at = NOW()
-     WHERE id = $2 AND assigned_driver_id IS NULL AND status = 'approved'
+     SET assigned_driver_id = $1, vehicle_id = $2, status = 'scheduled', updated_at = NOW()
+     WHERE id = $3 AND assigned_driver_id IS NULL AND status = 'approved'
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
-    [driverId, ride.id]
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+    [driverId, vehicleId, ride.id]
   );
   if (!updated.rowCount) return res.status(400).json({ error: 'Ride already assigned' });
   await addRideEvent(ride.id, req.session.userId, 'claimed');
@@ -975,11 +1097,22 @@ app.post('/api/rides/:id/on-the-way', requireAuth, async (req, res) => {
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
   if (!(await allowDriverAction(req, res, ride))) return;
+  const { vehicleId } = req.body || {};
+  let finalVehicleId = ride.vehicle_id;
+  if (vehicleId) {
+    const vehRes = await query('SELECT * FROM vehicles WHERE id = $1', [vehicleId]);
+    if (!vehRes.rowCount) return res.status(400).json({ error: 'Vehicle not found' });
+    if (vehRes.rows[0].status !== 'available') return res.status(400).json({ error: 'Vehicle is not available' });
+    finalVehicleId = vehicleId;
+  }
+  if (!finalVehicleId) {
+    return res.status(400).json({ error: 'A vehicle must be selected before starting this ride. Please select a cart.' });
+  }
   const result = await query(
-    `UPDATE rides SET status = 'driver_on_the_way', updated_at = NOW() WHERE id = $1
+    `UPDATE rides SET status = 'driver_on_the_way', vehicle_id = $2, updated_at = NOW() WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
-    [ride.id]
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+    [ride.id, finalVehicleId]
   );
   await addRideEvent(ride.id, req.session.userId, 'driver_on_the_way');
   res.json(mapRide(result.rows[0]));
@@ -994,7 +1127,7 @@ app.post('/api/rides/:id/here', requireAuth, async (req, res) => {
     `UPDATE rides SET status = 'driver_arrived_grace', grace_start_time = NOW(), updated_at = NOW()
      WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
     [ride.id]
   );
   await addRideEvent(ride.id, req.session.userId, 'driver_arrived_grace');
@@ -1006,11 +1139,19 @@ app.post('/api/rides/:id/complete', requireAuth, async (req, res) => {
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
   if (!(await allowDriverAction(req, res, ride))) return;
+  const { vehicleId } = req.body || {};
+  if (vehicleId && !ride.vehicle_id) {
+    await query('UPDATE rides SET vehicle_id = $1 WHERE id = $2', [vehicleId, ride.id]);
+    ride.vehicle_id = vehicleId;
+  }
+  if (!ride.vehicle_id) {
+    return res.status(400).json({ error: 'A vehicle must be recorded before completing this ride.' });
+  }
   const result = await query(
     `UPDATE rides SET status = 'completed', consecutive_misses = 0, updated_at = NOW()
      WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
     [ride.id]
   );
   await setRiderMissCount(ride.rider_email, 0);
@@ -1028,12 +1169,314 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
     `UPDATE rides SET status = 'no_show', consecutive_misses = $2, updated_at = NOW()
      WHERE id = $1
      RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses`,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
     [ride.id, newCount]
   );
   await setRiderMissCount(ride.rider_email, newCount);
   await addRideEvent(ride.id, req.session.userId, 'no_show');
   res.json(mapRide(result.rows[0]));
+});
+
+// ----- Set vehicle on ride -----
+app.post('/api/rides/:id/set-vehicle', requireStaff, async (req, res) => {
+  const { vehicleId } = req.body;
+  if (!vehicleId) return res.status(400).json({ error: 'vehicleId is required' });
+  const rideRes = await query('SELECT * FROM rides WHERE id = $1', [req.params.id]);
+  if (!rideRes.rowCount) return res.status(404).json({ error: 'Ride not found' });
+  const ride = rideRes.rows[0];
+  if (['completed','no_show','cancelled','denied'].includes(ride.status))
+    return res.status(400).json({ error: 'Cannot set vehicle on a terminal ride' });
+  const vehRes = await query('SELECT * FROM vehicles WHERE id = $1', [vehicleId]);
+  if (!vehRes.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
+  if (vehRes.rows[0].status !== 'available') return res.status(400).json({ error: 'Vehicle is not available' });
+  const result = await query(
+    `UPDATE rides SET vehicle_id = $1, updated_at = NOW() WHERE id = $2
+     RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
+               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+    [vehicleId, ride.id]
+  );
+  res.json(mapRide(result.rows[0]));
+});
+
+// ----- Vehicle endpoints -----
+app.get('/api/vehicles', requireStaff, async (req, res) => {
+  const result = await query(`SELECT * FROM vehicles ORDER BY name`);
+  res.json(result.rows);
+});
+
+app.post('/api/vehicles', requireOffice, async (req, res) => {
+  const { name, type, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'Vehicle name is required' });
+  const id = generateId('veh');
+  await query(
+    `INSERT INTO vehicles (id, name, type, notes) VALUES ($1, $2, $3, $4)`,
+    [id, name, type || 'standard', notes || '']
+  );
+  const result = await query(`SELECT * FROM vehicles WHERE id = $1`, [id]);
+  res.json(result.rows[0]);
+});
+
+app.put('/api/vehicles/:id', requireOffice, async (req, res) => {
+  const { name, type, status, notes, totalMiles } = req.body;
+  const result = await query(
+    `UPDATE vehicles SET
+       name = COALESCE($1, name),
+       type = COALESCE($2, type),
+       status = COALESCE($3, status),
+       notes = COALESCE($4, notes),
+       total_miles = COALESCE($5, total_miles)
+     WHERE id = $6
+     RETURNING *`,
+    [name || null, type || null, status || null, notes || null, totalMiles != null ? totalMiles : null, req.params.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
+  res.json(result.rows[0]);
+});
+
+app.delete('/api/vehicles/:id', requireOffice, async (req, res) => {
+  await query(`UPDATE rides SET vehicle_id = NULL WHERE vehicle_id = $1`, [req.params.id]);
+  const result = await query(`DELETE FROM vehicles WHERE id = $1 RETURNING id`, [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
+  res.json({ success: true });
+});
+
+app.post('/api/vehicles/:id/maintenance', requireOffice, async (req, res) => {
+  const { notes } = req.body;
+  const result = await query(
+    `UPDATE vehicles SET
+       last_maintenance_date = CURRENT_DATE,
+       notes = COALESCE($1, notes)
+     WHERE id = $2
+     RETURNING *`,
+    [notes || null, req.params.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
+  res.json(result.rows[0]);
+});
+
+// ----- Analytics endpoints -----
+function buildDateFilter(qp) {
+  let clause = '';
+  const params = [];
+  if (qp.from) { params.push(qp.from); clause += ` AND requested_time >= $${params.length}`; }
+  if (qp.to) { params.push(qp.to + 'T23:59:59.999Z'); clause += ` AND requested_time <= $${params.length}`; }
+  return { clause, params };
+}
+
+app.get('/api/analytics/summary', requireOffice, async (req, res) => {
+  const { clause, params } = buildDateFilter(req.query);
+  const result = await query(
+    `SELECT
+       COUNT(*) AS total,
+       COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+       COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+       COUNT(*) FILTER (WHERE status = 'no_show') AS no_shows,
+       COUNT(*) FILTER (WHERE status = 'denied') AS denied,
+       COUNT(*) FILTER (WHERE status IN ('pending','approved','scheduled','driver_on_the_way','driver_arrived_grace')) AS active,
+       COUNT(DISTINCT rider_email) AS unique_riders,
+       COUNT(DISTINCT rider_email) FILTER (WHERE status = 'completed') AS people_helped,
+       COUNT(DISTINCT assigned_driver_id) FILTER (WHERE assigned_driver_id IS NOT NULL) AS unique_drivers
+     FROM rides WHERE 1=1 ${clause}`, params
+  );
+  const r = result.rows[0];
+  const total = parseInt(r.total) || 0;
+  const completed = parseInt(r.completed) || 0;
+  res.json({
+    totalRides: total,
+    completedRides: completed,
+    cancelledRides: parseInt(r.cancelled) || 0,
+    noShows: parseInt(r.no_shows) || 0,
+    deniedRides: parseInt(r.denied) || 0,
+    activeRides: parseInt(r.active) || 0,
+    uniqueRiders: parseInt(r.unique_riders) || 0,
+    peopleHelped: parseInt(r.people_helped) || 0,
+    uniqueDrivers: parseInt(r.unique_drivers) || 0,
+    completionRate: total > 0 ? parseFloat((completed / total * 100).toFixed(1)) : 0,
+    cancellationRate: total > 0 ? parseFloat((parseInt(r.cancelled) / total * 100).toFixed(1)) : 0,
+    noShowRate: total > 0 ? parseFloat((parseInt(r.no_shows) / total * 100).toFixed(1)) : 0
+  });
+});
+
+app.get('/api/analytics/hotspots', requireOffice, async (req, res) => {
+  const { clause, params } = buildDateFilter(req.query);
+  const statusFilter = `AND status NOT IN ('denied','cancelled')`;
+  const [pickupRes, dropoffRes, routeRes] = await Promise.all([
+    query(`SELECT pickup_location AS location, COUNT(*) AS count FROM rides WHERE 1=1 ${clause} ${statusFilter} GROUP BY pickup_location ORDER BY count DESC LIMIT 10`, params),
+    query(`SELECT dropoff_location AS location, COUNT(*) AS count FROM rides WHERE 1=1 ${clause} ${statusFilter} GROUP BY dropoff_location ORDER BY count DESC LIMIT 10`, params),
+    query(`SELECT pickup_location || ' → ' || dropoff_location AS route, COUNT(*) AS count FROM rides WHERE 1=1 ${clause} ${statusFilter} GROUP BY pickup_location, dropoff_location ORDER BY count DESC LIMIT 10`, params)
+  ]);
+  res.json({
+    topPickups: pickupRes.rows,
+    topDropoffs: dropoffRes.rows,
+    topRoutes: routeRes.rows
+  });
+});
+
+app.get('/api/analytics/frequency', requireOffice, async (req, res) => {
+  const { clause, params } = buildDateFilter(req.query);
+  const rClause = clause.replace(/requested_time/g, 'r.requested_time');
+  const [dailyRes, dowRes, hourRes, topRidersRes, topDriversRes, statusRes] = await Promise.all([
+    query(`SELECT DATE(requested_time) AS date, COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+             COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+             COUNT(*) FILTER (WHERE status = 'no_show') AS no_show
+           FROM rides WHERE 1=1 ${clause} GROUP BY DATE(requested_time) ORDER BY date`, params),
+    query(`SELECT EXTRACT(DOW FROM requested_time)::int AS dow, COUNT(*) AS count
+           FROM rides WHERE 1=1 ${clause} GROUP BY dow ORDER BY dow`, params),
+    query(`SELECT EXTRACT(HOUR FROM requested_time)::int AS hour, COUNT(*) AS count
+           FROM rides WHERE 1=1 ${clause} GROUP BY hour ORDER BY hour`, params),
+    query(`SELECT rider_email, rider_name, COUNT(*) AS count,
+             COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+             COUNT(*) FILTER (WHERE status = 'no_show') AS no_shows
+           FROM rides WHERE 1=1 ${clause} GROUP BY rider_email, rider_name ORDER BY count DESC LIMIT 10`, params),
+    query(`SELECT u.name, r.assigned_driver_id, COUNT(*) AS count,
+             COUNT(*) FILTER (WHERE r.status = 'completed') AS completed
+           FROM rides r JOIN users u ON r.assigned_driver_id = u.id
+           WHERE r.assigned_driver_id IS NOT NULL ${rClause}
+           GROUP BY u.name, r.assigned_driver_id ORDER BY count DESC LIMIT 10`, params),
+    query(`SELECT status, COUNT(*) AS count FROM rides WHERE 1=1 ${clause} GROUP BY status ORDER BY count DESC`, params)
+  ]);
+  res.json({
+    daily: dailyRes.rows,
+    byDayOfWeek: dowRes.rows,
+    byHour: hourRes.rows,
+    topRiders: topRidersRes.rows,
+    topDrivers: topDriversRes.rows,
+    byStatus: statusRes.rows
+  });
+});
+
+app.get('/api/analytics/vehicles', requireOffice, async (req, res) => {
+  const { clause, params } = buildDateFilter(req.query);
+  const rClause = clause.replace(/requested_time/g, 'r.requested_time');
+  const [vehiclesRes, usageRes] = await Promise.all([
+    query(`SELECT * FROM vehicles ORDER BY name`),
+    query(`SELECT v.id, COUNT(r.id) AS ride_count, MAX(r.requested_time) AS last_used
+           FROM vehicles v LEFT JOIN rides r ON r.vehicle_id = v.id AND r.status = 'completed' ${rClause}
+           GROUP BY v.id`, params)
+  ]);
+  const vehicles = vehiclesRes.rows.map(v => {
+    const usage = usageRes.rows.find(u => u.id === v.id);
+    const daysSince = v.last_maintenance_date
+      ? Math.floor((Date.now() - new Date(v.last_maintenance_date).getTime()) / 86400000)
+      : null;
+    return {
+      ...v,
+      rideCount: parseInt(usage?.ride_count || 0),
+      lastUsed: usage?.last_used || null,
+      daysSinceMaintenance: daysSince,
+      maintenanceOverdue: daysSince !== null && daysSince > 30
+    };
+  });
+  res.json(vehicles);
+});
+
+app.get('/api/analytics/milestones', requireOffice, async (req, res) => {
+  const thresholds = [50, 100, 250, 500, 1000];
+  const [driverRes, riderRes] = await Promise.all([
+    query(`SELECT u.id, u.name, COUNT(r.id) AS ride_count
+           FROM users u LEFT JOIN rides r ON r.assigned_driver_id = u.id AND r.status = 'completed'
+           WHERE u.role = 'driver' GROUP BY u.id, u.name ORDER BY ride_count DESC`),
+    query(`SELECT rider_email, rider_name, COUNT(*) AS ride_count
+           FROM rides WHERE status = 'completed'
+           GROUP BY rider_email, rider_name ORDER BY ride_count DESC`)
+  ]);
+  function compute(rows) {
+    return rows.map(row => {
+      const count = parseInt(row.ride_count);
+      const achieved = thresholds.filter(m => count >= m);
+      const next = thresholds.find(m => count < m) || null;
+      return {
+        name: row.name || row.rider_name,
+        id: row.id || row.rider_email,
+        rideCount: count,
+        achievedMilestones: achieved,
+        nextMilestone: next,
+        progressToNext: next ? parseFloat((count / next * 100).toFixed(1)) : 100
+      };
+    });
+  }
+  res.json({ drivers: compute(driverRes.rows), riders: compute(riderRes.rows) });
+});
+
+app.get('/api/analytics/semester-report', requireOffice, async (req, res) => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  let semesterLabel, currentStart, currentEnd, prevLabel, prevStart, prevEnd;
+  if (month <= 4) {
+    semesterLabel = `Spring ${year}`;
+    currentStart = `${year}-01-10`; currentEnd = `${year}-05-15`;
+    prevLabel = `Fall ${year - 1}`;
+    prevStart = `${year - 1}-08-15`; prevEnd = `${year - 1}-12-15`;
+  } else if (month >= 7) {
+    semesterLabel = `Fall ${year}`;
+    currentStart = `${year}-08-15`; currentEnd = `${year}-12-15`;
+    prevLabel = `Spring ${year}`;
+    prevStart = `${year}-01-10`; prevEnd = `${year}-05-15`;
+  } else {
+    semesterLabel = `Summer ${year}`;
+    currentStart = `${year}-05-16`; currentEnd = `${year}-08-14`;
+    prevLabel = `Spring ${year}`;
+    prevStart = `${year}-01-10`; prevEnd = `${year}-05-15`;
+  }
+
+  async function semesterStats(start, end) {
+    const r = await query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+              COUNT(*) FILTER (WHERE status = 'no_show') AS no_shows,
+              COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+              COUNT(DISTINCT rider_email) AS unique_riders,
+              COUNT(DISTINCT rider_email) FILTER (WHERE status = 'completed') AS people_helped,
+              COUNT(DISTINCT assigned_driver_id) FILTER (WHERE assigned_driver_id IS NOT NULL) AS unique_drivers
+       FROM rides WHERE requested_time >= $1 AND requested_time <= $2`,
+      [start, end + 'T23:59:59.999Z']
+    );
+    const row = r.rows[0];
+    const total = parseInt(row.total);
+    return {
+      totalRides: total,
+      completedRides: parseInt(row.completed) || 0,
+      noShows: parseInt(row.no_shows) || 0,
+      cancelledRides: parseInt(row.cancelled) || 0,
+      uniqueRiders: parseInt(row.unique_riders) || 0,
+      peopleHelped: parseInt(row.people_helped) || 0,
+      uniqueDrivers: parseInt(row.unique_drivers) || 0,
+      completionRate: total > 0 ? parseFloat((parseInt(row.completed) / total * 100).toFixed(1)) : 0
+    };
+  }
+
+  const [monthlyRes, topLocRes, driverBoardRes] = await Promise.all([
+    query(`SELECT TO_CHAR(requested_time, 'YYYY-MM') AS month, COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+             COUNT(DISTINCT rider_email) AS riders
+           FROM rides WHERE requested_time >= $1 AND requested_time <= $2
+           GROUP BY month ORDER BY month`, [currentStart, currentEnd + 'T23:59:59.999Z']),
+    query(`SELECT pickup_location AS location, COUNT(*) AS count
+           FROM rides WHERE requested_time >= $1 AND requested_time <= $2 AND status NOT IN ('denied','cancelled')
+           GROUP BY pickup_location ORDER BY count DESC LIMIT 5`, [currentStart, currentEnd + 'T23:59:59.999Z']),
+    query(`SELECT u.name, COUNT(r.id) AS completed
+           FROM rides r JOIN users u ON r.assigned_driver_id = u.id
+           WHERE r.status = 'completed' AND r.requested_time >= $1 AND r.requested_time <= $2
+           GROUP BY u.name ORDER BY completed DESC`, [currentStart, currentEnd + 'T23:59:59.999Z'])
+  ]);
+
+  const [current, previous] = await Promise.all([
+    semesterStats(currentStart, currentEnd),
+    semesterStats(prevStart, prevEnd)
+  ]);
+
+  res.json({
+    semesterLabel,
+    previousLabel: prevLabel,
+    dateRange: { from: currentStart, to: currentEnd },
+    current,
+    previous,
+    monthlyBreakdown: monthlyRes.rows,
+    topLocations: topLocRes.rows,
+    driverLeaderboard: driverBoardRes.rows
+  });
 });
 
 // ----- Dev endpoint -----
@@ -1053,8 +1496,8 @@ app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
     const missCount = await getRiderMissCount(s.riderEmail);
     const rideId = generateId('ride');
     await query(
-      `INSERT INTO rides (id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'approved', NULL, NULL, $9)`,
+      `INSERT INTO rides (id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'approved', NULL, NULL, $9, NULL)`,
       [rideId, s.riderName, s.riderEmail, s.riderPhone, s.pickupLocation, s.dropoffLocation, '', requestedTime, missCount]
     );
     await addRideEvent(rideId, req.session.userId, 'approved');

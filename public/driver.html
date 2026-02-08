@@ -22,6 +22,7 @@
     .ride-card .rider-name { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem; }
     .ride-card .route { margin-bottom: 0.5rem; }
     .ride-card .time { color: #666; font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .vehicle-select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; margin-bottom: 0.5rem; }
     .ride-card .status-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.75rem; }
     .ride-card .status-badge.scheduled { background: #d4edda; color: #155724; }
     .ride-card .status-badge.driver_on_the_way { background: #fff3cd; color: #856404; }
@@ -29,6 +30,7 @@
     .ride-card .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .ride-card .actions button { flex: 1; min-width: 100px; padding: 0.75rem; font-size: 0.9rem; }
     .grace-timer { background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; font-size: 0.9rem; }
+    .no-vehicle-warning { background: #fff3cd; color: #856404; padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin-bottom: 0.5rem; }
     .empty-message { color: #666; text-align: center; padding: 2rem; }
     .btn-logout { background: transparent; border: 1px solid white; color: white; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
     .map-section iframe { width: 100%; height: 360px; border: none; border-radius: 4px; }
@@ -67,6 +69,13 @@
         </label>
         <button class="btn primary" onclick="saveProfile()">Save Changes</button>
         <div id="profile-message" class="small-text"></div>
+        <hr style="margin:16px 0; border:none; border-top:1px solid #ddd;">
+        <h4 style="margin:0 0 8px;">Change Password</h4>
+        <label>Current Password<input type="password" id="pw-current"></label>
+        <label>New Password (min 8 chars)<input type="password" id="pw-new"></label>
+        <label>Confirm New Password<input type="password" id="pw-confirm"></label>
+        <button class="btn secondary" onclick="changePassword()">Update Password</button>
+        <div id="pw-message" class="small-text"></div>
       </div>
     </div>
     <div class="section">
@@ -98,6 +107,7 @@
     let currentUser = null;
     let employees = [];
     let rides = [];
+    let vehicles = [];
 
     const ACTIVE_STATUSES = ['driver_on_the_way', 'driver_arrived_grace'];
     const ASSIGNED_OPEN_STATUSES = ['scheduled', 'driver_on_the_way', 'driver_arrived_grace'];
@@ -151,9 +161,10 @@
     }
 
     async function loadData() {
-      const [empRes, ridesRes] = await Promise.all([fetch('/api/employees'), fetch('/api/rides')]);
+      const [empRes, ridesRes, vehRes] = await Promise.all([fetch('/api/employees'), fetch('/api/rides'), fetch('/api/vehicles')]);
       employees = await empRes.json();
       rides = await ridesRes.json();
+      vehicles = await vehRes.json();
       render();
     }
 
@@ -190,6 +201,51 @@
       msg.textContent = 'Saved!';
       document.getElementById('user-name').textContent = data.name;
       toggleProfileEdit(true);
+    }
+
+    async function changePassword() {
+      const msg = document.getElementById('pw-message');
+      msg.textContent = '';
+      msg.style.color = '';
+      const currentPassword = document.getElementById('pw-current').value;
+      const newPassword = document.getElementById('pw-new').value;
+      const confirm = document.getElementById('pw-confirm').value;
+      if (!currentPassword || !newPassword || !confirm) {
+        msg.textContent = 'All fields are required.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (newPassword.length < 8) {
+        msg.textContent = 'New password must be at least 8 characters.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (newPassword !== confirm) {
+        msg.textContent = 'Passwords do not match.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = data.error || 'Failed to change password';
+          msg.style.color = '#c62828';
+          return;
+        }
+        msg.textContent = 'Password updated successfully!';
+        msg.style.color = '#228b22';
+        document.getElementById('pw-current').value = '';
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-confirm').value = '';
+      } catch {
+        msg.textContent = 'Connection error';
+        msg.style.color = '#c62828';
+      }
     }
 
     function toggleProfileEdit(forceClose) {
@@ -274,15 +330,29 @@
       }
       if (assigned) {
         if (ride.status === 'scheduled') {
-          actions = `<button class="btn primary" onclick="action('${ride.id}','on-the-way')">On My Way</button>`;
+          const vehOpts = vehicles.filter(v => v.status === 'available').map(v =>
+            `<option value="${v.id}" ${v.id === ride.vehicleId ? 'selected' : ''}>${v.name}</option>`
+          ).join('');
+          const hasVehicle = !!ride.vehicleId;
+          const noVehWarn = hasVehicle ? '' : '<div class="no-vehicle-warning">Select a cart before starting</div>';
+          actions = `<select id="veh-sched-${ride.id}" class="vehicle-select" onchange="setVehicle('${ride.id}', this.value)">
+            <option value="">${hasVehicle ? 'Change cart...' : 'Select cart...'}</option>${vehOpts}
+          </select>${noVehWarn}<button class="btn primary" onclick="startRide('${ride.id}')">On My Way</button>`;
         } else if (ride.status === 'driver_on_the_way') {
-          actions = `<button class="btn secondary" onclick="action('${ride.id}','here')">I'm Here</button><button class="btn primary" onclick="action('${ride.id}','complete')">Complete</button>`;
+          const vehChangeOpts = vehicles.filter(v => v.status === 'available').map(v =>
+            `<option value="${v.id}" ${v.id === ride.vehicleId ? 'selected' : ''}>${v.name}</option>`
+          ).join('');
+          const vehicleChange = `<select class="vehicle-select" onchange="setVehicle('${ride.id}', this.value)">
+            <option value="">Change cart...</option>${vehChangeOpts}
+          </select>`;
+          actions = `${vehicleChange}<button class="btn secondary" onclick="action('${ride.id}','here')">I'm Here</button><button class="btn primary" onclick="action('${ride.id}','complete')">Complete</button>`;
         } else if (ride.status === 'driver_arrived_grace') {
           const canNoShow = (Date.now() - new Date(ride.graceStartTime).getTime()) / 1000 >= 300;
           actions = `<button class="btn primary" onclick="action('${ride.id}','complete')">Complete</button><button class="btn danger" onclick="action('${ride.id}','no-show')" ${canNoShow ? '' : 'disabled'}>No-Show</button>`;
         }
       } else {
-        actions = `<button class="btn primary" onclick="claim('${ride.id}')">Claim</button>`;
+        const vehOpts = vehicles.filter(v => v.status === 'available').map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+        actions = `<select id="veh-${ride.id}" class="vehicle-select"><option value="">Select cart...</option>${vehOpts}</select><button class="btn primary" onclick="claim('${ride.id}')">Claim</button>`;
       }
 
       // Urgency indicator
@@ -302,7 +372,9 @@
 
       const phone = ride.riderPhone || '';
       const contactRow = `<div class="contact-row">${buildContactPill(phone, 'tel', 'Call', 'phone')}${buildContactPill(phone, 'sms', 'SMS', 'sms')}</div>`;
-      return `<div class="ride-card ${urgencyClass}">${urgencyLabel}<div class="status-badge ${ride.status}">${labels[ride.status] || ride.status}</div><div class="rider-name">${ride.riderName}</div><div class="route">${ride.pickupLocation} → ${ride.dropoffLocation}</div><div class="time">${new Date(ride.requestedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>${contactRow}${grace}${actions ? `<div class="actions">${actions}</div>` : ''}</div>`;
+      const vehicleName = ride.vehicleId ? (vehicles.find(v => v.id === ride.vehicleId)?.name || '') : '';
+      const vehicleLine = vehicleName ? `<div class="time">Vehicle: ${vehicleName}</div>` : '';
+      return `<div class="ride-card ${urgencyClass}">${urgencyLabel}<div class="status-badge ${ride.status}">${labels[ride.status] || ride.status}</div><div class="rider-name">${ride.riderName}</div><div class="route">${ride.pickupLocation} → ${ride.dropoffLocation}</div><div class="time">${new Date(ride.requestedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>${vehicleLine}${contactRow}${grace}${actions ? `<div class="actions">${actions}</div>` : ''}</div>`;
     }
 
     function updateGraceTimers() {
@@ -358,7 +430,14 @@
     }
 
     async function claim(id) {
-      const response = await fetch(`/api/rides/${id}/claim`, { method: 'POST' });
+      const vehSelect = document.getElementById(`veh-${id}`);
+      const vehicleId = vehSelect?.value || null;
+      const body = vehicleId ? JSON.stringify({ vehicleId }) : '{}';
+      const response = await fetch(`/api/rides/${id}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
       if (!response.ok) {
         const err = await response.json();
         showToast(err.error || 'Failed to claim ride', 'error');
@@ -403,6 +482,46 @@
           'no-show': 'Marked as no-show'
         };
         showToast(messages[act] || 'Action completed', 'success');
+      }
+      await loadData();
+    }
+
+    async function startRide(id) {
+      const selectEl = document.getElementById(`veh-sched-${id}`);
+      const ride = rides.find(r => r.id === id);
+      const vehicleId = selectEl?.value || ride?.vehicleId || null;
+      if (!vehicleId) {
+        showToast('Please select a cart before starting this ride', 'warning');
+        if (selectEl) selectEl.focus();
+        return;
+      }
+      const response = await fetch(`/api/rides/${id}/on-the-way`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicleId })
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        showToast(err.error || 'Could not start ride', 'error');
+      } else {
+        showToast('Marked as on the way', 'success');
+      }
+      await loadData();
+    }
+
+    async function setVehicle(rideId, vehicleId) {
+      if (!vehicleId) return;
+      const response = await fetch(`/api/rides/${rideId}/set-vehicle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicleId })
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        showToast(err.error || 'Could not set vehicle', 'error');
+      } else {
+        const veh = vehicles.find(v => v.id === vehicleId);
+        showToast(`Vehicle set to ${veh?.name || 'cart'}`, 'success');
       }
       await loadData();
     }

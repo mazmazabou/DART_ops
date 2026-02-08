@@ -42,12 +42,14 @@ let currentUser = null;
 let employees = [];
 let shifts = [];
 let rides = [];
+let vehicles = [];
 let selectedDriverId = null;
 let scheduleMode = 'weekly';
 let adminUsers = [];
 let filteredAdminUsers = [];
 let selectedAdminUser = null;
 let rideScheduleAnchor = new Date();
+let emailEnabled = false;
 
 // ----- Auth -----
 async function checkAuth() {
@@ -86,12 +88,51 @@ async function loadRides() {
   renderDriverConsole();
 }
 
+async function loadVehicles() {
+  try {
+    const res = await fetch('/api/vehicles');
+    if (res.ok) vehicles = await res.json();
+  } catch (e) { console.error('Failed to load vehicles', e); }
+}
+
 async function loadAdminUsers() {
   if (!currentUser || currentUser.role !== 'office') return;
   const res = await fetch('/api/admin/users');
   adminUsers = await res.json();
-  filteredAdminUsers = adminUsers;
+  filterAdminUsers();
+}
+
+async function checkEmailStatus() {
+  try {
+    const res = await fetch('/api/admin/email-status');
+    if (res.ok) {
+      const data = await res.json();
+      emailEnabled = data.enabled;
+    }
+  } catch {}
+  renderEmailIndicator();
+}
+
+function renderEmailIndicator() {
+  const el = document.getElementById('admin-email-status');
+  if (!el) return;
+  if (emailEnabled) {
+    el.innerHTML = '<span style="color:#228b22;">&#10003; Email notifications active</span>';
+  } else {
+    el.innerHTML = '<span style="color:#e65100;">&#9888; Email not configured — temporary passwords will be shown on screen</span>';
+  }
+}
+
+function filterAdminUsers() {
+  const input = document.getElementById('admin-user-filter');
+  const countEl = document.getElementById('admin-user-filter-count');
+  const q = (input?.value || '').trim().toLowerCase();
+  filteredAdminUsers = q
+    ? adminUsers.filter(u => [u.name, u.username, u.email, u.phone, u.usc_id, u.role]
+        .some(f => (f || '').toLowerCase().includes(q)))
+    : adminUsers;
   renderAdminUsers(filteredAdminUsers);
+  if (countEl) countEl.textContent = q ? `${filteredAdminUsers.length} of ${adminUsers.length} users` : `${adminUsers.length} users`;
 }
 
 function renderAdminUsers(users) {
@@ -99,6 +140,7 @@ function renderAdminUsers(users) {
   if (!tbody) return;
   tbody.innerHTML = '';
   users.forEach((u) => {
+    const isSelf = u.id === currentUser.id;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><a href="#" data-user="${u.id}" class="admin-user-link">${u.name || ''}</a></td>
@@ -107,15 +149,157 @@ function renderAdminUsers(users) {
       <td><a href="#" data-user="${u.id}" class="admin-user-link">${u.email || ''}</a></td>
       <td><a href="#" data-user="${u.id}" class="admin-user-link">${u.usc_id || ''}</a></td>
       <td>${u.phone || ''}</td>
-      <td>${u.id === currentUser.id ? '' : '<button class="btn danger" data-id="' + u.id + '">Delete</button>'}</td>
+      <td class="admin-actions-cell">${isSelf ? '' : `<button class="btn secondary small admin-edit-btn">Edit</button><button class="btn secondary small admin-reset-pw-btn">Reset PW</button><button class="btn danger small admin-delete-btn">Delete</button>`}</td>
     `;
     tr.querySelectorAll('.admin-user-link').forEach((link) => {
       link.onclick = (e) => { e.preventDefault(); loadUserProfile(u.id); };
     });
-    const btn = tr.querySelector('button');
-    if (btn) btn.onclick = () => deleteUser(u.id);
+    const editBtn = tr.querySelector('.admin-edit-btn');
+    if (editBtn) editBtn.onclick = () => showEditUserModal(u);
+    const resetBtn = tr.querySelector('.admin-reset-pw-btn');
+    if (resetBtn) resetBtn.onclick = () => resetUserPassword(u.id, u.name);
+    const deleteBtn = tr.querySelector('.admin-delete-btn');
+    if (deleteBtn) deleteBtn.onclick = () => deleteUser(u.id);
     tbody.appendChild(tr);
   });
+}
+
+function showEditUserModal(user) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay show';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>Edit User: ${user.name || user.username}</h3>
+      <label>Name<input type="text" id="edit-user-name" value="${user.name || ''}"></label>
+      <label>USC Email<input type="email" id="edit-user-email" value="${user.email || ''}"></label>
+      <label>Phone<input type="tel" id="edit-user-phone" value="${user.phone || ''}"></label>
+      <label>USC ID<input type="text" id="edit-user-uscid" value="${user.usc_id || ''}" maxlength="10"></label>
+      <label>Role
+        <select id="edit-user-role">
+          <option value="rider" ${user.role === 'rider' ? 'selected' : ''}>rider</option>
+          <option value="driver" ${user.role === 'driver' ? 'selected' : ''}>driver</option>
+          <option value="office" ${user.role === 'office' ? 'selected' : ''}>office</option>
+        </select>
+      </label>
+      <div id="edit-user-message" class="small-text" style="margin-top:8px;"></div>
+      <div class="flex-row" style="gap:8px; margin-top:12px;">
+        <button class="btn primary" id="edit-user-save">Save</button>
+        <button class="btn secondary" id="edit-user-cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => {
+    overlay.classList.remove('show');
+    overlay.classList.add('hiding');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  overlay.querySelector('#edit-user-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#edit-user-save').onclick = async () => {
+    const msg = overlay.querySelector('#edit-user-message');
+    msg.textContent = '';
+    const body = {
+      name: overlay.querySelector('#edit-user-name').value.trim(),
+      email: overlay.querySelector('#edit-user-email').value.trim(),
+      phone: overlay.querySelector('#edit-user-phone').value.trim(),
+      uscId: overlay.querySelector('#edit-user-uscid').value.trim(),
+      role: overlay.querySelector('#edit-user-role').value
+    };
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.textContent = data.error || 'Update failed';
+        msg.style.color = '#c62828';
+        return;
+      }
+      showToast('User updated successfully', 'success');
+      close();
+      await loadAdminUsers();
+    } catch {
+      msg.textContent = 'Network error';
+      msg.style.color = '#c62828';
+    }
+  };
+}
+
+function resetUserPassword(userId, userName) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay show';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>Reset Password: ${userName}</h3>
+      <p class="small-text">Enter a temporary password. The user will be required to change it on next login.</p>
+      <label>New Password (min 8 chars)<input type="password" id="reset-pw-input"></label>
+      <div id="reset-pw-message" class="small-text" style="margin-top:8px;"></div>
+      <div id="reset-pw-result" style="display:none; margin-top:8px;">
+        <div class="small-text" style="font-weight:700;">Temporary password (email not configured):</div>
+        <div class="flex-row" style="gap:8px; margin-top:4px;">
+          <code id="reset-pw-display" style="background:#f5f5f5; padding:4px 8px; border-radius:4px; font-size:14px;"></code>
+          <button class="btn secondary small" id="reset-pw-copy">Copy</button>
+        </div>
+      </div>
+      <div class="flex-row" style="gap:8px; margin-top:12px;">
+        <button class="btn primary" id="reset-pw-confirm">Reset Password</button>
+        <button class="btn secondary" id="reset-pw-cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => {
+    overlay.classList.remove('show');
+    overlay.classList.add('hiding');
+    setTimeout(() => overlay.remove(), 200);
+  };
+  overlay.querySelector('#reset-pw-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#reset-pw-confirm').onclick = async () => {
+    const msg = overlay.querySelector('#reset-pw-message');
+    const pw = overlay.querySelector('#reset-pw-input').value;
+    msg.textContent = '';
+    msg.style.color = '';
+    if (!pw || pw.length < 8) {
+      msg.textContent = 'Password must be at least 8 characters.';
+      msg.style.color = '#c62828';
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: pw })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.textContent = data.error || 'Reset failed';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (data.emailSent) {
+        showToast('Password reset. Notification email sent.', 'success');
+        close();
+      } else {
+        msg.textContent = 'Password reset successfully.';
+        msg.style.color = '#228b22';
+        const resultDiv = overlay.querySelector('#reset-pw-result');
+        resultDiv.style.display = 'block';
+        overlay.querySelector('#reset-pw-display').textContent = pw;
+        overlay.querySelector('#reset-pw-copy').onclick = () => {
+          navigator.clipboard.writeText(pw).then(() => showToast('Copied to clipboard', 'success'));
+        };
+        overlay.querySelector('#reset-pw-confirm').style.display = 'none';
+        overlay.querySelector('#reset-pw-input').parentElement.style.display = 'none';
+      }
+    } catch {
+      msg.textContent = 'Network error';
+      msg.style.color = '#c62828';
+    }
+  };
 }
 
 async function deleteUser(id) {
@@ -140,28 +324,6 @@ async function deleteUser(id) {
   renderProfilePanel(null);
 }
 
-async function searchByUSCID() {
-  const input = document.getElementById('admin-usc-search');
-  const resEl = document.getElementById('admin-search-result');
-  if (!input || !resEl) return;
-  const val = input.value.trim();
-  if (!/^[0-9]{10}$/.test(val)) {
-    resEl.textContent = 'Please enter a 10-digit USC ID.';
-    return;
-  }
-  const res = await fetch(`/api/admin/users/search?usc_id=${val}`);
-  if (!res.ok) {
-    resEl.textContent = 'No user found.';
-    filteredAdminUsers = adminUsers;
-    renderAdminUsers(filteredAdminUsers);
-    return;
-  }
-  const user = await res.json();
-  resEl.textContent = `${user.name} (${user.role}) — ${user.email || ''}`;
-  filteredAdminUsers = adminUsers.filter((u) => u.id === user.id);
-  renderAdminUsers(filteredAdminUsers);
-  loadUserProfile(user.id);
-}
 
 async function createAdminUser() {
   const name = document.getElementById('admin-new-name')?.value.trim();
@@ -191,13 +353,20 @@ async function createAdminUser() {
       if (msg) msg.textContent = data.error || 'Could not create user';
       return;
     }
-    if (msg) msg.textContent = 'User created';
     ['admin-new-name','admin-new-email','admin-new-phone','admin-new-uscid','admin-new-password'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    if (msg) {
+      if (data.emailSent) {
+        msg.innerHTML = '<span style="color:#228b22;">User created. Welcome email sent.</span>';
+      } else {
+        msg.innerHTML = `<span style="color:#228b22;">User created.</span> Temporary password (share with user):<br>
+          <code style="background:#f5f5f5; padding:2px 6px; border-radius:4px;">${password}</code>
+          <button class="btn secondary small" style="margin-left:8px;" onclick="navigator.clipboard.writeText('${password.replace(/'/g, "\\'")}').then(()=>showToast('Copied','success'))">Copy</button>`;
+      }
+    }
     await loadAdminUsers();
-    renderAdminUsers(adminUsers);
   } catch {
     if (msg) msg.textContent = 'Network error';
   }
@@ -427,6 +596,17 @@ function renderProfilePanel(data) {
   const { user, upcoming = [], past = [] } = data;
   const upcomingList = upcoming.slice(0, 5).map(renderProfileRide).join('') || '<p class="small-text">None.</p>';
   const pastList = past.slice(0, 5).map(renderProfileRide).join('') || '<p class="small-text">None.</p>';
+  const isSelf = user.id === currentUser.id;
+  const passwordSection = isSelf ? `
+    <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+      <h4>Change Password</h4>
+      <label>Current Password<input type="password" id="profile-pw-current"></label>
+      <label>New Password (min 8 chars)<input type="password" id="profile-pw-new"></label>
+      <label>Confirm New Password<input type="password" id="profile-pw-confirm"></label>
+      <button class="btn secondary" id="profile-pw-btn">Update Password</button>
+      <div id="profile-pw-message" class="small-text" style="margin-top:8px;"></div>
+    </div>
+  ` : '';
   content.innerHTML = `
     <div class="profile-block">
       <div><strong>${user.name || ''}</strong> (${user.role})</div>
@@ -446,7 +626,36 @@ function renderProfilePanel(data) {
       <h4>Recent Rides</h4>
       ${pastList}
     </div>
+    ${passwordSection}
   `;
+  if (isSelf) {
+    const pwBtn = content.querySelector('#profile-pw-btn');
+    if (pwBtn) pwBtn.onclick = async () => {
+      const msg = content.querySelector('#profile-pw-message');
+      msg.textContent = '';
+      msg.style.color = '';
+      const currentPassword = content.querySelector('#profile-pw-current').value;
+      const newPassword = content.querySelector('#profile-pw-new').value;
+      const confirm = content.querySelector('#profile-pw-confirm').value;
+      if (!currentPassword || !newPassword || !confirm) { msg.textContent = 'All fields are required.'; msg.style.color = '#c62828'; return; }
+      if (newPassword.length < 8) { msg.textContent = 'New password must be at least 8 characters.'; msg.style.color = '#c62828'; return; }
+      if (newPassword !== confirm) { msg.textContent = 'Passwords do not match.'; msg.style.color = '#c62828'; return; }
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) { msg.textContent = data.error || 'Failed to change password'; msg.style.color = '#c62828'; return; }
+        msg.textContent = 'Password updated successfully!';
+        msg.style.color = '#228b22';
+        content.querySelector('#profile-pw-current').value = '';
+        content.querySelector('#profile-pw-new').value = '';
+        content.querySelector('#profile-pw-confirm').value = '';
+      } catch { msg.textContent = 'Connection error'; msg.style.color = '#c62828'; }
+    };
+  }
 }
 
 function renderProfileRide(ride) {
@@ -703,6 +912,7 @@ document.addEventListener('mouseup', async () => {
 
 // ----- Ride Filter -----
 let rideFilterText = '';
+let historyFilterText = '';
 
 function rideMatchesFilter(ride, filterText) {
   if (!filterText) return true;
@@ -848,6 +1058,38 @@ function buildWarningBanner(driverName) {
   return banner;
 }
 
+function showVehiclePromptModal() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const box = document.createElement('div');
+    box.className = 'modal-box';
+    const availableVehicles = vehicles.filter(v => v.status === 'available');
+    const vehOpts = availableVehicles.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+    box.innerHTML = `
+      <h3>Select Vehicle</h3>
+      <p>A vehicle must be recorded for this ride. Please select one:</p>
+      <select id="vehicle-prompt-select" style="width:100%;padding:0.5rem;margin:0.5rem 0;border:1px solid #ddd;border-radius:4px;">
+        <option value="">Choose a cart...</option>${vehOpts}
+      </select>
+      <div class="modal-actions">
+        <button class="btn" id="vehicle-prompt-cancel">Cancel</button>
+        <button class="btn primary" id="vehicle-prompt-confirm">Confirm</button>
+      </div>
+    `;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const cleanup = (val) => { document.body.removeChild(overlay); resolve(val); };
+    document.getElementById('vehicle-prompt-cancel').onclick = () => cleanup(null);
+    document.getElementById('vehicle-prompt-confirm').onclick = () => {
+      const val = document.getElementById('vehicle-prompt-select').value;
+      if (!val) { showToast('Please select a vehicle', 'warning'); return; }
+      cleanup(val);
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+  });
+}
+
 // ----- Ride Lists -----
 function renderRideLists() {
   const unassignedEl = document.getElementById('unassigned-items');
@@ -871,23 +1113,20 @@ function renderRideLists() {
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">Time: ${formatDate(ride.requestedTime)}</div>
     `;
-    item.appendChild(buildAssignDropdown(ride, () => loadRides()));
+    const actionRow = document.createElement('div');
+    actionRow.className = 'ride-actions-compact';
+    actionRow.appendChild(buildAssignDropdown(ride, () => loadRides()));
+    item.appendChild(actionRow);
     unassignedEl.appendChild(item);
   });
-  if (!unassigned.length) {
-    showEmptyState(unassignedEl, {
-      icon: '[]',
-      title: rideFilterText ? 'No rides match your filter' : 'No unassigned rides today',
-      message: rideFilterText ? '' : 'Approved rides without a driver assignment will appear here.'
-    });
-  }
+  document.getElementById('unassigned-list').style.display = unassigned.length ? '' : 'none';
 
   const pendingAll = rides.filter((r) => r.status === 'pending');
   const pending = pendingAll.filter((r) => rideMatchesFilter(r, rideFilterText));
   const approvedAll = rides.filter((r) => ['approved', 'scheduled', 'driver_on_the_way', 'driver_arrived_grace'].includes(r.status));
   const approved = approvedAll.filter((r) => rideMatchesFilter(r, rideFilterText));
   const historyAll = rides.filter((r) => ['completed', 'no_show', 'denied', 'cancelled'].includes(r.status));
-  const history = historyAll.filter((r) => rideMatchesFilter(r, rideFilterText));
+  const history = historyAll.filter((r) => rideMatchesFilter(r, historyFilterText));
 
   pending.forEach((ride) => {
     const item = document.createElement('div');
@@ -908,55 +1147,56 @@ function renderRideLists() {
     item.querySelector('.flex-row').appendChild(buildCancelButton(ride, () => loadRides()));
     pendingEl.appendChild(item);
   });
-  if (!pending.length) {
-    showEmptyState(pendingEl, {
-      icon: '[]',
-      title: rideFilterText ? 'No rides match your filter' : 'No pending requests',
-      message: rideFilterText ? '' : 'New rider requests waiting for approval will appear here.'
-    });
-  }
+  document.getElementById('pending-list').style.display = pending.length ? '' : 'none';
 
   approved.forEach((ride) => {
     const item = document.createElement('div');
     item.className = 'item';
     const driverName = employees.find((e) => e.id === ride.assignedDriverId)?.name || 'Unassigned';
+    const rideVehicleName = ride.vehicleId ? (vehicles.find(v => v.id === ride.vehicleId)?.name) : null;
     item.innerHTML = `
       <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong><a href="#" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="admin-user-link">${ride.riderName}</a></strong></div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
-      <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
-      <div class="small-text">Driver: ${driverName}</div>
+      <div class="small-text ride-meta">When: ${formatDate(ride.requestedTime)} · Driver: ${driverName}${rideVehicleName ? ` · Cart: ${rideVehicleName}` : ''}</div>
     `;
-    const contactRow = document.createElement('div');
-    contactRow.className = 'flex-row contact-row';
-    contactRow.append(
-      buildContactPill('tel', ride.riderPhone, '☎', `Call ${ride.riderName}`),
-      buildContactPill('sms', ride.riderPhone, '✉', `Text ${ride.riderName}`)
+    const contactSpan = document.createElement('span');
+    contactSpan.className = 'contact-inline';
+    contactSpan.append(
+      buildContactPill('tel', ride.riderPhone, '☎', 'Call'),
+      buildContactPill('sms', ride.riderPhone, '✉', 'Text')
     );
-    item.appendChild(contactRow);
+    item.querySelector('.ride-meta').appendChild(contactSpan);
 
     // Office quick actions
     if (!ride.assignedDriverId) {
-      item.appendChild(buildAssignDropdown(ride, () => loadRides()));
+      const assignRow = document.createElement('div');
+      assignRow.className = 'ride-actions-compact';
+      assignRow.appendChild(buildAssignDropdown(ride, () => loadRides()));
+      item.appendChild(assignRow);
     } else if (['scheduled', 'driver_on_the_way', 'driver_arrived_grace'].includes(ride.status)) {
       if (['driver_on_the_way', 'driver_arrived_grace'].includes(ride.status)) {
         item.appendChild(buildWarningBanner(driverName));
       }
       const actionRow = document.createElement('div');
-      actionRow.className = 'flex-row';
-      actionRow.style.flexWrap = 'wrap';
-      actionRow.appendChild(buildUnassignButton(ride, driverName, () => loadRides()));
+      actionRow.className = 'ride-actions-compact';
+      const unassignBtn = buildUnassignButton(ride, driverName, () => loadRides());
+      unassignBtn.classList.add('small');
+      const cancelBtn = buildCancelButton(ride, () => loadRides());
+      cancelBtn.classList.add('small');
+      actionRow.appendChild(unassignBtn);
       actionRow.appendChild(buildReassignDropdown(ride, ride.assignedDriverId, () => loadRides()));
-      actionRow.appendChild(buildCancelButton(ride, () => loadRides()));
+      actionRow.appendChild(cancelBtn);
       item.appendChild(actionRow);
     }
 
     approvedEl.appendChild(item);
   });
-  if (!approved.length) {
+  document.getElementById('approved-list').style.display = (rideFilterText && !approved.length) ? 'none' : '';
+  if (!approved.length && !rideFilterText) {
     showEmptyState(approvedEl, {
       icon: '[]',
-      title: rideFilterText ? 'No rides match your filter' : 'No approved or scheduled rides',
-      message: rideFilterText ? '' : 'Approved rides in progress will show in this section.'
+      title: 'No approved or scheduled rides',
+      message: 'Approved rides in progress will show in this section.'
     });
   }
 
@@ -969,15 +1209,24 @@ function renderRideLists() {
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
       <div class="small-text">Misses: ${ride.consecutiveMisses || 0}</div>
+      ${ride.vehicleId ? `<div class="small-text">Cart: ${vehicles.find(v => v.id === ride.vehicleId)?.name || ride.vehicleId}</div>` : ''}
     `;
     historyEl.appendChild(item);
   });
-  if (!history.length) {
+  document.getElementById('history-list').style.display = (historyFilterText && !history.length) ? 'none' : '';
+  if (!history.length && !historyFilterText) {
     showEmptyState(historyEl, {
       icon: '[]',
-      title: rideFilterText ? 'No rides match your filter' : 'No completed history yet',
-      message: rideFilterText ? '' : 'Completed and no-show rides will appear here after dispatch activity.'
+      title: 'No completed history yet',
+      message: 'Completed and no-show rides will appear here after dispatch activity.'
     });
+  }
+
+  // Update filter match count
+  const countEl = document.getElementById('ride-filter-count');
+  if (countEl) {
+    const totalShown = unassigned.length + pending.length + approved.length;
+    countEl.textContent = rideFilterText ? `${totalShown} match${totalShown !== 1 ? 'es' : ''}` : '';
   }
 
   // Wire profile links
@@ -991,13 +1240,20 @@ function renderRideLists() {
   });
 }
 
-async function updateRide(url) {
-  const res = await fetch(url, { method: 'POST' });
+async function updateRide(url, body = null) {
+  const options = { method: 'POST' };
+  if (body) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, options);
   if (!res.ok) {
     const err = await res.json();
     showToast(err.error || 'Failed to update ride', 'error');
+    return false;
   }
   await loadRides();
+  return true;
 }
 
 async function claimRide(rideId, driverId) {
@@ -1144,6 +1400,7 @@ function renderDriverDetail() {
       item.appendChild(buildWarningBanner(driver.name));
     }
 
+    const vehicleName = ride.vehicleId ? (vehicles.find(v => v.id === ride.vehicleId)?.name || 'Unknown') : null;
     const rideInfo = document.createElement('div');
     rideInfo.innerHTML = `
       <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong><a href="#" data-user="${ride.riderId || ''}" class="admin-user-link">${ride.riderName}</a></strong></div>
@@ -1151,6 +1408,7 @@ function renderDriverDetail() {
       ${ride.notes ? `<div class="small-text">Notes: ${ride.notes}</div>` : ''}
       <div class="small-text">Time: ${formatDate(ride.requestedTime)}</div>
       <div class="small-text">Rider misses: ${ride.consecutiveMisses || 0}</div>
+      ${vehicleName ? `<div class="small-text">Cart: <strong>${vehicleName}</strong></div>` : '<div class="small-text" style="color:#856404;">No vehicle assigned</div>'}
     `;
     item.appendChild(rideInfo);
 
@@ -1161,6 +1419,32 @@ function renderDriverDetail() {
       buildContactPill('sms', ride.riderPhone, '✉', 'SMS')
     );
     item.appendChild(contactRow);
+
+    // Vehicle selector for active rides
+    if (['scheduled', 'driver_on_the_way', 'driver_arrived_grace'].includes(ride.status)) {
+      const vehRow = document.createElement('div');
+      vehRow.style.cssText = 'margin-top:4px;margin-bottom:4px;';
+      const vehSelect = document.createElement('select');
+      vehSelect.style.cssText = 'width:100%;padding:0.4rem;border:1px solid #ddd;border-radius:4px;font-size:0.85rem;';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = ride.vehicleId ? 'Change cart...' : 'Select cart...';
+      vehSelect.appendChild(defaultOpt);
+      vehicles.filter(v => v.status === 'available').forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name;
+        if (v.id === ride.vehicleId) opt.selected = true;
+        vehSelect.appendChild(opt);
+      });
+      vehSelect.onchange = async () => {
+        if (!vehSelect.value) return;
+        const ok = await updateRide(`/api/rides/${ride.id}/set-vehicle`, { vehicleId: vehSelect.value });
+        if (ok) showToast('Vehicle updated', 'success');
+      };
+      vehRow.appendChild(vehSelect);
+      item.appendChild(vehRow);
+    }
 
     if (graceInfo.message) {
       const message = document.createElement('div');
@@ -1185,7 +1469,19 @@ function renderDriverDetail() {
       const onWayBtn = document.createElement('button');
       onWayBtn.className = 'btn primary';
       onWayBtn.textContent = 'On My Way';
-      onWayBtn.onclick = () => updateRide(`/api/rides/${ride.id}/on-the-way`);
+      onWayBtn.onclick = async () => {
+        if (!ride.vehicleId) {
+          const vehSelect = item.querySelector('select');
+          const selectedVehicle = vehSelect?.value;
+          if (selectedVehicle) {
+            await updateRide(`/api/rides/${ride.id}/on-the-way`, { vehicleId: selectedVehicle });
+          } else {
+            showToast('Please select a vehicle before starting this ride', 'warning');
+          }
+          return;
+        }
+        await updateRide(`/api/rides/${ride.id}/on-the-way`);
+      };
       actions.appendChild(onWayBtn);
 
       const hereBtn = document.createElement('button');
@@ -1198,6 +1494,19 @@ function renderDriverDetail() {
       completeBtn.className = 'btn primary';
       completeBtn.textContent = 'Complete';
       completeBtn.onclick = async () => {
+        if (!ride.vehicleId) {
+          const vehicleId = await showVehiclePromptModal();
+          if (!vehicleId) return;
+          const confirmed = await showConfirmModal({
+            title: 'Complete Ride',
+            message: 'Mark this ride as completed?',
+            confirmLabel: 'Complete',
+            cancelLabel: 'Keep Open',
+            type: 'warning'
+          });
+          if (confirmed) await updateRide(`/api/rides/${ride.id}/complete`, { vehicleId });
+          return;
+        }
         const confirmed = await showConfirmModal({
           title: 'Complete Ride',
           message: 'Mark this ride as completed?',
@@ -1607,6 +1916,411 @@ function initTabs() {
   });
 }
 
+// ============================================================================
+// ANALYTICS MODULE
+// ============================================================================
+let analyticsLoaded = false;
+let analyticsReportData = null;
+
+function getAnalyticsDateParams() {
+  const from = document.getElementById('analytics-from')?.value;
+  const to = document.getElementById('analytics-to')?.value;
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const qs = params.toString();
+  return qs ? '?' + qs : '';
+}
+
+function renderBarChart(containerId, data, options = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!data || !data.length) {
+    showEmptyState(container, { icon: '[]', title: 'No data', message: 'No ride data for this period.' });
+    return;
+  }
+  const max = Math.max(...data.map(d => parseInt(d.count) || 0));
+  const colorClass = options.colorClass || '';
+  container.innerHTML = '<div class="bar-chart">' + data.map(d => {
+    const val = parseInt(d.count) || 0;
+    const pct = max > 0 ? (val / max * 100) : 0;
+    return `<div class="bar-chart-row">
+      <div class="bar-chart-label">${d.label}</div>
+      <div class="bar-chart-track"><div class="bar-chart-fill ${colorClass}" style="width:${pct}%"></div></div>
+      <div class="bar-chart-count">${val}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderHotspotList(containerId, items) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!items || !items.length) {
+    showEmptyState(container, { icon: '[]', title: 'No data', message: 'No location data available.' });
+    return;
+  }
+  const max = Math.max(...items.map(i => parseInt(i.count) || 0));
+  container.innerHTML = '<div class="hotspot-list">' + items.map((item, idx) => {
+    const val = parseInt(item.count) || 0;
+    const pct = max > 0 ? (val / max * 100) : 0;
+    const name = item.location || item.route;
+    return `<div class="hotspot-item">
+      <div class="hotspot-rank">#${idx + 1}</div>
+      <div class="hotspot-name" title="${name}">${name}</div>
+      <div class="hotspot-bar"><div class="hotspot-bar-fill" style="width:${pct}%"></div></div>
+      <div class="hotspot-count">${val}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderKPIGrid(data) {
+  const grid = document.getElementById('analytics-kpi-grid');
+  if (!grid) return;
+  const kpis = [
+    { label: 'Total Rides', value: data.totalRides },
+    { label: 'Completed', value: data.completedRides },
+    { label: 'No-Shows', value: data.noShows },
+    { label: 'Completion Rate', value: data.completionRate + '%' },
+    { label: 'People Helped', value: data.peopleHelped ?? 0 },
+    { label: 'Total Requesters', value: data.uniqueRiders },
+    { label: 'Active Drivers', value: data.uniqueDrivers }
+  ];
+  grid.innerHTML = kpis.map(k => `
+    <div class="kpi-card">
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>
+  `).join('');
+}
+
+function renderVehicleCards(vehicles) {
+  const grid = document.getElementById('vehicles-grid');
+  if (!grid) return;
+  if (!vehicles || !vehicles.length) {
+    showEmptyState(grid, { icon: '[]', title: 'No vehicles', message: 'Add vehicles to track fleet usage.' });
+    return;
+  }
+  grid.innerHTML = vehicles.map(v => {
+    const overdueClass = v.maintenanceOverdue ? ' maintenance-overdue' : '';
+    const alert = v.maintenanceOverdue
+      ? `<div class="maintenance-alert">Maintenance overdue (${v.daysSinceMaintenance} days since last service)</div>` : '';
+    const lastMaint = v.last_maintenance_date
+      ? new Date(v.last_maintenance_date).toLocaleDateString() : 'Never';
+    const lastUsed = v.lastUsed ? new Date(v.lastUsed).toLocaleDateString() : 'Never';
+    return `<div class="vehicle-card${overdueClass}">
+      <div class="vehicle-name">${v.name}</div>
+      <div class="vehicle-meta">Type: ${v.type} &middot; Status: ${v.status}</div>
+      <div class="vehicle-meta">Completed rides: ${v.rideCount} &middot; Last used: ${lastUsed}</div>
+      <div class="vehicle-meta">Last maintenance: ${lastMaint}</div>
+      ${alert}
+      <div class="ride-actions-compact" style="margin-top:8px;">
+        <button class="btn secondary small" onclick="logVehicleMaintenance('${v.id}')">Log Maintenance</button>
+        <button class="btn danger small" onclick="deleteVehicle('${v.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderMilestoneList(containerId, people, type) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!people || !people.length) {
+    showEmptyState(container, { icon: '[]', title: `No ${type} data`, message: `No completed rides yet.` });
+    return;
+  }
+  const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: 'DART Legend', 1000: 'Diamond' };
+  const badgeIcons = { 50: '\u{1F31F}', 100: '\u2B50', 250: '\u{1F3C6}', 500: '\u{1F451}', 1000: '\u{1F48E}' };
+  container.innerHTML = '<div class="milestone-list">' + people.map(p => {
+    const badges = [50, 100, 250, 500, 1000].map(m => {
+      const earned = p.achievedMilestones.includes(m);
+      return `<span class="milestone-badge${earned ? ' earned' : ''}" title="${badgeLabels[m]}">${badgeIcons[m]} ${m}</span>`;
+    }).join('');
+    const pct = p.nextMilestone ? Math.min((p.rideCount / p.nextMilestone * 100), 100).toFixed(1) : 100;
+    const label = p.nextMilestone ? `${p.rideCount} / ${p.nextMilestone} rides` : 'All milestones achieved!';
+    return `<div class="milestone-card">
+      <div class="milestone-name">${p.name}</div>
+      <div class="milestone-count">${p.rideCount} completed rides</div>
+      <div class="milestone-badges">${badges}</div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+      <div class="progress-label">${label}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderSemesterReport(data) {
+  const container = document.getElementById('semester-report-content');
+  if (!container) return;
+  analyticsReportData = data;
+
+  function statBlock(stats, label) {
+    return `<div class="semester-period">
+      <h4>${label}</h4>
+      <div class="semester-stat"><div class="stat-value">${stats.completedRides}</div><div class="stat-label">Rides Completed</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.peopleHelped ?? 0}</div><div class="stat-label">People Helped</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.completionRate}%</div><div class="stat-label">Completion Rate</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.noShows}</div><div class="stat-label">No-Shows</div></div>
+    </div>`;
+  }
+
+  let monthlyTable = '';
+  if (data.monthlyBreakdown && data.monthlyBreakdown.length) {
+    monthlyTable = `<h4 style="margin-top:16px;">Monthly Breakdown</h4>
+    <table class="grid-table"><thead><tr><th>Month</th><th>Completed</th><th>Total</th><th>Riders</th></tr></thead><tbody>
+    ${data.monthlyBreakdown.map(m => `<tr><td>${m.month}</td><td>${m.completed}</td><td>${m.total}</td><td>${m.riders}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  let leaderboard = '';
+  if (data.driverLeaderboard && data.driverLeaderboard.length) {
+    leaderboard = `<h4 style="margin-top:16px;">Driver Leaderboard</h4>
+    <table class="grid-table"><thead><tr><th>Driver</th><th>Completed Rides</th></tr></thead><tbody>
+    ${data.driverLeaderboard.map(d => `<tr><td>${d.name}</td><td>${d.completed}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  container.innerHTML = `
+    <div class="semester-comparison">
+      ${statBlock(data.current, data.semesterLabel + ' (Current)')}
+      ${statBlock(data.previous, data.previousLabel + ' (Previous)')}
+    </div>
+    ${monthlyTable}
+    ${leaderboard}
+  `;
+
+  // DART Wrapped
+  const wrapped = document.getElementById('dart-wrapped-content');
+  if (wrapped) {
+    const c = data.current;
+    const mvp = data.driverLeaderboard?.[0];
+    if (c.completedRides === 0) {
+      wrapped.innerHTML = `<div class="dart-wrapped">
+        <div class="wrapped-big">0 Rides</div>
+        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, DART has not yet completed any rides this semester.</div>
+      </div>`;
+    } else {
+      wrapped.innerHTML = `<div class="dart-wrapped">
+        <div class="wrapped-big">${c.completedRides} Rides</div>
+        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, DART completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
+        ${mvp ? `<div class="wrapped-line">MVP Driver: <strong>${mvp.name}</strong> with <strong>${mvp.completed}</strong> completed rides</div>` : ''}
+        <div class="wrapped-line">Completion Rate: <strong>${c.completionRate}%</strong></div>
+      </div>`;
+    }
+  }
+}
+
+const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const STATUS_COLORS = { completed: 'green', cancelled: 'orange', no_show: 'red', denied: '', pending: 'gold', approved: '', scheduled: '' };
+
+async function loadAnalyticsSummary() {
+  try {
+    const res = await fetch('/api/analytics/summary' + getAnalyticsDateParams());
+    if (!res.ok) return;
+    renderKPIGrid(await res.json());
+  } catch (e) { console.error('Analytics summary error:', e); }
+}
+
+async function loadAnalyticsFrequency() {
+  try {
+    const res = await fetch('/api/analytics/frequency' + getAnalyticsDateParams());
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Day of week chart
+    const dowData = DOW_NAMES.map((name, i) => {
+      const row = data.byDayOfWeek.find(r => parseInt(r.dow) === i);
+      return { label: name, count: row ? row.count : 0 };
+    }).filter((_, i) => i >= 1 && i <= 5); // Mon-Fri only
+    renderBarChart('chart-dow', dowData);
+
+    // Hourly chart
+    const hourData = data.byHour
+      .filter(r => parseInt(r.hour) >= 8 && parseInt(r.hour) <= 19)
+      .map(r => ({ label: `${r.hour}:00`, count: r.count }));
+    renderBarChart('chart-hour', hourData, { colorClass: 'gold' });
+
+    // Daily volume (last 30 entries)
+    const dailyData = data.daily.slice(-30).map(r => ({
+      label: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      count: r.total
+    }));
+    renderBarChart('chart-daily', dailyData);
+
+    // Status breakdown
+    const statusData = data.byStatus.map(r => ({
+      label: r.status.replace(/_/g, ' '),
+      count: r.count,
+      colorClass: STATUS_COLORS[r.status] || ''
+    }));
+    const statusContainer = document.getElementById('chart-status');
+    if (statusContainer && statusData.length) {
+      const max = Math.max(...statusData.map(d => parseInt(d.count) || 0));
+      statusContainer.innerHTML = '<div class="bar-chart">' + statusData.map(d => {
+        const val = parseInt(d.count) || 0;
+        const pct = max > 0 ? (val / max * 100) : 0;
+        return `<div class="bar-chart-row">
+          <div class="bar-chart-label">${d.label}</div>
+          <div class="bar-chart-track"><div class="bar-chart-fill ${d.colorClass}" style="width:${pct}%"></div></div>
+          <div class="bar-chart-count">${val}</div>
+        </div>`;
+      }).join('') + '</div>';
+    }
+  } catch (e) { console.error('Analytics frequency error:', e); }
+}
+
+async function loadAnalyticsHotspots() {
+  try {
+    const res = await fetch('/api/analytics/hotspots' + getAnalyticsDateParams());
+    if (!res.ok) return;
+    const data = await res.json();
+    renderHotspotList('hotspot-pickups', data.topPickups);
+    renderHotspotList('hotspot-dropoffs', data.topDropoffs);
+    renderHotspotList('hotspot-routes', data.topRoutes);
+  } catch (e) { console.error('Analytics hotspots error:', e); }
+}
+
+async function loadAnalyticsVehicles() {
+  try {
+    const res = await fetch('/api/analytics/vehicles' + getAnalyticsDateParams());
+    if (!res.ok) return;
+    renderVehicleCards(await res.json());
+  } catch (e) { console.error('Analytics vehicles error:', e); }
+}
+
+async function loadAnalyticsMilestones() {
+  try {
+    const res = await fetch('/api/analytics/milestones');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderMilestoneList('driver-milestones', data.drivers, 'driver');
+    renderMilestoneList('rider-milestones', data.riders, 'rider');
+  } catch (e) { console.error('Analytics milestones error:', e); }
+}
+
+async function loadSemesterReport() {
+  try {
+    const res = await fetch('/api/analytics/semester-report');
+    if (!res.ok) return;
+    renderSemesterReport(await res.json());
+  } catch (e) { console.error('Semester report error:', e); }
+}
+
+async function loadAllAnalytics() {
+  await Promise.all([
+    loadAnalyticsSummary(),
+    loadAnalyticsFrequency(),
+    loadAnalyticsHotspots(),
+    loadAnalyticsVehicles(),
+    loadAnalyticsMilestones(),
+    loadSemesterReport()
+  ]);
+}
+
+async function logVehicleMaintenance(vehicleId) {
+  const confirmed = await showConfirmModal({
+    title: 'Log Maintenance',
+    message: 'Mark this vehicle as maintained today?',
+    confirmLabel: 'Log Maintenance',
+    cancelLabel: 'Cancel',
+    type: 'warning'
+  });
+  if (!confirmed) return;
+  const res = await fetch(`/api/vehicles/${vehicleId}/maintenance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    showToast(err.error || 'Failed to log maintenance', 'error');
+  } else {
+    showToast('Maintenance logged', 'success');
+    loadAnalyticsVehicles();
+  }
+}
+
+async function deleteVehicle(vehicleId) {
+  const confirmed = await showConfirmModal({
+    title: 'Delete Vehicle',
+    message: 'Delete this vehicle? Ride references will be cleared.',
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    type: 'danger'
+  });
+  if (!confirmed) return;
+  const res = await fetch(`/api/vehicles/${vehicleId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = await res.json();
+    showToast(err.error || 'Failed to delete', 'error');
+  } else {
+    showToast('Vehicle deleted', 'success');
+    loadAnalyticsVehicles();
+  }
+}
+
+async function addVehicle() {
+  const name = prompt('Vehicle name:');
+  if (!name) return;
+  const type = prompt('Type (standard / accessible):', 'standard') || 'standard';
+  const res = await fetch('/api/vehicles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, type })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    showToast(err.error || 'Failed to add vehicle', 'error');
+  } else {
+    showToast('Vehicle added', 'success');
+    loadAnalyticsVehicles();
+  }
+}
+
+function downloadCSV(headers, rows, filename) {
+  const escape = v => {
+    const s = String(v == null ? '' : v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportSemesterCSV() {
+  if (!analyticsReportData) {
+    showToast('Load the report first', 'error');
+    return;
+  }
+  const d = analyticsReportData;
+  const headers = ['Metric', d.semesterLabel, d.previousLabel];
+  const rows = [
+    ['Total Rides', d.current.totalRides, d.previous.totalRides],
+    ['Completed Rides', d.current.completedRides, d.previous.completedRides],
+    ['Unique Riders', d.current.uniqueRiders, d.previous.uniqueRiders],
+    ['Completion Rate %', d.current.completionRate, d.previous.completionRate],
+    ['No-Shows', d.current.noShows, d.previous.noShows],
+    ['Cancelled', d.current.cancelledRides, d.previous.cancelledRides],
+    ['', '', ''],
+    ['Monthly Breakdown', '', ''],
+    ['Month', 'Completed', 'Total', 'Riders']
+  ];
+  if (d.monthlyBreakdown) {
+    d.monthlyBreakdown.forEach(m => rows.push([m.month, m.completed, m.total, m.riders]));
+  }
+  rows.push(['', '', ''], ['Driver Leaderboard', '', ''], ['Driver', 'Completed', '']);
+  if (d.driverLeaderboard) {
+    d.driverLeaderboard.forEach(dr => rows.push([dr.name, dr.completed, '']));
+  }
+  downloadCSV(headers, rows, `dart-report-${d.semesterLabel.replace(/\s/g, '-').toLowerCase()}.csv`);
+  showToast('CSV downloaded', 'success');
+}
+
 // ----- Initialize -----
 document.addEventListener('DOMContentLoaded', async () => {
   if (!await checkAuth()) return;
@@ -1643,10 +2357,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 300));
   }
 
+  // History filter input
+  const historyFilterInput = document.getElementById('history-filter-input');
+  if (historyFilterInput) {
+    historyFilterInput.addEventListener('input', debounce(() => {
+      historyFilterText = historyFilterInput.value.trim();
+      renderRideLists();
+    }, 300));
+  }
+
+  // Admin user filter input
+  const adminFilterInput = document.getElementById('admin-user-filter');
+  if (adminFilterInput) {
+    adminFilterInput.addEventListener('input', debounce(filterAdminUsers, 300));
+  }
+
   await loadEmployees();
   await loadShifts();
   await loadRides();
+  await loadVehicles();
   await loadAdminUsers();
+  checkEmailStatus();
   // Default to showing own profile in Profile tab
   if (currentUser?.id) {
     await loadUserProfile(currentUser.id);
@@ -1665,10 +2396,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const searchBtn = document.getElementById('admin-usc-search-btn');
-  if (searchBtn) {
-    searchBtn.addEventListener('click', searchByUSCID);
-  }
   const createBtn = document.getElementById('admin-create-btn');
   if (createBtn) createBtn.addEventListener('click', createAdminUser);
   const ridePrev = document.getElementById('ride-week-prev');
@@ -1676,7 +2403,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (ridePrev) ridePrev.addEventListener('click', () => changeRideWeek(-1));
   if (rideNext) rideNext.addEventListener('click', () => changeRideWeek(1));
 
+  // Analytics: lazy load on first tab click
+  const analyticsRefreshBtn = document.getElementById('analytics-refresh-btn');
+  if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAllAnalytics);
+  const addVehicleBtn = document.getElementById('add-vehicle-btn');
+  if (addVehicleBtn) addVehicleBtn.addEventListener('click', addVehicle);
+  const exportCsvBtn = document.getElementById('export-csv-btn');
+  if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportSemesterCSV);
+
+  const analyticsNavBtn = document.querySelector('.nav-btn[data-target="analytics-panel"]');
+  if (analyticsNavBtn) {
+    analyticsNavBtn.addEventListener('click', () => {
+      if (!analyticsLoaded) {
+        analyticsLoaded = true;
+        loadAllAnalytics();
+      }
+    });
+  }
+
   setInterval(loadRides, 5000);
+  setInterval(loadVehicles, 15000);
   setInterval(renderDriverConsole, 1000);
   setInterval(renderSchedule, 5000);
 });
