@@ -139,13 +139,13 @@ async function runMigrations() {
 
 async function seedDefaultUsers() {
   const defaults = [
-    { id: 'emp1', username: 'mazen', name: 'Mazen', email: 'hello@ride-ops.com', usc_id: '1000000001', phone: '213-555-0101', role: 'driver', active: false },
-    { id: 'emp2', username: 'jason', name: 'Jason', email: 'hello@ride-ops.com', usc_id: '1000000002', phone: '213-555-0102', role: 'driver', active: false },
-    { id: 'emp3', username: 'jocelin', name: 'Jocelin', email: 'hello@ride-ops.com', usc_id: '1000000003', phone: '213-555-0103', role: 'driver', active: false },
-    { id: 'emp4', username: 'olivia', name: 'Olivia', email: 'hello@ride-ops.com', usc_id: '1000000004', phone: '213-555-0104', role: 'driver', active: false },
-    { id: 'office', username: 'office', name: 'Office', email: 'hello@ride-ops.com', usc_id: '1000009999', phone: '213-555-0199', role: 'office', active: true },
-    { id: 'rider1', username: 'sarah', name: 'Sarah Student', email: 'hello@ride-ops.com', usc_id: '1000000011', phone: '213-555-0111', role: 'rider', active: false },
-    { id: 'rider2', username: 'tom', name: 'Tom Faculty', email: 'hello@ride-ops.com', usc_id: '1000000012', phone: '213-555-0112', role: 'rider', active: false }
+    { id: 'emp1', username: 'mazen', name: 'Mazen', email: 'hello+mazen@ride-ops.com', usc_id: '1000000001', phone: '213-555-0101', role: 'driver', active: false },
+    { id: 'emp2', username: 'jason', name: 'Jason', email: 'hello+jason@ride-ops.com', usc_id: '1000000002', phone: '213-555-0102', role: 'driver', active: false },
+    { id: 'emp3', username: 'jocelin', name: 'Jocelin', email: 'hello+jocelin@ride-ops.com', usc_id: '1000000003', phone: '213-555-0103', role: 'driver', active: false },
+    { id: 'emp4', username: 'olivia', name: 'Olivia', email: 'hello+olivia@ride-ops.com', usc_id: '1000000004', phone: '213-555-0104', role: 'driver', active: false },
+    { id: 'office', username: 'office', name: 'Office', email: 'hello+office@ride-ops.com', usc_id: '1000009999', phone: '213-555-0199', role: 'office', active: true },
+    { id: 'rider1', username: 'sarah', name: 'Sarah Student', email: 'hello+sarah@ride-ops.com', usc_id: '1000000011', phone: '213-555-0111', role: 'rider', active: false },
+    { id: 'rider2', username: 'tom', name: 'Tom Faculty', email: 'hello+tom@ride-ops.com', usc_id: '1000000012', phone: '213-555-0112', role: 'rider', active: false }
   ];
 
   for (const user of defaults) {
@@ -1485,10 +1485,10 @@ app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
   }
   const todayStr = formatLocalDate(new Date());
   const sampleRides = [
-    { riderName: 'Alice Student', riderEmail: 'hello@ride-ops.com', riderPhone: '213-555-0101', pickupLocation: 'Leavey Library', dropoffLocation: 'Doheny Library', hour: 9 },
-    { riderName: 'Bob Faculty', riderEmail: 'hello@ride-ops.com', riderPhone: '213-555-0102', pickupLocation: 'SGM', dropoffLocation: 'VKC', hour: 10 },
-    { riderName: 'Carol Staff', riderEmail: 'hello@ride-ops.com', riderPhone: '213-555-0103', pickupLocation: 'Lyon Center', dropoffLocation: 'RTH', hour: 11 },
-    { riderName: 'Dan Grad', riderEmail: 'hello@ride-ops.com', riderPhone: '213-555-0104', pickupLocation: 'USC Village', dropoffLocation: 'JFF', hour: 14 },
+    { riderName: 'Alice Student', riderEmail: 'hello+alice@ride-ops.com', riderPhone: '213-555-0101', pickupLocation: 'Leavey Library', dropoffLocation: 'Doheny Library', hour: 9 },
+    { riderName: 'Bob Faculty', riderEmail: 'hello+bob@ride-ops.com', riderPhone: '213-555-0102', pickupLocation: 'SGM', dropoffLocation: 'VKC', hour: 10 },
+    { riderName: 'Carol Staff', riderEmail: 'hello+carol@ride-ops.com', riderPhone: '213-555-0103', pickupLocation: 'Lyon Center', dropoffLocation: 'RTH', hour: 11 },
+    { riderName: 'Dan Grad', riderEmail: 'hello+dan@ride-ops.com', riderPhone: '213-555-0104', pickupLocation: 'USC Village', dropoffLocation: 'JFF', hour: 14 },
   ];
   for (const s of sampleRides) {
     const requestedTime = `${todayStr}T${String(s.hour).padStart(2, '0')}:00`;
