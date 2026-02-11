@@ -51,6 +51,7 @@ let selectedAdminUser = null;
 let rideScheduleAnchor = new Date();
 let emailConfigured = false;
 let tenantConfig = null;
+let historyExpandedGroups = new Set();
 
 async function loadTenantConfig() {
   try {
@@ -410,14 +411,15 @@ function renderEmployees() {
     chip.innerHTML = `
       <span class="emp-dot${emp.active ? ' active' : ''}"></span>
       <span class="emp-name">${emp.name}</span>
+      <span class="emp-status-label ${emp.active ? 'clocked-in' : 'clocked-out'}">${emp.active ? 'Clocked In' : 'Clocked Out'}</span>
     `;
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'emp-toggle';
-    toggleBtn.title = emp.active ? `Clock out ${emp.name}` : `Clock in ${emp.name}`;
-    toggleBtn.textContent = emp.active ? '\u2600\uFE0F In' : '\uD83C\uDF19 Out';
-    toggleBtn.onclick = () => clockEmployee(emp.id, !emp.active);
+    const actionBtn = document.createElement('button');
+    actionBtn.className = 'emp-action-btn ' + (emp.active ? 'clock-out' : 'clock-in');
+    actionBtn.title = emp.active ? `Clock out ${emp.name}` : `Clock in ${emp.name}`;
+    actionBtn.textContent = emp.active ? 'Clock Out' : 'Clock In';
+    actionBtn.onclick = () => clockEmployee(emp.id, !emp.active);
     chip.querySelector('.emp-name').onclick = () => openProfileById(emp.id);
-    chip.appendChild(toggleBtn);
+    chip.appendChild(actionBtn);
     container.appendChild(chip);
   });
 }
@@ -490,7 +492,16 @@ function renderRideScheduleGrid() {
   updateRideWeekLabel();
 
   if (!Object.keys(slotMap).length) {
-    grid.innerHTML = '<p class="small-text">No rides scheduled in this window. Approve rides to plot them on the weekly grid.</p>';
+    showEmptyState(grid, {
+      icon: '\uD83D\uDCC5',
+      title: 'No rides on the calendar',
+      message: 'Approved and scheduled rides will appear here. Try switching to the Active Rides tab to approve pending requests.',
+      actionLabel: 'Go to Active Rides',
+      actionHandler: () => {
+        const activeTab = document.querySelector('#rides-panel .sub-tab[data-subtarget="rides-active-view"]');
+        if (activeTab) activeTab.click();
+      }
+    });
     return;
   }
 
@@ -1116,6 +1127,33 @@ function showVehiclePromptModal() {
   });
 }
 
+// ----- History Helpers -----
+function historyGroupKey(ride) {
+  return `${ride.riderEmail || ride.riderName}|${ride.pickupLocation}|${ride.dropoffLocation}|${ride.status}`;
+}
+function formatHistoryDateHeader(dateStr) {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+function getDateKey(dateStr) {
+  if (!dateStr) return 'unknown';
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function buildHistoryItem(ride) {
+  const item = document.createElement('div');
+  item.className = 'item';
+  const cancelledByOffice = ride.status === 'cancelled' && ride.cancelledBy === 'office';
+  item.innerHTML = `
+    <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span>${cancelledByOffice ? ' <span class="small-text">(cancelled by office)</span>' : ''} <strong><a href="#" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="admin-user-link">${ride.riderName}</a></strong></div>
+    <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
+    <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
+    <div class="small-text">Misses: ${ride.consecutiveMisses || 0}</div>
+    ${ride.vehicleId ? `<div class="small-text">Cart: ${vehicles.find(v => v.id === ride.vehicleId)?.name || ride.vehicleId}</div>` : ''}
+  `;
+  return item;
+}
+
 // ----- Ride Lists -----
 function renderRideLists() {
   const unassignedEl = document.getElementById('unassigned-items');
@@ -1133,11 +1171,12 @@ function renderRideLists() {
   const unassigned = unassignedAll.filter((r) => rideMatchesFilter(r, rideFilterText));
   unassigned.forEach((ride) => {
     const item = document.createElement('div');
-    item.className = 'item';
+    item.className = 'item ride-needs-action';
     item.innerHTML = `
       <div><strong><a href="#" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="admin-user-link">${ride.riderName}</a></strong></div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
       <div class="small-text">Time: ${formatDate(ride.requestedTime)}</div>
+      <div class="ride-hint">Needs driver assignment</div>
     `;
     const actionRow = document.createElement('div');
     actionRow.className = 'ride-actions-compact';
@@ -1178,12 +1217,21 @@ function renderRideLists() {
   approved.forEach((ride) => {
     const item = document.createElement('div');
     item.className = 'item';
+    if (ride.status === 'approved' && !ride.assignedDriverId) {
+      item.classList.add('ride-needs-action');
+    } else if (ride.status === 'scheduled') {
+      item.classList.add('ride-assigned');
+    } else if (ride.status === 'driver_on_the_way' || ride.status === 'driver_arrived_grace') {
+      item.classList.add('ride-in-transit');
+    }
     const driverName = employees.find((e) => e.id === ride.assignedDriverId)?.name || 'Unassigned';
     const rideVehicleName = ride.vehicleId ? (vehicles.find(v => v.id === ride.vehicleId)?.name) : null;
+    const driverDisplay = ride.assignedDriverId ? `<span class="ride-driver-prominent">${driverName}</span>` : driverName;
     item.innerHTML = `
       <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span> <strong><a href="#" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="admin-user-link">${ride.riderName}</a></strong></div>
       <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
-      <div class="small-text ride-meta">When: ${formatDate(ride.requestedTime)} · Driver: ${driverName}${rideVehicleName ? ` · Cart: ${rideVehicleName}` : ''}</div>
+      <div class="small-text ride-meta">When: ${formatDate(ride.requestedTime)} · Driver: ${driverDisplay}${rideVehicleName ? ` · Cart: ${rideVehicleName}` : ''}</div>
+      ${ride.status === 'approved' && !ride.assignedDriverId ? '<div class="ride-hint">Needs driver assignment</div>' : ''}
     `;
     const contactSpan = document.createElement('span');
     contactSpan.className = 'contact-inline';
@@ -1226,19 +1274,81 @@ function renderRideLists() {
     });
   }
 
-  history.forEach((ride) => {
-    const item = document.createElement('div');
-    item.className = 'item';
-    const cancelledByOffice = ride.status === 'cancelled' && ride.cancelledBy === 'office';
-    item.innerHTML = `
-      <div><span class="status-tag ${ride.status}">${ride.status.replace(/_/g, ' ')}</span>${cancelledByOffice ? ' <span class="small-text">(cancelled by office)</span>' : ''} <strong><a href="#" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="admin-user-link">${ride.riderName}</a></strong></div>
-      <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
-      <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
-      <div class="small-text">Misses: ${ride.consecutiveMisses || 0}</div>
-      ${ride.vehicleId ? `<div class="small-text">Cart: ${vehicles.find(v => v.id === ride.vehicleId)?.name || ride.vehicleId}</div>` : ''}
-    `;
-    historyEl.appendChild(item);
+  // Sort history by requestedTime descending
+  const sortedHistory = [...history].sort((a, b) => {
+    const da = a.requestedTime ? new Date(a.requestedTime).getTime() : 0;
+    const db = b.requestedTime ? new Date(b.requestedTime).getTime() : 0;
+    return db - da;
   });
+
+  // Group by date
+  const dateGroups = new Map();
+  sortedHistory.forEach((ride) => {
+    const dk = getDateKey(ride.requestedTime);
+    if (!dateGroups.has(dk)) {
+      dateGroups.set(dk, { label: formatHistoryDateHeader(ride.requestedTime), rides: [] });
+    }
+    dateGroups.get(dk).rides.push(ride);
+  });
+
+  dateGroups.forEach((group, dateKey) => {
+    const dateHeader = document.createElement('div');
+    dateHeader.className = 'history-date-header';
+    dateHeader.textContent = group.label;
+    historyEl.appendChild(dateHeader);
+
+    // Detect consecutive runs of same groupKey
+    const ridesInDay = group.rides;
+    let i = 0;
+    while (i < ridesInDay.length) {
+      const currentKey = historyGroupKey(ridesInDay[i]);
+      let runEnd = i + 1;
+      while (runEnd < ridesInDay.length && historyGroupKey(ridesInDay[runEnd]) === currentKey) {
+        runEnd++;
+      }
+      const runLength = runEnd - i;
+
+      if (runLength === 1) {
+        historyEl.appendChild(buildHistoryItem(ridesInDay[i]));
+      } else {
+        // Collapsed group
+        const groupId = `${dateKey}|${currentKey}`;
+        const isExpanded = historyExpandedGroups.has(groupId);
+        const firstRide = ridesInDay[i];
+        const summary = document.createElement('div');
+        summary.className = 'history-group-summary';
+        summary.innerHTML = `
+          <span class="status-tag ${firstRide.status}">${firstRide.status.replace(/_/g, ' ')}</span>
+          <strong>${firstRide.riderName}</strong>
+          <span class="small-text">${firstRide.pickupLocation} → ${firstRide.dropoffLocation}</span>
+          <span class="history-group-count">${runLength}</span>
+          <button class="history-group-toggle">${isExpanded ? 'Hide' : 'Show all'}</button>
+        `;
+
+        const container = document.createElement('div');
+        container.className = 'history-group-rides' + (isExpanded ? ' expanded' : '');
+        for (let j = i; j < runEnd; j++) {
+          container.appendChild(buildHistoryItem(ridesInDay[j]));
+        }
+
+        summary.querySelector('.history-group-toggle').onclick = () => {
+          const nowExpanded = container.classList.toggle('expanded');
+          summary.querySelector('.history-group-toggle').textContent = nowExpanded ? 'Hide' : 'Show all';
+          if (nowExpanded) {
+            historyExpandedGroups.add(groupId);
+          } else {
+            historyExpandedGroups.delete(groupId);
+          }
+        };
+
+        historyEl.appendChild(summary);
+        historyEl.appendChild(container);
+      }
+
+      i = runEnd;
+    }
+  });
+
   document.getElementById('history-list').style.display = (historyFilterText && !history.length) ? 'none' : '';
   if (!history.length && !historyFilterText) {
     showEmptyState(historyEl, {
