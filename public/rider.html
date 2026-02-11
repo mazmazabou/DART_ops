@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rider - USC DART</title>
+  <title>Rider Console</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -25,7 +25,7 @@
   <div class="rider-container">
     <div class="rider-hero">
       <div>
-        <h1>DART Rider</h1>
+        <h1 id="rider-brand">DART Rider</h1>
         <div id="user-info" class="info-row"></div>
       </div>
       <button class="btn-logout" onclick="logout()">Logout</button>
@@ -173,6 +173,12 @@
     let locations = [];
     let meUser = null;
     let showAllHistory = false;
+
+    fetch('/api/tenant-config').then(r=>r.ok?r.json():null).then(c=>{
+      if(!c)return;
+      document.title=c.orgShortName+' Rider';
+      const b=document.getElementById('rider-brand');if(b)b.textContent=c.orgShortName+' Rider';
+    }).catch(()=>{});
 
     async function init() {
       const me = await fetchMe();

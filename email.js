@@ -22,7 +22,7 @@ async function initEmail() {
   transporter = nodemailer.createTransport({
     host,
     port,
-    secure: false,
+    secure: port === 465,
     auth: { user, pass },
     tls: { rejectUnauthorized: true }
   });

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Driver - USC DART</title>
+  <title>Driver Console</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -38,7 +38,7 @@
 </head>
 <body>
   <header class="driver-header">
-    <div><h1>DART Driver</h1><div id="user-name"></div></div>
+    <div><h1 id="driver-brand">DART Driver</h1><div id="user-name"></div></div>
     <button class="btn-logout" onclick="logout()">Logout</button>
   </header>
   <div class="driver-content">
@@ -111,6 +111,12 @@
 
     const ACTIVE_STATUSES = ['driver_on_the_way', 'driver_arrived_grace'];
     const ASSIGNED_OPEN_STATUSES = ['scheduled', 'driver_on_the_way', 'driver_arrived_grace'];
+
+    fetch('/api/tenant-config').then(r=>r.ok?r.json():null).then(c=>{
+      if(!c)return;
+      document.title=c.orgShortName+' Driver';
+      const b=document.getElementById('driver-brand');if(b)b.textContent=c.orgShortName+' Driver';
+    }).catch(()=>{});
 
     function todayLocal() {
       const now = new Date();

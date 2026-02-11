@@ -7,6 +7,15 @@ const { Pool } = require('pg');
 const campusLocations = require('./public/usc_building_options');
 const { isConfigured: emailConfigured, sendWelcomeEmail, sendPasswordResetEmail } = require('./email');
 
+const TENANT = {
+  orgName: 'USC DART',
+  orgShortName: 'DART',
+  orgTagline: 'Disabled Access to Road Transportation',
+  orgInitials: 'DT',
+  primaryColor: '#990000',
+  secondaryColor: '#FFCC00'
+};
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/dart_ops';
@@ -400,6 +409,8 @@ app.get('/api/client-config', (req, res) => {
   res.json({ isDev: isDevRequest(req) });
 });
 
+app.get('/api/tenant-config', (req, res) => res.json(TENANT));
+
 // Self-service profile
 app.get('/api/me', requireAuth, async (req, res) => {
   const result = await query(
@@ -559,7 +570,7 @@ app.post('/api/admin/users', requireOffice, async (req, res) => {
   let emailSent = false;
   try {
     emailSent = emailConfigured();
-    if (emailSent) sendWelcomeEmail(email.toLowerCase(), name, username, password, role, 'USC DART').catch(() => {});
+    if (emailSent) sendWelcomeEmail(email.toLowerCase(), name, username, password, role, TENANT.orgName).catch(() => {});
   } catch {}
 
   const result = await query(
@@ -665,7 +676,7 @@ app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) 
   let emailSent = false;
   try {
     emailSent = emailConfigured();
-    if (emailSent && user.email) sendPasswordResetEmail(user.email, user.name, newPassword, 'USC DART').catch(() => {});
+    if (emailSent && user.email) sendPasswordResetEmail(user.email, user.name, newPassword, TENANT.orgName).catch(() => {});
   } catch {}
 
   res.json({ success: true, emailSent });
@@ -1508,9 +1519,11 @@ app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
 initDb()
   .then(() => {
     app.listen(PORT, () => {
-      console.log('USC DART server running from:', __dirname);
-      console.log(`DART Ops server running on port ${PORT}`);
-      console.log('Login: jamie/avery/casey/chris/office, riders: sarah/tom, password: dart123');
+      console.log('Server running from:', __dirname);
+      console.log(`RideOps server running on port ${PORT}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Login: jamie/avery/casey/chris/office, riders: sarah/tom, password: dart123');
+      }
     });
   })
   .catch((err) => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - USC DART</title>
+  <title>Sign In</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -19,7 +19,7 @@
   </style>
 </head>
 <body>
-  <header class="header"><div><h1>USC DART</h1><p>Disabled Access To Road Transportation</p></div></header>
+  <header class="header"><div><h1 id="login-brand">USC DART</h1><p id="login-tagline">Disabled Access To Road Transportation</p></div></header>
   <div class="login-container">
     <div class="login-card">
       <h2>Sign In</h2>
@@ -65,6 +65,12 @@
           }
         }
       } catch {}
+      fetch('/api/tenant-config').then(r=>r.ok?r.json():null).then(c=>{
+        if(!c)return;
+        document.title=c.orgName;
+        const b=document.getElementById('login-brand');if(b)b.textContent=c.orgName;
+        const t=document.getElementById('login-tagline');if(t)t.textContent=c.orgTagline;
+      }).catch(()=>{});
     })();
 
     let loginUserData = null;

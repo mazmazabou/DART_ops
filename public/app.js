@@ -50,6 +50,26 @@ let filteredAdminUsers = [];
 let selectedAdminUser = null;
 let rideScheduleAnchor = new Date();
 let emailConfigured = false;
+let tenantConfig = null;
+
+async function loadTenantConfig() {
+  try {
+    const res = await fetch('/api/tenant-config');
+    if (res.ok) tenantConfig = await res.json();
+  } catch {}
+  if (!tenantConfig) return;
+  document.title = tenantConfig.orgName + ' Operations Console';
+  const brandTitle = document.querySelector('.brand-title');
+  if (brandTitle) brandTitle.textContent = tenantConfig.orgShortName + ' Ops';
+  const brandCollapsed = document.querySelector('.brand-collapsed');
+  if (brandCollapsed) brandCollapsed.textContent = tenantConfig.orgInitials;
+  const headerTitle = document.getElementById('header-title');
+  if (headerTitle) headerTitle.textContent = tenantConfig.orgName + ' Operations Console';
+  const headerSub = document.getElementById('header-subtitle');
+  if (headerSub) headerSub.textContent = 'Dispatch + Driver tools for ' + tenantConfig.orgTagline;
+  const wrappedTitle = document.getElementById('dart-wrapped-title');
+  if (wrappedTitle) wrappedTitle.textContent = tenantConfig.orgShortName + ' Wrapped';
+}
 
 // ----- Auth -----
 async function checkAuth() {
@@ -149,7 +169,7 @@ function renderAdminUsers(users) {
       <td><a href="#" data-user="${u.id}" class="admin-user-link">${u.email || ''}</a></td>
       <td><a href="#" data-user="${u.id}" class="admin-user-link">${u.usc_id || ''}</a></td>
       <td>${u.phone || ''}</td>
-      <td class="admin-actions-cell">${isSelf ? '' : `<button class="btn secondary small admin-edit-btn">Edit</button><button class="btn secondary small admin-reset-pw-btn">Reset PW</button><button class="btn danger small admin-delete-btn">Delete</button>`}</td>
+      <td class="admin-actions-cell"><button class="btn secondary small admin-edit-btn">Edit</button><button class="btn secondary small admin-reset-pw-btn">Reset PW</button>${isSelf ? '' : '<button class="btn danger small admin-delete-btn">Delete</button>'}</td>
     `;
     tr.querySelectorAll('.admin-user-link').forEach((link) => {
       link.onclick = (e) => { e.preventDefault(); loadUserProfile(u.id); };
@@ -1861,8 +1881,8 @@ function showRulesModal() {
     <div class="modal-box" style="max-width:600px;">
       <div class="modal-title">Program Rules &amp; Guidelines</div>
       <ul style="padding-left:20px; line-height:1.8; color:var(--muted); font-size:14px;">
-        <li>DART is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am\u20137:00pm, Monday\u2013Friday.</li>
-        <li>DART vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.</li>
+        <li>${tenantConfig?.orgShortName || 'DART'} is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am\u20137:00pm, Monday\u2013Friday.</li>
+        <li>${tenantConfig?.orgShortName || 'DART'} vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.</li>
         <li>Riders must be able to independently get in and out of a standard golf cart. Drivers cannot assist with lifting/carrying medical equipment (crutches, wheelchairs, etc.). A wheelchair-accessible golf cart is available upon request.</li>
         <li>Due to high demand, drivers cannot wait more than five (5) minutes past a scheduled pick-up time. After that grace period, they may leave to continue other assignments.</li>
         <li>Service is automatically terminated after five (5) consecutive missed pick-ups.</li>
@@ -2034,7 +2054,7 @@ function renderMilestoneList(containerId, people, type) {
     showEmptyState(container, { icon: '[]', title: `No ${type} data`, message: `No completed rides yet.` });
     return;
   }
-  const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: 'DART Legend', 1000: 'Diamond' };
+  const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: (tenantConfig?.orgShortName || 'DART') + ' Legend', 1000: 'Diamond' };
   const badgeIcons = { 50: '\u{1F31F}', 100: '\u2B50', 250: '\u{1F3C6}', 500: '\u{1F451}', 1000: '\u{1F48E}' };
   container.innerHTML = '<div class="milestone-list">' + people.map(p => {
     const badges = [50, 100, 250, 500, 1000].map(m => {
@@ -2101,12 +2121,12 @@ function renderSemesterReport(data) {
     if (c.completedRides === 0) {
       wrapped.innerHTML = `<div class="dart-wrapped">
         <div class="wrapped-big">0 Rides</div>
-        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, DART has not yet completed any rides this semester.</div>
+        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'DART'} has not yet completed any rides this semester.</div>
       </div>`;
     } else {
       wrapped.innerHTML = `<div class="dart-wrapped">
         <div class="wrapped-big">${c.completedRides} Rides</div>
-        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, DART completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
+        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'DART'} completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
         ${mvp ? `<div class="wrapped-line">MVP Driver: <strong>${mvp.name}</strong> with <strong>${mvp.completed}</strong> completed rides</div>` : ''}
         <div class="wrapped-line">Completion Rate: <strong>${c.completionRate}%</strong></div>
       </div>`;
@@ -2329,6 +2349,7 @@ function exportSemesterCSV() {
 
 // ----- Initialize -----
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadTenantConfig();
   if (!await checkAuth()) return;
   if (typeof window.applyDevOnlyVisibility === 'function') {
     await window.applyDevOnlyVisibility(document);
