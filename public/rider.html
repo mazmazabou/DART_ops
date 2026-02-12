@@ -483,7 +483,7 @@
         renderMyRides(rides);
       } catch {
         showEmptyState('my-rides', {
-          icon: '[]',
+          icon: 'inbox',
           title: 'Unable to load requests',
           message: 'Please refresh and try again.'
         });
@@ -498,7 +498,7 @@
         renderRecurring(rows);
       } catch {
         showEmptyState('my-recurring', {
-          icon: '[]',
+          icon: 'inbox',
           title: 'Unable to load recurring rides',
           message: 'Please refresh and try again.'
         });
@@ -509,7 +509,7 @@
       const container = document.getElementById('my-rides');
       if (!rides.length) {
         showEmptyState(container, {
-          icon: '[]',
+          icon: 'inbox',
           title: 'No requests yet',
           message: 'Submit a ride request above to get started.'
         });
@@ -553,7 +553,7 @@
       const container = document.getElementById('my-recurring');
       if (!rows.length) {
         showEmptyState(container, {
-          icon: '[]',
+          icon: 'inbox',
           title: 'No recurring rides yet',
           message: 'Recurring rides will appear here after you create one.'
         });

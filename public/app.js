@@ -110,7 +110,6 @@ async function loadRides() {
     const res = await fetch('/api/rides');
     if (res.ok) rides = await res.json();
   } catch (e) { console.error('Failed to load rides', e); }
-  renderRideSchedule();
   renderRideLists();
   renderRideScheduleGrid();
   renderDriverConsole();
@@ -525,7 +524,7 @@ function renderRideScheduleGrid() {
 
   if (!Object.keys(slotMap).length) {
     showEmptyState(grid, {
-      icon: '\uD83D\uDCC5',
+      icon: 'calendar_today',
       title: 'No rides on the calendar',
       message: 'Approved and scheduled rides will appear here. Try switching to the Active Rides tab to approve pending requests.',
       actionLabel: 'Go to Active Rides',
@@ -1300,7 +1299,7 @@ function renderRideLists() {
   document.getElementById('approved-list').style.display = (rideFilterText && !approved.length) ? 'none' : '';
   if (!approved.length && !rideFilterText) {
     showEmptyState(approvedEl, {
-      icon: '[]',
+      icon: 'inbox',
       title: 'No approved or scheduled rides',
       message: 'Approved rides in progress will show in this section.'
     });
@@ -1384,7 +1383,7 @@ function renderRideLists() {
   document.getElementById('history-list').style.display = (historyFilterText && !history.length) ? 'none' : '';
   if (!history.length && !historyFilterText) {
     showEmptyState(historyEl, {
-      icon: '[]',
+      icon: 'inbox',
       title: 'No completed history yet',
       message: 'Completed and no-show rides will appear here after dispatch activity.'
     });
@@ -1509,7 +1508,7 @@ function renderDriverDashboard() {
 
   if (!employees.length) {
     showEmptyState(dashboard, {
-      icon: '[]',
+      icon: 'inbox',
       title: 'No drivers registered',
       message: 'Add drivers in Admin Settings to see them here.'
     });
@@ -1565,7 +1564,7 @@ function renderDriverDetail() {
   const driverRides = rides.filter((r) => r.assignedDriverId === driver.id && r.requestedTime?.startsWith(today));
   if (!driverRides.length && !(driver.active && rides.some((r) => r.status === 'approved' && !r.assignedDriverId && r.requestedTime?.startsWith(today)))) {
     showEmptyState(list, {
-      icon: '[]',
+      icon: 'inbox',
       title: 'No rides for today',
       message: 'This driver has no assigned or claimable rides right now.'
     });
@@ -1778,7 +1777,7 @@ function renderAllActiveRides() {
 
   if (!activeRides.length) {
     showEmptyState(list, {
-      icon: '[]',
+      icon: 'inbox',
       title: 'No active rides today',
       message: 'Active rides across all drivers will appear here.'
     });
@@ -2098,6 +2097,17 @@ function initTabs() {
   });
 }
 
+function showTab(panelId) {
+  const buttons = document.querySelectorAll('.nav-btn[data-target]');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach((b) => b.classList.remove('active'));
+  panels.forEach((p) => p.classList.remove('active'));
+  const matchBtn = document.querySelector(`.nav-btn[data-target="${panelId}"]`);
+  if (matchBtn) matchBtn.classList.add('active');
+  const panel = document.getElementById(panelId);
+  if (panel) panel.classList.add('active');
+}
+
 // ============================================================================
 // ANALYTICS MODULE
 // ============================================================================
@@ -2118,7 +2128,7 @@ function renderBarChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!data || !data.length) {
-    showEmptyState(container, { icon: '[]', title: 'No data', message: 'No ride data for this period.' });
+    showEmptyState(container, { icon: 'inbox', title: 'No data', message: 'No ride data for this period.' });
     return;
   }
   const max = Math.max(...data.map(d => parseInt(d.count) || 0));
@@ -2143,7 +2153,7 @@ function renderHotspotList(containerId, items, colorClass) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!items || !items.length) {
-    showEmptyState(container, { icon: '[]', title: 'No data', message: 'No location data available.' });
+    showEmptyState(container, { icon: 'inbox', title: 'No data', message: 'No location data available.' });
     return;
   }
   const cls = colorClass || '';
@@ -2201,7 +2211,7 @@ function renderVehicleCards(vehicles) {
   const grid = document.getElementById('vehicles-grid');
   if (!grid) return;
   if (!vehicles || !vehicles.length) {
-    showEmptyState(grid, { icon: '[]', title: 'No vehicles', message: 'Add vehicles to track fleet usage.' });
+    showEmptyState(grid, { icon: 'inbox', title: 'No vehicles', message: 'Add vehicles to track fleet usage.' });
     return;
   }
   grid.innerHTML = vehicles.map(v => {
@@ -2211,17 +2221,27 @@ function renderVehicleCards(vehicles) {
     const lastMaint = v.last_maintenance_date
       ? new Date(v.last_maintenance_date).toLocaleDateString() : 'Never';
     const lastUsed = v.lastUsed ? new Date(v.lastUsed).toLocaleDateString() : 'Never';
-    return `<div class="vehicle-card${overdueClass}">
-      <div class="vehicle-name">${v.name}</div>
+    const retiredClass = v.status === 'retired' ? ' vehicle-retired' : '';
+    const retiredBadge = v.status === 'retired' ? '<span class="retired-badge">Retired</span>' : '';
+    const escapedName = (v.name||'').replace(/'/g, "\\'");
+    let actionButtons;
+    if (v.status === 'retired') {
+      actionButtons = `<button class="btn secondary small" onclick="reactivateVehicle('${v.id}', '${escapedName}')">Reactivate</button>`;
+    } else if (v.rideCount > 0) {
+      actionButtons = `<button class="btn secondary small" onclick="logVehicleMaintenance('${v.id}')">Log Maintenance</button>
+        <button class="btn secondary small" onclick="retireVehicle('${v.id}', '${escapedName}')">Retire</button>`;
+    } else {
+      actionButtons = `<button class="btn secondary small" onclick="logVehicleMaintenance('${v.id}')">Log Maintenance</button>
+        <button class="btn danger small" onclick="deleteVehicle('${v.id}', '${escapedName}')">Delete</button>`;
+    }
+    return `<div class="vehicle-card${overdueClass}${retiredClass}">
+      <div class="vehicle-name">${v.name}${retiredBadge}</div>
       <div class="vehicle-meta">Type: ${v.type} &middot; Status: ${v.status}</div>
       <div class="vehicle-meta">Completed rides: ${v.rideCount} &middot; Last used: ${lastUsed}</div>
       <div class="vehicle-meta">Last maintenance: ${lastMaint}</div>
       ${alert}
       <div class="ride-actions-compact" style="margin-top:8px;">
-        <button class="btn secondary small" onclick="logVehicleMaintenance('${v.id}')">Log Maintenance</button>
-        ${v.rideCount > 0
-          ? `<button class="btn secondary small" onclick="retireVehicle('${v.id}', '${(v.name||'').replace(/'/g, "\\'")}')">Retire</button>`
-          : `<button class="btn danger small" onclick="deleteVehicle('${v.id}', '${(v.name||'').replace(/'/g, "\\'")}')">Delete</button>`}
+        ${actionButtons}
       </div>
     </div>`;
   }).join('');
@@ -2231,7 +2251,7 @@ function renderMilestoneList(containerId, people, type) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!people || !people.length) {
-    showEmptyState(container, { icon: '[]', title: `No ${type} data`, message: `No completed rides yet.` });
+    showEmptyState(container, { icon: 'inbox', title: `No ${type} data`, message: `No completed rides yet.` });
     return;
   }
   const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: (tenantConfig?.orgShortName || 'DART') + ' Legend', 1000: 'Diamond' };
@@ -2388,7 +2408,7 @@ async function loadAnalyticsHotspots() {
   } catch (e) { console.error('Analytics hotspots error:', e); }
 }
 
-async function loadAnalyticsVehicles() {
+async function loadFleetVehicles() {
   try {
     const res = await fetch('/api/analytics/vehicles' + getAnalyticsDateParams());
     if (!res.ok) return;
@@ -2419,7 +2439,6 @@ async function loadAllAnalytics() {
     loadAnalyticsSummary(),
     loadAnalyticsFrequency(),
     loadAnalyticsHotspots(),
-    loadAnalyticsVehicles(),
     loadAnalyticsMilestones(),
     loadSemesterReport()
   ]);
@@ -2444,7 +2463,7 @@ async function logVehicleMaintenance(vehicleId) {
     showToast(err.error || 'Failed to log maintenance', 'error');
   } else {
     showToast('Maintenance logged', 'success');
-    loadAnalyticsVehicles();
+    loadFleetVehicles();
   }
 }
 
@@ -2463,7 +2482,7 @@ async function deleteVehicle(vehicleId, vehicleName) {
     showToast(err.error || 'Failed to delete', 'error');
   } else {
     showToast('Vehicle deleted', 'success');
-    loadAnalyticsVehicles();
+    loadFleetVehicles();
   }
 }
 
@@ -2482,7 +2501,30 @@ async function retireVehicle(vehicleId, vehicleName) {
     showToast(err.error || 'Failed to retire vehicle', 'error');
   } else {
     showToast('Vehicle retired', 'success');
-    loadAnalyticsVehicles();
+    loadFleetVehicles();
+  }
+}
+
+async function reactivateVehicle(vehicleId, vehicleName) {
+  const confirmed = await showConfirmModal({
+    title: 'Reactivate Vehicle',
+    message: `Reactivate "${vehicleName || 'this vehicle'}"? It will become available for assignment again.`,
+    confirmLabel: 'Reactivate',
+    cancelLabel: 'Cancel',
+    type: 'warning'
+  });
+  if (!confirmed) return;
+  const res = await fetch(`/api/vehicles/${vehicleId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'available' })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    showToast(err.error || 'Failed to reactivate vehicle', 'error');
+  } else {
+    showToast('Vehicle reactivated', 'success');
+    loadFleetVehicles();
   }
 }
 
@@ -2500,7 +2542,7 @@ async function addVehicle() {
     showToast(err.error || 'Failed to add vehicle', 'error');
   } else {
     showToast('Vehicle added', 'success');
-    loadAnalyticsVehicles();
+    loadFleetVehicles();
   }
 }
 
@@ -2554,6 +2596,8 @@ function exportSemesterCSV() {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadTenantConfig();
   if (!await checkAuth()) return;
+  const sidebarUserName = document.getElementById('sidebar-user-name');
+  if (sidebarUserName && currentUser?.name) sidebarUserName.textContent = currentUser.name;
   if (typeof window.applyDevOnlyVisibility === 'function') {
     await window.applyDevOnlyVisibility(document);
   }
@@ -2647,6 +2691,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!analyticsLoaded) {
         analyticsLoaded = true;
         loadAllAnalytics();
+      }
+    });
+  }
+
+  // Fleet: lazy load vehicles on first tab click
+  let fleetLoaded = false;
+  const fleetNavBtn = document.querySelector('.nav-btn[data-target="fleet-panel"]');
+  if (fleetNavBtn) {
+    fleetNavBtn.addEventListener('click', () => {
+      if (!fleetLoaded) {
+        fleetLoaded = true;
+        loadFleetVehicles();
       }
     });
   }
