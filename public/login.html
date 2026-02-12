@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { display: flex; flex-direction: column; min-height: 100vh; margin: 0; }
+    .login-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+    .login-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); width: 100%; max-width: 360px; border-bottom: 3px solid #FFCC00; }
+    .login-card h2 { margin-top: 0; color: #990000; text-align: center; }
+    .login-card input { width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; margin-top: 0.25rem; box-sizing: border-box; }
+    .login-card button { width: 100%; padding: 0.75rem; font-size: 1rem; margin-top: 1rem; }
+    .login-error { color: #990000; background: #ffe6e6; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+    .login-error.show { display: block; }
+    .login-hint { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.85rem; color: #666; }
+  </style>
+</head>
+<body>
+  <header class="header"><div><h1 id="login-brand">USC DART</h1><p id="login-tagline">Disabled Access To Road Transportation</p></div></header>
+  <div class="login-container">
+    <div class="login-card">
+      <h2>Sign In</h2>
+      <div id="login-error" class="login-error"></div>
+      <form id="login-form">
+        <label>Username<input type="text" id="username" required autocomplete="username"></label>
+        <label>Password<input type="password" id="password" required autocomplete="current-password"></label>
+        <button type="submit" class="btn primary">Sign In</button>
+      </form>
+      <div id="change-password-form" style="display:none;">
+        <p class="small-text" style="color:#990000; font-weight:700;">You must change your password before continuing.</p>
+        <label>Current Password<input type="password" id="cp-current" required autocomplete="current-password"></label>
+        <label>New Password (min 8 chars)<input type="password" id="cp-new" required autocomplete="new-password"></label>
+        <label>Confirm New Password<input type="password" id="cp-confirm" required autocomplete="new-password"></label>
+        <button type="button" id="cp-submit" class="btn primary">Change Password</button>
+        <div id="cp-message" class="small-text" style="margin-top:8px;"></div>
+      </div>
+      <div class="login-hint" data-dev-only hidden aria-hidden="true"><strong>Test accounts:</strong><br>Drivers: mazen, jason, jocelin, olivia<br>Office: office<br>Riders: sarah, tom<br>Password: dart123</div>
+      <div id="signup-link" style="display:none; text-align:center; margin-top:1rem; font-size:0.9rem;">
+        <a href="/signup" style="color:#990000; font-weight:700; text-decoration:none;">New rider? Create an account</a>
+      </div>
+    </div>
+  </div>
+  <script src="/utils.js"></script>
+  <script>
+    (async () => {
+      if (typeof window.applyDevOnlyVisibility === 'function') {
+        await window.applyDevOnlyVisibility(document);
+      } else {
+        const hint = document.querySelector('[data-dev-only]');
+        const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (hint) {
+          hint.hidden = !isDev;
+          hint.setAttribute('aria-hidden', String(!isDev));
+        }
+      }
+      try {
+        const res = await fetch('/api/auth/signup-allowed');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.allowed) {
+            document.getElementById('signup-link').style.display = 'block';
+          }
+        }
+      } catch {}
+      fetch('/api/tenant-config').then(r=>r.ok?r.json():null).then(c=>{
+        if(!c)return;
+        document.title=c.orgName;
+        const b=document.getElementById('login-brand');if(b)b.textContent=c.orgName;
+        const t=document.getElementById('login-tagline');if(t)t.textContent=c.orgTagline;
+      }).catch(()=>{});
+    })();
+
+    let loginUserData = null;
+
+    function redirectByRole(role) {
+      if (role === 'office') window.location.href = '/office';
+      else if (role === 'driver') window.location.href = '/driver';
+      else window.location.href = '/rider';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('login-error');
+      errorEl.classList.remove('show');
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: document.getElementById('username').value, password: document.getElementById('password').value })
+        });
+        if (!res.ok) { const data = await res.json(); errorEl.textContent = data.error || 'Login failed'; errorEl.classList.add('show'); return; }
+        const user = await res.json();
+        loginUserData = user;
+        if (user.mustChangePassword) {
+          document.getElementById('login-form').style.display = 'none';
+          document.getElementById('change-password-form').style.display = 'block';
+          document.getElementById('cp-current').value = document.getElementById('password').value;
+          return;
+        }
+        redirectByRole(user.role);
+      } catch { errorEl.textContent = 'Connection error'; errorEl.classList.add('show'); }
+    });
+
+    document.getElementById('cp-submit').addEventListener('click', async () => {
+      const msg = document.getElementById('cp-message');
+      msg.textContent = '';
+      msg.style.color = '';
+      const currentPassword = document.getElementById('cp-current').value;
+      const newPassword = document.getElementById('cp-new').value;
+      const confirm = document.getElementById('cp-confirm').value;
+      if (!currentPassword || !newPassword || !confirm) {
+        msg.textContent = 'All fields are required.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (newPassword.length < 8) {
+        msg.textContent = 'New password must be at least 8 characters.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      if (newPassword !== confirm) {
+        msg.textContent = 'Passwords do not match.';
+        msg.style.color = '#c62828';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = data.error || 'Failed to change password';
+          msg.style.color = '#c62828';
+          return;
+        }
+        msg.textContent = 'Password changed! Redirecting...';
+        msg.style.color = '#228b22';
+        setTimeout(() => redirectByRole(loginUserData?.role), 1000);
+      } catch {
+        msg.textContent = 'Connection error';
+        msg.style.color = '#c62828';
+      }
+    });
+  </script>
+</body>
+</html>

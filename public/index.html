@@ -3,114 +3,343 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>USC DART Operations Console</title>
+  <title>Operations Console</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="header">
-    <h1>USC DART Operations Console</h1>
-    <p>Dispatch + Driver tools for Disabled Access To Road Transportation</p>
-  </header>
-
-  <nav class="navigation">
-    <button class="nav-btn active" data-page="staff">Staff &amp; Shifts</button>
-    <button class="nav-btn" data-page="rides">Ride Requests</button>
-    <button class="nav-btn" data-page="driver">Driver Console</button>
-  </nav>
-
-  <main class="layout">
-    <section class="panel page-content" id="staff-panel" data-page="staff">
-      <h2>Staff &amp; Shifts</h2>
-      <div id="employee-list" class="card"></div>
-      <div class="card">
-        <h3>Weekly Schedule</h3>
-        <div id="schedule-grid"></div>
+  <div class="shell">
+    <aside class="side-nav">
+      <div class="brand">
+        <div class="brand-title">USC DART Ops</div>
+        <div class="brand-sub">Dispatch + Driver</div>
+        <div class="brand-collapsed">DT</div>
+        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&laquo;</button>
       </div>
-      <div class="card">
-        <h3>Add Shift</h3>
-        <form id="shift-form">
-          <label>Employee
-            <select id="shift-employee"></select>
-          </label>
-          <label>Shift Date
-            <select id="shift-date"></select>
-          </label>
-          <label>Start Time
-            <select id="shift-start"></select>
-          </label>
-          <label>End Time
-            <select id="shift-end"></select>
-          </label>
-          <button type="submit" class="btn primary">Add Shift</button>
-        </form>
-      </div>
-    </section>
+      <button class="nav-btn active" data-target="staff-panel" title="Staff &amp; Shifts">
+        <span class="nav-icon">&#x1F465;</span><span class="nav-label">Staff &amp; Shifts</span>
+      </button>
+      <button class="nav-btn" data-target="rides-panel" title="Ride Requests">
+        <span class="nav-icon">&#x1F697;</span><span class="nav-label">Ride Requests</span>
+      </button>
+      <button class="nav-btn" data-target="driver-panel" title="Dispatch &amp; Monitoring">
+        <span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Dispatch &amp; Monitoring</span>
+      </button>
+      <button class="nav-btn" data-target="admin-panel" title="Admin Settings">
+        <span class="nav-icon">&#x2699;&#xFE0F;</span><span class="nav-label">Admin Settings</span>
+      </button>
+      <button class="nav-btn" data-target="profile-panel" title="Profile">
+        <span class="nav-icon">&#x1F464;</span><span class="nav-label">Profile</span>
+      </button>
+      <button class="nav-btn" data-target="analytics-panel" title="Analytics">
+        <span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Analytics</span>
+      </button>
+      <button class="nav-btn" onclick="showRulesModal()" title="Program Rules">
+        <span class="nav-icon">&#x1F4CB;</span><span class="nav-label">Rules</span>
+      </button>
+      <div class="spacer"></div>
+      <button class="nav-btn" onclick="logout()" title="Logout">
+        <span class="nav-icon">&#x1F6AA;</span><span class="nav-label">Logout</span>
+      </button>
+    </aside>
 
-    <section class="panel page-content" id="rides-panel" data-page="rides">
-      <h2>Ride Requests</h2>
-      <div class="card">
-        <button id="load-sample-rides" class="btn secondary">Load Sample Rides (Dev)</button>
-      </div>
-      <div class="card" id="ride-schedule">
-        <h3>Weekly Ride Schedule</h3>
-        <div class="schedule-legend">
-          <span class="legend-item"><span class="legend-color pending"></span> Pending</span>
-          <span class="legend-item"><span class="legend-color approved"></span> Approved/Scheduled</span>
-          <span class="legend-item"><span class="legend-color completed"></span> Completed</span>
-          <span class="legend-item"><span class="legend-color denied"></span> Denied/No-show</span>
+    <main class="content-area">
+      <header class="header">
+        <div>
+          <h1 id="header-title">USC DART Operations Console</h1>
+          <p id="header-subtitle">Dispatch + Driver tools for Disabled Access To Road Transportation</p>
         </div>
-        <div id="ride-schedule-grid"></div>
-      </div>
-      <div class="card" id="unassigned-list">
-        <h3>Unassigned Rides (Today)</h3>
-        <div class="list" id="unassigned-items"></div>
-      </div>
-      <div class="card" id="pending-list">
-        <h3>Pending Requests</h3>
-        <div class="list" id="pending-items"></div>
-      </div>
-      <div class="card" id="approved-list">
-        <h3>Approved / Scheduled</h3>
-        <div class="list" id="approved-items"></div>
-      </div>
-      <div class="card" id="history-list">
-        <h3>Completed &amp; No-Show History</h3>
-        <div class="list" id="history-items"></div>
-      </div>
-    </section>
+      </header>
 
-    <section class="panel page-content" id="driver-panel" data-page="driver">
-      <h2>Driver Console</h2>
-      <div class="card">
-        <label>Select Driver
-          <select id="driver-select"></select>
-        </label>
-        <div id="driver-info"></div>
+      <section class="panel tab-panel active" id="staff-panel">
+        <h2>Staff &amp; Shifts</h2>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-subtarget="staff-schedule-view">Schedule</button>
+          <button class="sub-tab" data-subtarget="staff-shifts-view">Edit Shifts</button>
+        </div>
+        <div class="sub-panel" id="staff-schedule-view">
+          <div class="card"><div id="employee-bar" class="employee-bar"></div></div>
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Schedule View</h3>
+              <div class="schedule-toggle">
+                <button class="btn toggle-btn active" data-schedule-mode="weekly" onclick="setScheduleMode('weekly')">Weekly</button>
+                <button class="btn toggle-btn" data-schedule-mode="daily" onclick="setScheduleMode('daily')">Daily</button>
+              </div>
+            </div>
+            <div class="schedule-nav">
+              <div class="nav-left">
+                <button class="btn" onclick="changeScheduleWeek(-1)">&laquo; Prev Week</button>
+                <button class="btn" onclick="changeScheduleDay(-1)">&lt; Prev Day</button>
+              </div>
+              <input type="date" id="schedule-date" onchange="onScheduleDateChange()">
+              <div class="nav-right">
+                <button class="btn" onclick="changeScheduleDay(1)">Next Day &gt;</button>
+                <button class="btn" onclick="changeScheduleWeek(1)">Next Week &raquo;</button>
+              </div>
+            </div>
+            <div id="day-schedule" class="day-schedule"></div>
+            <div class="schedule-legend">
+              <span class="legend-item"><span class="legend-color shift"></span> Driver on shift</span>
+              <span class="legend-item"><span class="legend-color ride"></span> Scheduled ride</span>
+            </div>
+          </div>
+        </div>
+        <div class="sub-panel" id="staff-shifts-view" style="display:none;">
+          <div class="card">
+            <h3>Add/Edit Shifts</h3>
+            <p class="small-text">Click and drag on the grid to add shifts. Click existing shifts to remove.</p>
+            <label>Employee
+              <div class="flex-row">
+                <select id="shift-employee"></select>
+                <button class="btn secondary" id="shift-employee-profile" type="button">View Profile</button>
+              </div>
+            </label>
+            <div id="shift-grid" class="shift-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel tab-panel" id="rides-panel">
+      <h2>Ride Requests</h2>
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-subtarget="rides-active-view">Active Rides</button>
+        <button class="sub-tab" data-subtarget="rides-calendar-view">Calendar</button>
+        <button class="sub-tab" data-subtarget="rides-history-view">History</button>
       </div>
-      <div class="card" id="driver-rides">
-        <h3>Assigned Rides</h3>
-        <div class="list" id="driver-ride-list"></div>
+      <div class="sub-panel" id="rides-active-view">
+        <div class="rides-filter-bar">
+          <input type="text" id="ride-filter-input" placeholder="Search rides by name, location, or status...">
+          <span class="ride-filter-count" id="ride-filter-count"></span>
+        </div>
+        <div class="card" id="sample-rides-card" data-dev-only hidden aria-hidden="true">
+          <button id="load-sample-rides" class="btn secondary">Load Sample Rides (Dev)</button>
+        </div>
+        <div class="card" id="unassigned-list">
+          <h3>Unassigned Rides (Today)</h3>
+          <div class="list" id="unassigned-items"></div>
+        </div>
+        <div class="card" id="pending-list">
+          <h3>Pending Requests</h3>
+          <div class="list" id="pending-items"></div>
+        </div>
+        <div class="card" id="approved-list">
+          <h3>Approved / Scheduled</h3>
+          <div class="list" id="approved-items"></div>
+        </div>
       </div>
-      <div class="card">
+      <div class="sub-panel" id="rides-calendar-view" style="display:none;">
+        <div class="card">
+          <h3>Weekly Ride Schedule</h3>
+          <p class="small-text">Color-coded ride grid (08:00–19:00, Mon–Fri).</p>
+          <div class="schedule-nav">
+            <div class="nav-left">
+              <button class="btn" id="ride-week-prev" type="button">&laquo; Prev Week</button>
+            </div>
+            <div class="small-text" id="ride-week-label"></div>
+            <div class="nav-right">
+              <button class="btn" id="ride-week-next" type="button">Next Week &raquo;</button>
+            </div>
+          </div>
+          <div id="ride-schedule-grid"></div>
+        </div>
+      </div>
+      <div class="sub-panel" id="rides-history-view" style="display:none;">
+        <div style="margin-bottom:12px;">
+          <input type="text" id="history-filter-input" placeholder="Filter history by name, location, or status..." style="width:100%;">
+        </div>
+        <div class="card" id="history-list">
+          <h3>Completed &amp; No-Show History</h3>
+          <div class="list" id="history-items"></div>
+        </div>
+      </div>
+      </section>
+
+      <section class="panel tab-panel" id="driver-panel">
+        <h2>Dispatch &amp; Monitoring</h2>
+        <div class="dispatch-summary-card">
+          <div class="summary-stat">
+            <span class="stat-number" id="dispatch-active-drivers">0</span>
+            <span class="stat-label">Drivers Active</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-number" id="dispatch-active-rides">0</span>
+            <span class="stat-label">Active Rides</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-number" id="dispatch-pending-rides">0</span>
+            <span class="stat-label">Awaiting Assignment</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-number" id="dispatch-completed-today">0</span>
+            <span class="stat-label">Completed Today</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Active Drivers</h3>
+          <div id="driver-dashboard" class="driver-dashboard"></div>
+        </div>
+        <div class="card" id="driver-detail" style="display:none;">
+          <div class="card-header-row">
+            <h3 id="driver-detail-title">Driver: —</h3>
+            <div>
+              <button class="btn secondary" id="admin-clock-toggle">Clock In</button>
+            </div>
+          </div>
+          <div class="list" id="driver-ride-list"></div>
+        </div>
+        <div class="card">
+          <div class="toggle-header" onclick="toggleAllActiveRides(this)">
+            <h3>All Active Rides <span id="active-rides-count"></span></h3>
+            <button class="toggle-btn-slim" type="button">▸</button>
+          </div>
+          <div id="all-active-rides" style="display:none;">
+            <div class="list" id="all-active-rides-list"></div>
+          </div>
+        </div>
+        <div class="card">
         <h3>USC Campus Map</h3>
-        <div class="map-wrapper">
+        <div class="map-wrapper office-map">
           <iframe src="https://maps.usc.edu/" title="USC Campus Map"></iframe>
         </div>
+        <div class="map-actions">
+          <a class="map-full-link" href="https://maps.usc.edu/" target="_blank" rel="noopener noreferrer">Open full map</a>
+        </div>
       </div>
     </section>
-  </main>
 
-  <section class="rules">
-    <h2>Program Rules / Guidelines</h2>
-    <ul>
-      <li>DART is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am–7:00pm, Monday–Friday.</li>
-      <li>DART vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.</li>
-      <li>Riders must be able to independently get in and out of a standard golf cart. Drivers cannot assist with lifting/carrying medical equipment (crutches, wheelchairs, etc.). A wheelchair-accessible golf cart is available upon request.</li>
-      <li>Due to high demand, drivers cannot wait more than five (5) minutes past a scheduled pick-up time. After that grace period, they may leave to continue other assignments.</li>
-      <li>Service is automatically terminated after five (5) consecutive missed pick-ups.</li>
-    </ul>
-  </section>
+      <section class="panel tab-panel" id="admin-panel">
+        <h2>Admin Settings</h2>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-subtarget="admin-users-view">Users</button>
+          <button class="sub-tab" data-subtarget="admin-create-view">Create User</button>
+        </div>
+        <div class="sub-panel" id="admin-users-view">
+          <div class="rides-filter-bar">
+            <input type="text" id="admin-user-filter" placeholder="Search by name, email, phone, USC ID, or role...">
+            <span class="ride-filter-count" id="admin-user-filter-count"></span>
+          </div>
+          <div class="card">
+            <h3>Users</h3>
+            <div class="small-text">Manage riders, drivers, and office accounts. You cannot delete your own office account.</div>
+            <div class="table-responsive">
+              <table class="grid-table" id="admin-users-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>USC Email</th>
+                    <th>USC ID</th>
+                    <th>Phone</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="sub-panel" id="admin-create-view" style="display:none;">
+          <div class="card">
+            <h3>Create User</h3>
+            <div id="admin-email-status" class="small-text" style="margin-bottom:8px;"></div>
+            <div class="form-grid">
+              <label>Name<input type="text" id="admin-new-name" required></label>
+              <label>USC Email<input type="email" id="admin-new-email" required></label>
+              <label>Phone<input type="tel" id="admin-new-phone"></label>
+              <label>USC ID (10 digits)<input type="text" id="admin-new-uscid" maxlength="10" required></label>
+              <label>Role
+                <select id="admin-new-role">
+                  <option value="rider">rider</option>
+                  <option value="driver">driver</option>
+                  <option value="office">office</option>
+                </select>
+              </label>
+              <label>Temp Password<input type="password" id="admin-new-password" required></label>
+            </div>
+            <button class="btn primary" id="admin-create-btn" type="button">Create User</button>
+            <div id="admin-create-message" class="small-text"></div>
+          </div>
+        </div>
+      </section>
 
-  <script src="app.js?v=3"></script>
+      <section class="panel tab-panel" id="profile-panel">
+        <h2>User Profile</h2>
+        <div id="admin-profile-content" class="card"></div>
+      </section>
+
+      <section class="panel tab-panel" id="analytics-panel">
+        <h2>Analytics &amp; Reports</h2>
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-subtarget="analytics-dashboard-view">Dashboard</button>
+          <button class="sub-tab" data-subtarget="analytics-hotspots-view">Hotspots</button>
+          <button class="sub-tab" data-subtarget="analytics-vehicles-view">Vehicles</button>
+          <button class="sub-tab" data-subtarget="analytics-milestones-view">Milestones</button>
+          <button class="sub-tab" data-subtarget="analytics-reports-view">Reports</button>
+        </div>
+
+        <div class="sub-panel" id="analytics-dashboard-view">
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Overview</h3>
+              <div class="analytics-date-range">
+                <label class="inline-label">From <input type="date" id="analytics-from"></label>
+                <label class="inline-label">To <input type="date" id="analytics-to"></label>
+                <button class="btn secondary small" id="analytics-refresh-btn" type="button">Refresh</button>
+              </div>
+            </div>
+          </div>
+          <div class="kpi-grid" id="analytics-kpi-grid"></div>
+          <div class="card"><h3>Rides by Day of Week</h3><div id="chart-dow"></div></div>
+          <div class="card"><h3>Rides by Hour</h3><div id="chart-hour"></div></div>
+          <div class="card"><h3>Daily Volume (Recent)</h3><div id="chart-daily"></div></div>
+          <div class="card"><h3>Status Breakdown</h3><div id="chart-status"></div></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-hotspots-view" style="display:none;">
+          <div class="card"><h3>Top Pickup Locations</h3><div id="hotspot-pickups"></div></div>
+          <div class="card"><h3>Top Dropoff Locations</h3><div id="hotspot-dropoffs"></div></div>
+          <div class="card"><h3>Most Popular Routes</h3><div id="hotspot-routes"></div></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-vehicles-view" style="display:none;">
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Fleet Management</h3>
+              <button class="btn primary small" id="add-vehicle-btn" type="button">Add Vehicle</button>
+            </div>
+          </div>
+          <div id="vehicles-grid" class="vehicles-grid"></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-milestones-view" style="display:none;">
+          <div class="card"><h3>Driver Milestones</h3><div id="driver-milestones"></div></div>
+          <div class="card"><h3>Rider Milestones</h3><div id="rider-milestones"></div></div>
+        </div>
+
+        <div class="sub-panel" id="analytics-reports-view" style="display:none;">
+          <div class="card">
+            <div class="card-header-row">
+              <h3>Semester Report</h3>
+              <button class="btn secondary small" id="export-csv-btn" type="button">Export CSV</button>
+            </div>
+            <div id="semester-report-content"></div>
+          </div>
+          <div class="card">
+            <h3 id="dart-wrapped-title">DART Wrapped</h3>
+            <div id="dart-wrapped-content"></div>
+          </div>
+          <div class="card">
+            <h3>Budget Forecast</h3>
+            <p class="small-text">Budget forecasting features are coming soon. After meetings with transportation managers, this section will include cost-per-ride analysis, projected demand, and funding justification reports.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <script src="/utils.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
