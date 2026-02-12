@@ -6,3 +6,4 @@ test-results/
 public/.RData
 public/.Rhistory
 .env
+.env.*
