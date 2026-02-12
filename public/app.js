@@ -2091,7 +2091,7 @@ function renderBarChart(containerId, data, options = {}) {
   }
   const max = Math.max(...data.map(d => parseInt(d.count) || 0));
   const colorClass = options.colorClass || '';
-  container.innerHTML = '<div class="bar-chart">' + data.map(d => {
+  const chartHtml = '<div class="bar-chart">' + data.map(d => {
     const val = parseInt(d.count) || 0;
     const pct = max > 0 ? (val / max * 100) : 0;
     return `<div class="bar-chart-row">
@@ -2100,15 +2100,21 @@ function renderBarChart(containerId, data, options = {}) {
       <div class="bar-chart-count">${val}</div>
     </div>`;
   }).join('') + '</div>';
+  if (options.yLabel) {
+    container.innerHTML = `<div style="display:flex;align-items:stretch;"><div class="chart-ylabel">${options.yLabel}</div><div style="flex:1;">${chartHtml}</div></div>`;
+  } else {
+    container.innerHTML = chartHtml;
+  }
 }
 
-function renderHotspotList(containerId, items) {
+function renderHotspotList(containerId, items, colorClass) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!items || !items.length) {
     showEmptyState(container, { icon: '[]', title: 'No data', message: 'No location data available.' });
     return;
   }
+  const cls = colorClass || '';
   const max = Math.max(...items.map(i => parseInt(i.count) || 0));
   container.innerHTML = '<div class="hotspot-list">' + items.map((item, idx) => {
     const val = parseInt(item.count) || 0;
@@ -2117,10 +2123,26 @@ function renderHotspotList(containerId, items) {
     return `<div class="hotspot-item">
       <div class="hotspot-rank">#${idx + 1}</div>
       <div class="hotspot-name" title="${name}">${name}</div>
-      <div class="hotspot-bar"><div class="hotspot-bar-fill" style="width:${pct}%"></div></div>
+      <div class="hotspot-bar"><div class="hotspot-bar-fill ${cls}" style="width:${pct}%"></div></div>
       <div class="hotspot-count">${val}</div>
     </div>`;
   }).join('') + '</div>';
+}
+
+function getKpiColorClass(label, value) {
+  const num = parseFloat(value);
+  if (label === 'Completion Rate') {
+    if (num >= 70) return 'kpi-card--good';
+    if (num >= 40) return 'kpi-card--warning';
+    return 'kpi-card--danger';
+  }
+  if (label === 'No-Shows') {
+    if (num === 0) return 'kpi-card--good';
+    if (num <= 3) return 'kpi-card--warning';
+    return 'kpi-card--danger';
+  }
+  if (label === 'Completed') return 'kpi-card--good';
+  return 'kpi-card--neutral';
 }
 
 function renderKPIGrid(data) {
@@ -2136,7 +2158,7 @@ function renderKPIGrid(data) {
     { label: 'Active Drivers', value: data.uniqueDrivers }
   ];
   grid.innerHTML = kpis.map(k => `
-    <div class="kpi-card">
+    <div class="kpi-card ${getKpiColorClass(k.label, k.value)}">
       <div class="kpi-value">${k.value}</div>
       <div class="kpi-label">${k.label}</div>
     </div>
@@ -2187,7 +2209,7 @@ function renderMilestoneList(containerId, people, type) {
       const earned = p.achievedMilestones.includes(m);
       return `<span class="milestone-badge${earned ? ' earned' : ''}" title="${badgeLabels[m]}">${badgeIcons[m]} ${m}</span>`;
     }).join('');
-    const pct = p.nextMilestone ? Math.min((p.rideCount / p.nextMilestone * 100), 100).toFixed(1) : 100;
+    const pct = p.nextMilestone ? Math.max(Math.min((p.rideCount / p.nextMilestone * 100), 100), 2).toFixed(1) : 100;
     const label = p.nextMilestone ? `${p.rideCount} / ${p.nextMilestone} rides` : 'All milestones achieved!';
     return `<div class="milestone-card">
       <div class="milestone-name">${p.name}</div>
@@ -2246,12 +2268,12 @@ function renderSemesterReport(data) {
     const mvp = data.driverLeaderboard?.[0];
     if (c.completedRides === 0) {
       wrapped.innerHTML = `<div class="dart-wrapped">
-        <div class="wrapped-big">0 Rides</div>
+        <div class="wrapped-big">\u{1F680} 0 Rides</div>
         <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'DART'} has not yet completed any rides this semester.</div>
       </div>`;
     } else {
       wrapped.innerHTML = `<div class="dart-wrapped">
-        <div class="wrapped-big">${c.completedRides} Rides</div>
+        <div class="wrapped-big">\u{1F389} ${c.completedRides} Rides</div>
         <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'DART'} completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
         ${mvp ? `<div class="wrapped-line">MVP Driver: <strong>${mvp.name}</strong> with <strong>${mvp.completed}</strong> completed rides</div>` : ''}
         <div class="wrapped-line">Completion Rate: <strong>${c.completionRate}%</strong></div>
@@ -2288,14 +2310,14 @@ async function loadAnalyticsFrequency() {
     const hourData = data.byHour
       .filter(r => parseInt(r.hour) >= 8 && parseInt(r.hour) <= 19)
       .map(r => ({ label: `${r.hour}:00`, count: r.count }));
-    renderBarChart('chart-hour', hourData, { colorClass: 'gold' });
+    renderBarChart('chart-hour', hourData, { colorClass: 'gold', yLabel: '# of rides' });
 
     // Daily volume (last 30 entries)
     const dailyData = data.daily.slice(-30).map(r => ({
       label: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       count: r.total
     }));
-    renderBarChart('chart-daily', dailyData);
+    renderBarChart('chart-daily', dailyData, { yLabel: '# of rides' });
 
     // Status breakdown
     const statusData = data.byStatus.map(r => ({
@@ -2306,6 +2328,10 @@ async function loadAnalyticsFrequency() {
     const statusContainer = document.getElementById('chart-status');
     if (statusContainer && statusData.length) {
       const max = Math.max(...statusData.map(d => parseInt(d.count) || 0));
+      const legendHtml = statusData.map(d => {
+        const color = d.colorClass || '';
+        return `<span class="status-legend-item"><span class="status-legend-dot ${color}"></span>${d.label}</span>`;
+      }).join('');
       statusContainer.innerHTML = '<div class="bar-chart">' + statusData.map(d => {
         const val = parseInt(d.count) || 0;
         const pct = max > 0 ? (val / max * 100) : 0;
@@ -2314,7 +2340,7 @@ async function loadAnalyticsFrequency() {
           <div class="bar-chart-track"><div class="bar-chart-fill ${d.colorClass}" style="width:${pct}%"></div></div>
           <div class="bar-chart-count">${val}</div>
         </div>`;
-      }).join('') + '</div>';
+      }).join('') + '</div>' + `<div class="status-legend-row">${legendHtml}</div>`;
     }
   } catch (e) { console.error('Analytics frequency error:', e); }
 }
@@ -2325,8 +2351,8 @@ async function loadAnalyticsHotspots() {
     if (!res.ok) return;
     const data = await res.json();
     renderHotspotList('hotspot-pickups', data.topPickups);
-    renderHotspotList('hotspot-dropoffs', data.topDropoffs);
-    renderHotspotList('hotspot-routes', data.topRoutes);
+    renderHotspotList('hotspot-dropoffs', data.topDropoffs, 'darkgold');
+    renderHotspotList('hotspot-routes', data.topRoutes, 'gold');
   } catch (e) { console.error('Analytics hotspots error:', e); }
 }
 

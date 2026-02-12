@@ -886,6 +886,10 @@ iframe.driver-map {
   font-weight: 600;
   margin-top: 4px;
 }
+.kpi-card--good { border-bottom: 3px solid #4CAF50; }
+.kpi-card--warning { border-bottom: 3px solid #FF9800; }
+.kpi-card--danger { border-bottom: 3px solid #d32f2f; }
+.kpi-card--neutral { border-bottom: 3px solid #990000; }
 
 /* Bar charts */
 .bar-chart { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
@@ -910,6 +914,22 @@ iframe.driver-map {
   width: 50px; font-size: 12px; font-weight: 700; text-align: left;
   color: var(--ink); flex-shrink: 0;
 }
+.chart-ylabel {
+  writing-mode: vertical-lr;
+  transform: rotate(180deg);
+  font-size: 0.75rem;
+  color: #888;
+  padding-right: 8px;
+  display: flex;
+  align-items: center;
+}
+.status-legend-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.status-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.status-legend-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--cardinal); flex-shrink: 0; }
+.status-legend-dot.green { background: #28a745; }
+.status-legend-dot.red { background: #c62828; }
+.status-legend-dot.orange { background: #e67e22; }
+.status-legend-dot.gold { background: var(--gold); }
 
 /* Hotspot lists */
 .hotspot-list { display: flex; flex-direction: column; gap: 6px; }
@@ -918,6 +938,8 @@ iframe.driver-map {
 .hotspot-name { flex: 1; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hotspot-bar { flex: 1; height: 20px; background: var(--sand); border-radius: 5px; overflow: hidden; }
 .hotspot-bar-fill { height: 100%; background: var(--cardinal); border-radius: 5px; transition: width 0.4s ease; }
+.hotspot-bar-fill.darkgold { background: #B8860B; }
+.hotspot-bar-fill.gold { background: var(--gold); }
 .hotspot-count { width: 50px; font-size: 12px; font-weight: 700; text-align: right; }
 
 /* Vehicle cards */
@@ -969,7 +991,7 @@ iframe.driver-map {
 .stat-label { font-size: 12px; color: var(--muted); }
 .dart-wrapped {
   background: linear-gradient(135deg, var(--cardinal), var(--cardinal-deep));
-  color: #fff; border-radius: var(--radius); padding: 24px; text-align: center;
+  color: #fff; border-radius: var(--radius); padding: 20px 24px; text-align: center;
 }
 .dart-wrapped .wrapped-big { font-size: 2.5rem; font-weight: 700; color: var(--gold); line-height: 1.2; }
 .dart-wrapped .wrapped-line { font-size: 1.1rem; margin-top: 12px; }
