@@ -962,7 +962,12 @@ test.describe.serial('UI: Driver Console', () => {
     const text = await clockBtn.textContent();
     if (text && text.toLowerCase().includes('clock out')) {
       await clockBtn.click();
-      await page.waitForTimeout(1000);
+      // Confirm the clock-out modal if it appears
+      const modalConfirm = page.locator('.modal-overlay.show button:has-text("Clock Out")');
+      if (await modalConfirm.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await modalConfirm.click();
+      }
+      await expect(page.locator('#clock-status')).toContainText(/Clocked Out/i, { timeout: 5000 });
     }
 
     // Clock in
@@ -978,7 +983,7 @@ test.describe.serial('UI: Driver Console', () => {
       await clockBtn.click();
       await page.waitForTimeout(1000);
     }
-    await expect(page.locator('#available-section')).toBeVisible();
+    await expect(page.locator('#available-section')).toBeVisible({ timeout: 5000 });
   });
 
   test('profile toggle reveals profile content', async ({ page }) => {
@@ -997,7 +1002,7 @@ test.describe.serial('UI: Driver Console', () => {
     const text = await clockBtn.textContent();
     if (text && text.toLowerCase().includes('clock in')) {
       await clockBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(1500);
     }
     // Check if there are available rides — just verify section is accessible
     await expect(page.locator('#available-rides')).toBeVisible();
@@ -1015,12 +1020,12 @@ test.describe.serial('UI: Driver Console', () => {
     const text = await clockBtn.textContent();
     if (text && text.toLowerCase().includes('clock in')) {
       await clockBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(1500);
     }
     // Now clock out — this triggers a confirmation modal
     await clockBtn.click();
     // Confirm the clock-out modal
-    const modalConfirm = page.locator('button:has-text("Clock Out")').last();
+    const modalConfirm = page.locator('.modal-overlay.show button:has-text("Clock Out")');
     await expect(modalConfirm).toBeVisible({ timeout: 3000 });
     await modalConfirm.click();
     await expect(page.locator('#clock-status')).toContainText(/Clocked Out/i, { timeout: 5000 });
