@@ -5,7 +5,19 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const campusLocations = require('./public/usc_building_options');
-const { isConfigured: emailConfigured, sendWelcomeEmail, sendPasswordResetEmail } = require('./email');
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
+
+let emailModule;
+if (DEMO_MODE) {
+  emailModule = {
+    isConfigured: () => false,
+    sendWelcomeEmail: async () => {},
+    sendPasswordResetEmail: async () => {}
+  };
+} else {
+  emailModule = require('./email');
+}
+const { isConfigured: emailConfigured, sendWelcomeEmail, sendPasswordResetEmail } = emailModule;
 
 const TENANT = {
   orgName: 'USC DART',
@@ -29,7 +41,7 @@ const pool = new Pool({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: 'dart-ops-secret-change-in-production',
+  secret: process.env.SESSION_SECRET || 'dart-ops-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
@@ -443,6 +455,7 @@ app.put('/api/me', requireAuth, async (req, res) => {
 
 // Change own password
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  if (DEMO_MODE) return res.status(403).json({ error: 'Password changes are disabled in demo mode' });
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current password and new password are required' });
@@ -519,6 +532,7 @@ app.get('/api/admin/users/search', requireOffice, async (req, res) => {
 });
 
 app.delete('/api/admin/users/:id', requireOffice, async (req, res) => {
+  if (DEMO_MODE) return res.status(403).json({ error: 'User deletion is disabled in demo mode' });
   const targetId = req.params.id;
   if (targetId === req.session.userId) return res.status(400).json({ error: 'Cannot delete your own office account' });
 
@@ -672,6 +686,7 @@ app.post('/api/admin/users/:id/reset-miss-count', requireOffice, async (req, res
 
 // Admin reset password for another user
 app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) => {
+  if (DEMO_MODE) return res.status(403).json({ error: 'Password resets are disabled in demo mode' });
   const targetId = req.params.id;
   if (targetId === req.session.userId) {
     return res.status(400).json({ error: 'Use the change password feature for your own account' });
@@ -738,6 +753,37 @@ app.get('/driver', requireStaff, (req, res) => {
 
 app.get('/rider', requireRider, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'rider.html'));
+});
+
+// Demo mode routes (before static middleware)
+if (DEMO_MODE) {
+  app.get('/login', (req, res) => res.redirect('/demo.html'));
+}
+
+app.get('/demo-config.js', (req, res) => {
+  res.type('application/javascript');
+  if (!DEMO_MODE) return res.send('');
+  res.send(`
+    (function() {
+      var s = document.createElement('style');
+      s.textContent = 'body { padding-top: 40px !important; } .driver-header { top: 40px !important; }';
+      document.head.appendChild(s);
+
+      window.addEventListener('DOMContentLoaded', function() {
+        var b = document.createElement('div');
+        b.id = 'demo-banner';
+        b.innerHTML = '\\ud83e\\uddea This is a demo environment. Data resets every hour. <a href="https://ride-ops.com/contact" style="color:#6ee7b7;margin-left:12px;text-decoration:underline;">Request a real demo \\u2192</a>';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#065f46;color:white;text-align:center;padding:8px 16px;font-size:14px;font-family:system-ui,sans-serif;';
+        document.body.prepend(b);
+
+        window.logout = function() {
+          fetch('/api/auth/logout', { method: 'POST' }).then(function() {
+            window.location.href = '/demo.html';
+          });
+        };
+      });
+    })();
+  `);
 });
 
 // Static files
@@ -1579,10 +1625,17 @@ app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
 
 // ----- Startup -----
 initDb()
-  .then(() => {
+  .then(async () => {
+    if (DEMO_MODE) {
+      const { seedDemoData } = require('./demo-seed');
+      await seedDemoData(pool).then(() => console.log('Demo data seeded')).catch(console.error);
+      setInterval(() => {
+        seedDemoData(pool).then(() => console.log('Demo data re-seeded')).catch(console.error);
+      }, 60 * 60 * 1000);
+    }
     app.listen(PORT, () => {
       console.log('Server running from:', __dirname);
-      console.log(`RideOps server running on port ${PORT}`);
+      console.log(`RideOps server running on port ${PORT}${DEMO_MODE ? ' (DEMO MODE)' : ''}`);
       if (process.env.NODE_ENV !== 'production') {
         console.log('Login: jamie/avery/casey/chris/office, riders: sarah/tom, password: dart123');
       }
