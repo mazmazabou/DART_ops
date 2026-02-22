@@ -108,7 +108,18 @@ function initSidebar() {
 }
 function toggleSidebar() {
   var shell = document.querySelector('.ro-shell');
-  if (shell) shell.classList.toggle('collapsed');
+  if (shell) {
+    shell.classList.toggle('collapsed');
+    try { localStorage.setItem('dart-sidebar-collapsed', shell.classList.contains('collapsed') ? '1' : ''); } catch(e) {}
+  }
+}
+function restoreSidebarState() {
+  try {
+    if (localStorage.getItem('dart-sidebar-collapsed') === '1') {
+      var shell = document.querySelector('.ro-shell');
+      if (shell) shell.classList.add('collapsed');
+    }
+  } catch(e) {}
 }
 
 // Sub-tab navigation
