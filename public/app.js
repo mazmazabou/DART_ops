@@ -2624,9 +2624,8 @@ function renderHotspotList(containerId, items, colorClass, unit) {
 function getKpiColorClass(label, value) {
   const num = parseFloat(value);
   if (label === 'Completion Rate') {
-    if (num >= 70) return 'kpi-card--good';
-    if (num >= 40) return 'kpi-card--warning';
-    return 'kpi-card--danger';
+    if (num >= 80) return 'kpi-card--good';
+    return 'kpi-card--neutral';
   }
   if (label === 'No-Shows') {
     if (num === 0) return 'kpi-card--good';
@@ -2742,7 +2741,7 @@ function renderSemesterReport(data) {
   if (data.monthlyBreakdown && data.monthlyBreakdown.length) {
     monthlyTable = `<h4 style="margin-top:16px;">Monthly Breakdown</h4>
     <table class="grid-table"><thead><tr><th>Month</th><th>Completed</th><th>Total</th><th>Riders</th></tr></thead><tbody>
-    ${data.monthlyBreakdown.map(m => `<tr><td>${m.month}</td><td>${m.completed}</td><td>${m.total}</td><td>${m.riders}</td></tr>`).join('')}
+    ${data.monthlyBreakdown.map(m => `<tr><td>${new Date(m.month + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td><td>${m.completed}</td><td>${m.total}</td><td>${m.riders}</td></tr>`).join('')}
     </tbody></table>`;
   }
 

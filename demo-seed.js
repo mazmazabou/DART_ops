@@ -117,6 +117,22 @@ async function seedDemoData(pool) {
   const [d1a, d1b] = pickPair();
   addRide('denied', 'rider1', 'Sarah Student', 'hello+sarah@ride-ops.com', '213-555-0111', d1a, d1b, todayAt(12, 0), null, null);
 
+  // Historical completed rides (past weekdays) for analytics charts
+  for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+    const past = new Date(today);
+    past.setDate(past.getDate() - daysAgo);
+    const dayOfWeek = past.getDay(); // 0=Sun, 6=Sat
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue; // skip weekends
+    const [ha, hb] = pickPair();
+    const t = new Date(past);
+    t.setHours(9 + Math.floor(Math.random() * 6), Math.floor(Math.random() * 60), 0, 0);
+    addRide('completed', 'rider1', 'Sarah Student', 'hello+sarah@ride-ops.com', '213-555-0111', ha, hb, t.toISOString(), 'emp1', null);
+    const [ha2, hb2] = pickPair();
+    const t2 = new Date(past);
+    t2.setHours(10 + Math.floor(Math.random() * 5), Math.floor(Math.random() * 60), 0, 0);
+    addRide('completed', 'rider2', 'Tom Faculty', 'hello+tom@ride-ops.com', '213-555-0112', ha2, hb2, t2.toISOString(), 'emp2', null);
+  }
+
   // Insert rides
   for (const r of rides) {
     await q(
