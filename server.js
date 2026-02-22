@@ -40,6 +40,10 @@ const pool = new Pool({
   ssl: process.env.PGSSLMODE === 'require' || process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined
 });
 
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'America/Los_Angeles'");
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
@@ -212,9 +216,10 @@ function generateId(prefix) {
 }
 
 function formatLocalDate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  const la = new Date(date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const y = la.getFullYear();
+  const m = String(la.getMonth() + 1).padStart(2, '0');
+  const d = String(la.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
@@ -234,10 +239,11 @@ function isValidPhone(value) {
 function isWithinServiceHours(requestedTime) {
   const date = new Date(requestedTime);
   if (isNaN(date.getTime())) return false;
-  const day = date.getDay();
+  const la = new Date(date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const day = la.getDay();
   if (day < 1 || day > 5) return false;
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  const hours = la.getHours();
+  const minutes = la.getMinutes();
   const totalMinutes = hours * 60 + minutes;
   return totalMinutes >= 8 * 60 && totalMinutes <= 19 * 60;
 }
@@ -324,7 +330,8 @@ function generateRecurringDates(startDate, endDate, days) {
   const current = new Date(startDate);
   const end = new Date(endDate);
   while (current <= end) {
-    const day = current.getDay(); // 0-6
+    const la = new Date(current.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const day = la.getDay(); // 0-6
     const weekday = day === 0 ? 7 : day; // Sunday=7, Monday=1
     if (days.includes(weekday)) {
       result.push(new Date(current));

@@ -165,6 +165,16 @@
     var graceInterval = null;
     var lastHistoryHash = '';
 
+    // Convert a naive "YYYY-MM-DDTHH:mm:ss" string (intended as LA time) to a
+    // Date object with the correct UTC moment, regardless of browser timezone.
+    function toLADate(naiveStr) {
+      var local = new Date(naiveStr);
+      var laStr = local.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+      var laLocal = new Date(laStr);
+      var diff = local.getTime() - laLocal.getTime();
+      return new Date(local.getTime() + diff);
+    }
+
     // ── Init ──
     async function init() {
       var me = await fetchMe();
@@ -244,8 +254,8 @@
         // Populate confirm
         document.getElementById('confirm-from').textContent = pickupSel.value;
         document.getElementById('confirm-to').textContent = dropoffSel.value;
-        var dt = new Date(selectedDate + 'T' + rideTime.value + ':00');
-        document.getElementById('confirm-when').textContent = dt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        var dt = toLADate(selectedDate + 'T' + rideTime.value + ':00');
+        document.getElementById('confirm-when').textContent = dt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
         goToStep(3);
       };
 
@@ -337,7 +347,7 @@
       var dropoff = document.getElementById('dropoff-location').value;
       var time = document.getElementById('ride-time').value;
       var notes = document.getElementById('notes').value.trim();
-      var requestedTime = selectedDate + 'T' + time + ':00';
+      var requestedTime = toLADate(selectedDate + 'T' + time + ':00').toISOString();
 
       try {
         var res = await fetch('/api/rides', {
@@ -794,7 +804,7 @@
       var str = String(d);
       if (str.indexOf('T') >= 0) str = str.split('T')[0];
       var dt = new Date(str + 'T00:00:00');
-      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' });
     }
 
     async function logout() {

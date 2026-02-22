@@ -1201,11 +1201,12 @@ function renderRideScheduleGrid() {
     const date = new Date(ride.requestedTime);
     if (isNaN(date.getTime())) return;
     if (date < weekStart || date > weekEnd) return;
-    const dayIdx = date.getDay() - 1; // Monday = 0
+    const la = toLADate(date);
+    const dayIdx = la.getDay() - 1; // Monday = 0
     if (dayIdx < 0 || dayIdx > 4) return;
 
-    const hour = date.getHours();
-    const minute = date.getMinutes();
+    const hour = la.getHours();
+    const minute = la.getMinutes();
     if (hour < 8 || hour > 19 || (hour === 19 && minute > 0)) return;
     const { slot, offset } = getSlotInfo(date);
     const key = `${slot}-${dayIdx}`;
@@ -1797,11 +1798,11 @@ function historyGroupKey(ride) {
 }
 function formatHistoryDateHeader(dateStr) {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' });
 }
 function getDateKey(dateStr) {
   if (!dateStr) return 'unknown';
-  const d = new Date(dateStr);
+  const d = toLADate(dateStr);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function buildHistoryItem(ride) {
@@ -2097,9 +2098,10 @@ function renderDispatchGrid() {
     for (let h = startHour; h < startHour + cols; h++) {
       html += `<div class="time-grid__shift-band" style="position:relative;">`;
       unassignedRides.forEach(r => {
-        const rideHour = new Date(r.requestedTime).getHours();
+        const laTime = toLADate(r.requestedTime);
+        const rideHour = laTime.getHours();
         if (rideHour === h) {
-          const mins = new Date(r.requestedTime).getMinutes();
+          const mins = laTime.getMinutes();
           const left = (mins / 60 * 100) + '%';
           const lastName = (r.riderName || '').split(' ').pop();
           const abbrev = abbreviateLocation(r.pickupLocation);
@@ -2155,9 +2157,10 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
     // Render rides at this hour
     driverRides.forEach(r => {
       const rideTime = new Date(r.requestedTime);
-      const rideHour = rideTime.getHours();
+      const laRideTime = toLADate(rideTime);
+      const rideHour = laRideTime.getHours();
       if (rideHour === h) {
-        const mins = rideTime.getMinutes();
+        const mins = laRideTime.getMinutes();
         const left = (mins / 60 * 100) + '%';
         const statusColors = {
           approved: 'var(--status-approved)', scheduled: 'var(--status-scheduled)',
@@ -2353,13 +2356,18 @@ async function initForms() {
 }
 
 // ----- Helpers -----
+function toLADate(input) {
+  var d = input instanceof Date ? input : new Date(input);
+  return new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+}
+
 function formatDate(dateStr) {
   if (typeof window.formatDateTime === 'function') {
     return window.formatDateTime(dateStr);
   }
   if (!dateStr) return 'N/A';
   const date = new Date(dateStr);
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  return `${date.toLocaleDateString(undefined, { timeZone: 'America/Los_Angeles' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Los_Angeles' })}`;
 }
 
 function getTodayLocalDate() {
@@ -2407,7 +2415,7 @@ function formatTimeOnly(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Los_Angeles' });
 }
 
 function formatLocationLabel(location) {
@@ -2416,8 +2424,9 @@ function formatLocationLabel(location) {
 }
 
 function getSlotInfo(date) {
-  const hour = date.getHours();
-  const minute = date.getMinutes();
+  const la = toLADate(date);
+  const hour = la.getHours();
+  const minute = la.getMinutes();
   let slotMinute = '00';
   let offset = 'start';
   if (minute < 15) {
@@ -2545,6 +2554,42 @@ function getAnalyticsDateParams() {
   return qs ? '?' + qs : '';
 }
 
+/* ── Chart tooltip helpers ── */
+function getChartTooltip() {
+  let el = document.getElementById('chart-tooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'chart-tooltip';
+    el.className = 'chart-tooltip';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function showChartTooltip(e, text) {
+  const tip = getChartTooltip();
+  tip.textContent = text;
+  tip.classList.add('visible');
+  positionChartTooltip(e, tip);
+}
+
+function hideChartTooltip() {
+  const tip = document.getElementById('chart-tooltip');
+  if (tip) tip.classList.remove('visible');
+}
+
+function positionChartTooltip(e, tip) {
+  let left = e.clientX + 12;
+  let top = e.clientY - 8;
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  if (left + tw > window.innerWidth - 8) left = e.clientX - tw - 12;
+  if (top + th > window.innerHeight - 8) top = window.innerHeight - th - 8;
+  if (top < 8) top = 8;
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
 function renderBarChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -2568,9 +2613,21 @@ function renderBarChart(containerId, data, options = {}) {
   } else {
     container.innerHTML = chartHtml;
   }
+  // Attach hover tooltips
+  const total = data.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+  const unit = options.unit || 'rides';
+  container.querySelectorAll('.bar-chart-row').forEach((row, idx) => {
+    const d = data[idx];
+    const val = parseInt(d.count) || 0;
+    const pct = total > 0 ? Math.round(val / total * 100) : 0;
+    const text = `${d.label}: ${val} ${unit} (${pct}%)`;
+    row.addEventListener('mouseenter', (e) => showChartTooltip(e, text));
+    row.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+    row.addEventListener('mouseleave', hideChartTooltip);
+  });
 }
 
-function renderHotspotList(containerId, items, colorClass) {
+function renderHotspotList(containerId, items, colorClass, unit) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!items || !items.length) {
@@ -2590,6 +2647,19 @@ function renderHotspotList(containerId, items, colorClass) {
       <div class="hotspot-count">${val}</div>
     </div>`;
   }).join('') + '</div>';
+  // Attach hover tooltips
+  const total = items.reduce((s, i) => s + (parseInt(i.count) || 0), 0);
+  const u = unit || 'rides';
+  container.querySelectorAll('.hotspot-item').forEach((row, idx) => {
+    const item = items[idx];
+    const val = parseInt(item.count) || 0;
+    const name = item.location || item.route;
+    const pct = total > 0 ? Math.round(val / total * 100) : 0;
+    const text = `#${idx + 1} ${name}: ${val} ${u} (${pct}%)`;
+    row.addEventListener('mouseenter', (e) => showChartTooltip(e, text));
+    row.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+    row.addEventListener('mouseleave', hideChartTooltip);
+  });
 }
 
 function getKpiColorClass(label, value) {
@@ -2777,20 +2847,20 @@ async function loadAnalyticsFrequency() {
       const row = data.byDayOfWeek.find(r => parseInt(r.dow) === i);
       return { label: name, count: row ? row.count : 0 };
     }).filter((_, i) => i >= 1 && i <= 5); // Mon-Fri only
-    renderBarChart('chart-dow', dowData);
+    renderBarChart('chart-dow', dowData, { unit: 'rides' });
 
     // Hourly chart
     const hourData = data.byHour
       .filter(r => parseInt(r.hour) >= 8 && parseInt(r.hour) <= 19)
       .map(r => ({ label: `${r.hour}:00`, count: r.count }));
-    renderBarChart('chart-hour', hourData, { colorClass: 'gold', yLabel: '# of rides' });
+    renderBarChart('chart-hour', hourData, { colorClass: 'gold', yLabel: '# of rides', unit: 'rides' });
 
     // Daily volume (last 30 entries)
     const dailyData = data.daily.slice(-30).map(r => ({
       label: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       count: r.total
     }));
-    renderBarChart('chart-daily', dailyData, { yLabel: '# of rides' });
+    renderBarChart('chart-daily', dailyData, { yLabel: '# of rides', unit: 'rides' });
 
     // Status breakdown
     const statusData = data.byStatus.map(r => ({
@@ -2814,6 +2884,17 @@ async function loadAnalyticsFrequency() {
           <div class="bar-chart-count">${val}</div>
         </div>`;
       }).join('') + '</div>' + `<div class="status-legend-row">${legendHtml}</div>`;
+      // Attach hover tooltips to status chart
+      const statusTotal = statusData.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+      statusContainer.querySelectorAll('.bar-chart-row').forEach((row, idx) => {
+        const d = statusData[idx];
+        const val = parseInt(d.count) || 0;
+        const pct = statusTotal > 0 ? Math.round(val / statusTotal * 100) : 0;
+        const text = `${d.label}: ${val} rides (${pct}%)`;
+        row.addEventListener('mouseenter', (e) => showChartTooltip(e, text));
+        row.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+        row.addEventListener('mouseleave', hideChartTooltip);
+      });
     }
   } catch (e) { console.error('Analytics frequency error:', e); }
 }
@@ -2823,9 +2904,9 @@ async function loadAnalyticsHotspots() {
     const res = await fetch('/api/analytics/hotspots' + getAnalyticsDateParams());
     if (!res.ok) return;
     const data = await res.json();
-    renderHotspotList('hotspot-pickups', data.topPickups);
-    renderHotspotList('hotspot-dropoffs', data.topDropoffs, 'darkgold');
-    renderHotspotList('hotspot-routes', data.topRoutes, 'gold');
+    renderHotspotList('hotspot-pickups', data.topPickups, '', 'pickups');
+    renderHotspotList('hotspot-dropoffs', data.topDropoffs, 'darkgold', 'dropoffs');
+    renderHotspotList('hotspot-routes', data.topRoutes, 'gold', 'trips');
   } catch (e) { console.error('Analytics hotspots error:', e); }
 }
 
