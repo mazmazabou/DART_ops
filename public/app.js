@@ -808,9 +808,7 @@ function initShiftCalendar() {
   if (!calendarEl) return;
 
   if (shiftCalendar) {
-    // Just refresh events
-    shiftCalendar.removeAllEvents();
-    getShiftCalendarEvents().forEach(ev => shiftCalendar.addEvent(ev));
+    shiftCalendar.refetchEvents();
     return;
   }
 
@@ -822,7 +820,9 @@ function initShiftCalendar() {
     allDaySlot: false,
     weekends: false,
     height: 'auto',
-    events: getShiftCalendarEvents(),
+    events: function(fetchInfo, successCallback) {
+      successCallback(getShiftCalendarEvents(fetchInfo.start));
+    },
     selectable: true,
     selectMirror: true,
     editable: true,
@@ -848,13 +848,18 @@ const DRIVER_COLORS = [
   '#9932CC', // DarkOrchid
 ];
 
-function getShiftCalendarEvents() {
+function getShiftCalendarEvents(viewStart) {
   const events = [];
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(today);
-  monday.setDate(today.getDate() + mondayOffset);
+  let monday;
+  if (viewStart) {
+    monday = new Date(viewStart);
+  } else {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+  }
   monday.setHours(0, 0, 0, 0);
 
   shifts.forEach(s => {
