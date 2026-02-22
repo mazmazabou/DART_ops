@@ -590,7 +590,7 @@ body {
 .semester-stat { display: inline-flex; flex-direction: column; margin-right: 20px; margin-bottom: 8px; }
 .semester-stat .stat-value { font-size: 24px; font-weight: 800; color: var(--color-text); }
 .semester-stat .stat-label { font-size: 11px; color: var(--color-text-muted); }
-.dart-wrapped { padding: 16px; background: var(--color-primary-subtle); border-radius: var(--radius-md); }
+.ro-wrapped { padding: 16px; background: var(--color-primary-subtle); border-radius: var(--radius-md); }
 .wrapped-big { font-size: 28px; font-weight: 800; color: var(--color-primary); margin-bottom: 8px; }
 .wrapped-line { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; line-height: 1.6; }
 
