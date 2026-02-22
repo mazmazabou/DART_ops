@@ -307,6 +307,7 @@ body {
 .bar-chart-fill.red { background: var(--status-no-show); }
 .bar-chart-fill.orange { background: var(--status-on-the-way); }
 .bar-chart-count { width: 40px; font-size: 11px; font-weight: 700; color: var(--color-text); }
+.bar-chart-row:hover { background: var(--color-surface-hover); border-radius: var(--radius-sm); cursor: default; }
 .chart-ylabel { writing-mode: vertical-lr; transform: rotate(180deg); font-size: 11px; color: var(--color-text-muted); padding-right: 8px; display: flex; align-items: center; }
 
 /* ── Section 28: Hotspot list ── */
@@ -319,6 +320,25 @@ body {
 .hotspot-bar-fill.darkgold { background: var(--color-accent-dark); }
 .hotspot-bar-fill.gold { background: var(--color-accent); }
 .hotspot-count { width: 40px; font-size: 11px; font-weight: 700; color: var(--color-text); text-align: right; }
+.hotspot-item:hover { background: var(--color-surface-hover); border-radius: var(--radius-sm); cursor: default; }
+
+/* Chart tooltip */
+.chart-tooltip {
+  position: fixed;
+  padding: 6px 10px;
+  background: var(--color-sidebar-bg);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 200;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  box-shadow: var(--shadow-md);
+}
+.chart-tooltip.visible { opacity: 1; }
 
 /* ── Section 29: Milestones ── */
 .milestone-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
