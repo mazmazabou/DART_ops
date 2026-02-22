@@ -35,17 +35,6 @@ function statusLabel(status) {
   return labels[status] || status.replace(/_/g, ' ');
 }
 
-const STATUS_ICONS = {
-  pending: 'schedule', approved: 'check_circle', scheduled: 'calendar_today',
-  driver_on_the_way: 'directions_car', driver_arrived_grace: 'person_pin_circle',
-  completed: 'check_circle', no_show: 'warning', denied: 'block', cancelled: 'cancel'
-};
-
-function statusTag(status) {
-  const icon = STATUS_ICONS[status];
-  const iconHtml = icon ? `<span class="material-symbols-outlined">${icon}</span>` : '';
-  return `<span class="status-tag ${status}">${iconHtml}${statusLabel(status)}</span>`;
-}
 
 // Debounce helper for search inputs
 function debounce(func, wait) {
@@ -113,7 +102,6 @@ async function loadEmployees() {
     if (res.ok) employees = await res.json();
   } catch (e) { console.error('Failed to load employees', e); }
   renderEmployees();
-  populateEmployeeSelects();
 }
 
 async function loadShifts() {
@@ -199,7 +187,7 @@ function renderAdminUsers(users) {
       <td>${u.usc_id || ''}</td>
       <td>${u.phone || ''}</td>
       <td></td>
-      <td><span class="material-symbols-outlined admin-chevron">chevron_right</span></td>
+      <td><i class="ti ti-chevron-right admin-chevron"></i></td>
     `;
     // Insert kebab menu into the 6th cell
     const kebabCell = tr.querySelectorAll('td')[5];
@@ -216,27 +204,27 @@ function buildAdminKebabMenu(user) {
 
   const btn = document.createElement('button');
   btn.className = 'kebab-btn';
-  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">more_vert</span>';
+  btn.innerHTML = '<i class="ti ti-dots-vertical" style="font-size:20px;"></i>';
 
   const dropdown = document.createElement('div');
   dropdown.className = 'kebab-dropdown';
 
   const editBtn = document.createElement('button');
   editBtn.className = 'edit-option';
-  editBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">edit</span> Edit';
+  editBtn.innerHTML = '<i class="ti ti-pencil" style="font-size:16px;"></i> Edit';
   editBtn.onclick = (e) => { e.stopPropagation(); dropdown.classList.remove('open'); openAdminDrawer(user.id, 'edit'); };
   dropdown.appendChild(editBtn);
 
   const resetBtn = document.createElement('button');
   resetBtn.className = 'edit-option';
-  resetBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">lock_reset</span> Reset Password';
+  resetBtn.innerHTML = '<i class="ti ti-key" style="font-size:16px;"></i> Reset Password';
   resetBtn.onclick = (e) => { e.stopPropagation(); dropdown.classList.remove('open'); openAdminDrawer(user.id, 'password'); };
   dropdown.appendChild(resetBtn);
 
   if (user.id !== currentUser.id) {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'delete-option';
-    deleteBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">delete</span> Delete';
+    deleteBtn.innerHTML = '<i class="ti ti-trash" style="font-size:16px;"></i> Delete';
     deleteBtn.onclick = (e) => { e.stopPropagation(); dropdown.classList.remove('open'); deleteUser(user.id); };
     dropdown.appendChild(deleteBtn);
   }
@@ -757,17 +745,6 @@ async function clockEmployee(id, isIn) {
   await loadRides();
 }
 
-function populateEmployeeSelects() {
-  const select = document.getElementById('shift-employee');
-  select.innerHTML = '';
-  employees.forEach((emp) => {
-    const opt = document.createElement('option');
-    opt.value = emp.id;
-    opt.textContent = emp.name;
-    select.appendChild(opt);
-  });
-}
-
 // ----- Schedule Grid -----
 function generateTimeSlots() {
   const slots = [];
@@ -806,7 +783,6 @@ let shiftCalendar = null;
 
 function renderScheduleGrid() {
   initShiftCalendar();
-  renderShiftGrid();
 }
 
 function initShiftCalendar() {
@@ -831,8 +807,14 @@ function initShiftCalendar() {
     events: getShiftCalendarEvents(),
     selectable: true,
     selectMirror: true,
+    editable: true,
+    eventStartEditable: true,
+    eventDurationEditable: true,
     select: onCalendarSelect,
     eventClick: onShiftEventClick,
+    eventDrop: onShiftEventDrop,
+    eventResize: onShiftEventResize,
+    eventDidMount: onShiftEventMount,
     eventColor: 'var(--color-primary)',
   });
   shiftCalendar.render();
@@ -860,7 +842,7 @@ function getShiftCalendarEvents() {
       start: `${dateStr}T${s.startTime}`,
       end: `${dateStr}T${s.endTime}`,
       color: emp?.active ? '#4682B4' : '#94A3B8',
-      extendedProps: { shiftId: s.id, employeeId: s.employeeId }
+      extendedProps: { shiftId: s.id, employeeId: s.employeeId, notes: s.notes || '' }
     });
   });
   return events;
@@ -895,20 +877,280 @@ async function onCalendarSelect(info) {
   }
 }
 
-async function onShiftEventClick(info) {
+// ----- Shift Event Handlers (drag/drop, resize, popover, context menu) -----
+
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+function formatTimeLabel(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+async function onShiftEventDrop(info) {
   const shiftId = info.event.extendedProps.shiftId;
-  const empName = info.event.title;
-  const confirmed = await showConfirmModal({
-    title: 'Delete Shift',
-    message: `Delete ${empName}'s shift?`,
-    confirmLabel: 'Delete',
-    cancelLabel: 'Cancel',
-    type: 'danger'
+  const jsDay = info.event.start.getDay();
+  const dayOfWeek = (jsDay + 6) % 7;
+  if (dayOfWeek > 4) {
+    info.revert();
+    showToast('Shifts must be on weekdays', 'error');
+    return;
+  }
+  const startTime = info.event.start.toTimeString().substring(0, 5);
+  const endTime = info.event.end.toTimeString().substring(0, 5);
+  try {
+    const res = await fetch(`/api/shifts/${shiftId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dayOfWeek, startTime, endTime })
+    });
+    if (!res.ok) { info.revert(); showToast('Failed to move shift', 'error'); return; }
+    await loadShifts();
+    showToast('Shift moved', 'success');
+  } catch { info.revert(); showToast('Failed to move shift', 'error'); }
+}
+
+async function onShiftEventResize(info) {
+  const shiftId = info.event.extendedProps.shiftId;
+  const endTime = info.event.end.toTimeString().substring(0, 5);
+  try {
+    const res = await fetch(`/api/shifts/${shiftId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endTime })
+    });
+    if (!res.ok) { info.revert(); showToast('Failed to resize shift', 'error'); return; }
+    await loadShifts();
+    showToast('Shift updated', 'success');
+  } catch { info.revert(); showToast('Failed to resize shift', 'error'); }
+}
+
+function onShiftEventMount(info) {
+  info.el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showShiftContextMenu(e, info.event);
   });
-  if (!confirmed) return;
-  await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
-  await loadShifts();
-  showToast('Shift deleted', 'success');
+}
+
+// --- Shift Popover ---
+function closeShiftPopover() {
+  const existing = document.querySelector('.shift-popover');
+  if (existing) existing.remove();
+  document.removeEventListener('keydown', _shiftPopoverEsc);
+  document.removeEventListener('mousedown', _shiftPopoverOutside);
+}
+
+function _shiftPopoverEsc(e) { if (e.key === 'Escape') closeShiftPopover(); }
+function _shiftPopoverOutside(e) {
+  const pop = document.querySelector('.shift-popover');
+  if (pop && !pop.contains(e.target)) closeShiftPopover();
+}
+
+function positionShiftPopover(popover, anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  const pw = 300;
+  let left = rect.right + 8;
+  if (left + pw > window.innerWidth - 12) {
+    left = rect.left - pw - 8;
+  }
+  if (left < 12) left = 12;
+  let top = rect.top;
+  const ph = popover.offsetHeight || 280;
+  if (top + ph > window.innerHeight - 12) {
+    top = window.innerHeight - ph - 12;
+  }
+  if (top < 12) top = 12;
+  popover.style.left = left + 'px';
+  popover.style.top = top + 'px';
+}
+
+function onShiftEventClick(info) {
+  closeShiftPopover();
+  closeShiftContextMenu();
+
+  const ev = info.event;
+  const shiftId = ev.extendedProps.shiftId;
+  const empName = ev.title;
+  const jsDay = ev.start.getDay();
+  const dayOfWeek = (jsDay + 6) % 7;
+  const dayName = DAY_NAMES[dayOfWeek] || '';
+  const startTime = ev.start.toTimeString().substring(0, 5);
+  const endTime = ev.end.toTimeString().substring(0, 5);
+  const notes = ev.extendedProps.notes || '';
+
+  const popover = document.createElement('div');
+  popover.className = 'shift-popover';
+  popover.innerHTML = `
+    <div class="shift-popover__header">
+      <h4 class="shift-popover__title">${empName}</h4>
+      <button class="shift-popover__close" title="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="shift-popover__body">
+      <div class="shift-popover__row"><i class="ti ti-calendar"></i> ${dayName}</div>
+      <div class="shift-popover__row"><i class="ti ti-clock"></i> ${formatTimeLabel(startTime)} – ${formatTimeLabel(endTime)}</div>
+      <div class="shift-popover__notes-label">Notes</div>
+      <textarea class="shift-popover__notes" placeholder="Add shift notes...">${notes}</textarea>
+    </div>
+    <div class="shift-popover__footer">
+      <button class="shift-popover__btn shift-popover__btn--danger" data-action="delete"><i class="ti ti-trash"></i> Delete</button>
+      <button class="shift-popover__btn shift-popover__btn--primary" data-action="save">Save Notes</button>
+    </div>
+  `;
+
+  document.body.appendChild(popover);
+  positionShiftPopover(popover, info.el);
+
+  // Close handlers
+  popover.querySelector('.shift-popover__close').onclick = closeShiftPopover;
+  setTimeout(() => {
+    document.addEventListener('keydown', _shiftPopoverEsc);
+    document.addEventListener('mousedown', _shiftPopoverOutside);
+  }, 0);
+
+  // Delete handler
+  popover.querySelector('[data-action="delete"]').onclick = async () => {
+    closeShiftPopover();
+    const confirmed = await showConfirmModal({
+      title: 'Delete Shift',
+      message: `Delete ${empName}'s shift on ${dayName}?`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      type: 'danger'
+    });
+    if (!confirmed) return;
+    await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    await loadShifts();
+    showToast('Shift deleted', 'success');
+  };
+
+  // Save notes handler
+  popover.querySelector('[data-action="save"]').onclick = async () => {
+    const newNotes = popover.querySelector('.shift-popover__notes').value;
+    try {
+      const res = await fetch(`/api/shifts/${shiftId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: newNotes })
+      });
+      if (!res.ok) { showToast('Failed to save notes', 'error'); return; }
+      closeShiftPopover();
+      await loadShifts();
+      showToast('Notes saved', 'success');
+    } catch { showToast('Failed to save notes', 'error'); }
+  };
+}
+
+// --- Context Menu ---
+function closeShiftContextMenu() {
+  const existing = document.querySelector('.shift-context-menu');
+  if (existing) existing.remove();
+  document.removeEventListener('keydown', _shiftCtxEsc);
+  document.removeEventListener('mousedown', _shiftCtxOutside);
+}
+
+function _shiftCtxEsc(e) { if (e.key === 'Escape') closeShiftContextMenu(); }
+function _shiftCtxOutside(e) {
+  const menu = document.querySelector('.shift-context-menu');
+  if (menu && !menu.contains(e.target)) closeShiftContextMenu();
+}
+
+function showShiftContextMenu(e, calEvent) {
+  closeShiftContextMenu();
+  closeShiftPopover();
+
+  const shiftId = calEvent.extendedProps.shiftId;
+  const empId = calEvent.extendedProps.employeeId;
+  const empName = calEvent.title;
+  const jsDay = calEvent.start.getDay();
+  const dayOfWeek = (jsDay + 6) % 7;
+  const startTime = calEvent.start.toTimeString().substring(0, 5);
+  const endTime = calEvent.end.toTimeString().substring(0, 5);
+  const notes = calEvent.extendedProps.notes || '';
+
+  const menu = document.createElement('div');
+  menu.className = 'shift-context-menu';
+  menu.innerHTML = `
+    <button class="shift-context-menu__item" data-action="duplicate"><i class="ti ti-copy"></i> Duplicate</button>
+    <button class="shift-context-menu__item" data-action="edit"><i class="ti ti-pencil"></i> Edit Details</button>
+    <button class="shift-context-menu__item shift-context-menu__item--danger" data-action="delete"><i class="ti ti-trash"></i> Delete</button>
+  `;
+
+  document.body.appendChild(menu);
+
+  // Position at mouse, clamped to viewport
+  let left = e.clientX;
+  let top = e.clientY;
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+
+  setTimeout(() => {
+    document.addEventListener('keydown', _shiftCtxEsc);
+    document.addEventListener('mousedown', _shiftCtxOutside);
+  }, 0);
+
+  // Duplicate
+  menu.querySelector('[data-action="duplicate"]').onclick = async () => {
+    closeShiftContextMenu();
+    try {
+      const res = await fetch('/api/shifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: empId, dayOfWeek, startTime, endTime, notes })
+      });
+      if (!res.ok) { showToast('Failed to duplicate shift', 'error'); return; }
+      await loadShifts();
+      showToast('Shift duplicated', 'success');
+    } catch { showToast('Failed to duplicate shift', 'error'); }
+  };
+
+  // Edit Details — open the popover
+  menu.querySelector('[data-action="edit"]').onclick = () => {
+    closeShiftContextMenu();
+    // Find the DOM element for this event and trigger the popover
+    const fcEvents = shiftCalendar.getEvents();
+    const matchEv = fcEvents.find(ev => ev.extendedProps.shiftId === shiftId);
+    if (matchEv) {
+      // Synthesize an info-like object for onShiftEventClick
+      const els = document.querySelectorAll('.fc-event');
+      let targetEl = null;
+      els.forEach(el => {
+        const evObj = el.__fcEvent || null;
+        // Match by position in DOM — find the el that renders this event
+        if (el.textContent.includes(empName)) targetEl = el;
+      });
+      // Use the event's element if possible
+      if (!targetEl) {
+        // Fallback: use all fc-timegrid-event elements
+        targetEl = document.querySelector('.fc-timegrid-event');
+      }
+      onShiftEventClick({ event: matchEv, el: targetEl || document.querySelector('.fc-event') });
+    }
+  };
+
+  // Delete
+  menu.querySelector('[data-action="delete"]').onclick = async () => {
+    closeShiftContextMenu();
+    const dayName = DAY_NAMES[dayOfWeek] || '';
+    const confirmed = await showConfirmModal({
+      title: 'Delete Shift',
+      message: `Delete ${empName}'s shift on ${dayName}?`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      type: 'danger'
+    });
+    if (!confirmed) return;
+    await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    await loadShifts();
+    showToast('Shift deleted', 'success');
+  };
 }
 
 function pickEmployeeForShift() {
@@ -974,16 +1216,7 @@ function renderRideScheduleGrid() {
   updateRideWeekLabel();
 
   if (!Object.keys(slotMap).length) {
-    showEmptyState(grid, {
-      icon: 'calendar_today',
-      title: 'No rides on the calendar',
-      message: 'Approved and scheduled rides will appear here. Try switching to the Active Rides tab to approve pending requests.',
-      actionLabel: 'Go to Active Rides',
-      actionHandler: () => {
-        const activeTab = document.querySelector('#rides-panel .ro-tab[data-subtarget="rides-active-view"]');
-        if (activeTab) activeTab.click();
-      }
-    });
+    grid.innerHTML = '<div class="ro-empty"><i class="ti ti-calendar-off"></i><div class="ro-empty__title">No rides on the calendar</div><div class="ro-empty__message">Approved and scheduled rides will appear here.</div></div>';
     return;
   }
 
@@ -1155,7 +1388,7 @@ function renderProfilePanel(data) {
 
 function renderProfileRide(ride) {
   return `<div class="item">
-    <div>${statusTag(ride.status)} ${ride.pickupLocation} → ${ride.dropoffLocation}</div>
+    <div>${statusBadge(ride.status)} ${ride.pickupLocation} → ${ride.dropoffLocation}</div>
     <div class="small-text">${formatDate(ride.requestedTime)}</div>
   </div>`;
 }
@@ -1200,105 +1433,6 @@ async function saveAdminProfile(userId) {
   }
 }
 
-// ----- Interactive Shift Grid -----
-let shiftGridDragging = false;
-let shiftGridStart = null;
-
-function renderShiftGrid() {
-  const grid = document.getElementById('shift-grid');
-  const timeSlots = generateTimeSlots();
-  const selectedDate = getSelectedDate();
-  const weekDates = getWeekDates(selectedDate);
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const empId = document.getElementById('shift-employee').value;
-
-  let html = '<div class="header-cell"></div>';
-  days.forEach((d, idx) => {
-    const dateLabel = formatShortDate(weekDates[idx]);
-    html += `<div class="header-cell">${d} (${dateLabel})</div>`;
-  });
-
-  timeSlots.forEach((slot, rowIdx) => {
-    html += `<div class="time-cell">${slot}</div>`;
-    days.forEach((_, dayIdx) => {
-      const hasShift = shifts.some(s => s.employeeId === empId && s.dayOfWeek === dayIdx && s.startTime <= slot && s.endTime > slot);
-      html += `<div class="grid-cell${hasShift ? ' has-shift' : ''}" data-day="${dayIdx}" data-slot="${slot}" data-row="${rowIdx}"></div>`;
-    });
-  });
-
-  grid.innerHTML = html;
-
-  // Add drag listeners
-  grid.querySelectorAll('.grid-cell').forEach(cell => {
-    cell.addEventListener('mousedown', onShiftGridMouseDown);
-    cell.addEventListener('mouseenter', onShiftGridMouseEnter);
-    cell.addEventListener('click', onShiftGridClick);
-  });
-}
-
-function onShiftGridMouseDown(e) {
-  shiftGridDragging = true;
-  shiftGridStart = { day: e.target.dataset.day, row: parseInt(e.target.dataset.row) };
-  e.target.classList.add('selected');
-}
-
-function onShiftGridMouseEnter(e) {
-  if (!shiftGridDragging || !shiftGridStart) return;
-  const grid = document.getElementById('shift-grid');
-  grid.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
-
-  const currentRow = parseInt(e.target.dataset.row);
-  const day = shiftGridStart.day;
-  const minRow = Math.min(shiftGridStart.row, currentRow);
-  const maxRow = Math.max(shiftGridStart.row, currentRow);
-
-  grid.querySelectorAll(`.grid-cell[data-day="${day}"]`).forEach(cell => {
-    const row = parseInt(cell.dataset.row);
-    if (row >= minRow && row <= maxRow) cell.classList.add('selected');
-  });
-}
-
-async function onShiftGridClick(e) {
-  if (e.target.classList.contains('has-shift')) {
-    // Remove shift on click
-    const empId = document.getElementById('shift-employee').value;
-    const day = parseInt(e.target.dataset.day);
-    const slot = e.target.dataset.slot;
-    const shiftToRemove = shifts.find(s => s.employeeId === empId && s.dayOfWeek === day && s.startTime <= slot && s.endTime > slot);
-    if (shiftToRemove) {
-      await fetch(`/api/shifts/${shiftToRemove.id}`, { method: 'DELETE' });
-      await loadShifts();
-    }
-  }
-}
-
-document.addEventListener('mouseup', async () => {
-  if (!shiftGridDragging) return;
-  shiftGridDragging = false;
-
-  const grid = document.getElementById('shift-grid');
-  const selected = Array.from(grid.querySelectorAll('.grid-cell.selected')).filter(c => !c.classList.contains('has-shift'));
-
-  if (selected.length) {
-    const empId = document.getElementById('shift-employee').value;
-    const day = parseInt(selected[0].dataset.day);
-    const slots = selected.map(c => c.dataset.slot).sort();
-    const startTime = slots[0];
-    const timeSlots = generateTimeSlots();
-    const lastIdx = timeSlots.indexOf(slots[slots.length - 1]);
-    const endTime = timeSlots[lastIdx + 1] || '19:00';
-
-    await fetch('/api/shifts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeId: empId, dayOfWeek: day, startTime, endTime })
-    });
-    await loadShifts();
-  }
-
-  grid.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
-  shiftGridStart = null;
-});
 
 // ----- Ride Filter -----
 let rideFilterText = '';
@@ -1422,7 +1556,7 @@ function buildKebabMenu(ride, onDone) {
 
   const btn = document.createElement('button');
   btn.className = 'kebab-btn';
-  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">more_vert</span>';
+  btn.innerHTML = '<i class="ti ti-dots-vertical" style="font-size:20px;"></i>';
 
   const dropdown = document.createElement('div');
   dropdown.className = 'kebab-dropdown';
@@ -1430,7 +1564,7 @@ function buildKebabMenu(ride, onDone) {
   // Edit option — always visible
   const editBtn = document.createElement('button');
   editBtn.className = 'edit-option';
-  editBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">edit</span> Edit';
+  editBtn.innerHTML = '<i class="ti ti-pencil" style="font-size:16px;"></i> Edit';
   editBtn.onclick = (e) => {
     e.stopPropagation();
     dropdown.classList.remove('open');
@@ -1443,7 +1577,7 @@ function buildKebabMenu(ride, onDone) {
   if (!terminalStatuses.includes(ride.status)) {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'delete-option';
-    deleteBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">delete</span> Delete';
+    deleteBtn.innerHTML = '<i class="ti ti-trash" style="font-size:16px;"></i> Delete';
     deleteBtn.onclick = async (e) => {
       e.stopPropagation();
       dropdown.classList.remove('open');
@@ -1675,7 +1809,7 @@ function buildHistoryItem(ride) {
   item.className = 'item';
   const cancelledByOffice = ride.status === 'cancelled' && ride.cancelledBy === 'office';
   item.innerHTML = `
-    <div>${statusTag(ride.status)}${cancelledByOffice ? ' <span class="small-text">(cancelled by office)</span>' : ''} <span data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="clickable-name">${ride.riderName}</span></div>
+    <div>${statusBadge(ride.status)}${cancelledByOffice ? ' <span class="small-text">(cancelled by office)</span>' : ''} <span data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="clickable-name">${ride.riderName}</span></div>
     <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
     <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
     <div class="small-text">Misses: ${ride.consecutiveMisses || 0}</div>
@@ -1806,7 +1940,7 @@ function renderHistory(history) {
         const firstRide = ridesInDay[i];
         const summary = document.createElement('div');
         summary.className = 'history-group-summary';
-        summary.innerHTML = `${statusTag(firstRide.status)} <strong>${firstRide.riderName}</strong> <span class="small-text">${firstRide.pickupLocation} → ${firstRide.dropoffLocation}</span> <span class="history-group-count">${runLength}</span> <button class="history-group-toggle">${isExpanded ? 'Hide' : 'Show all'}</button>`;
+        summary.innerHTML = `${statusBadge(firstRide.status)} <strong>${firstRide.riderName}</strong> <span class="small-text">${firstRide.pickupLocation} → ${firstRide.dropoffLocation}</span> <span class="history-group-count">${runLength}</span> <button class="history-group-toggle">${isExpanded ? 'Hide' : 'Show all'}</button>`;
         const container = document.createElement('div');
         container.className = 'history-group-rides' + (isExpanded ? ' expanded' : '');
         for (let j = i; j < runEnd; j++) container.appendChild(buildHistoryItem(ridesInDay[j]));
@@ -1824,7 +1958,7 @@ function renderHistory(history) {
   });
 
   if (!history.length && !historyFilterText) {
-    showEmptyState(historyEl, { icon: 'inbox', title: 'No completed history yet', message: 'Completed and no-show rides will appear here.' });
+    historyEl.innerHTML = '<div class="ro-empty"><i class="ti ti-history"></i><div class="ro-empty__title">No completed history yet</div><div class="ro-empty__message">Completed and no-show rides will appear here.</div></div>';
   }
 }
 
@@ -2415,7 +2549,7 @@ function renderBarChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!data || !data.length) {
-    showEmptyState(container, { icon: 'inbox', title: 'No data', message: 'No ride data for this period.' });
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-bar-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No ride data for this period.</div></div>';
     return;
   }
   const max = Math.max(...data.map(d => parseInt(d.count) || 0));
@@ -2440,7 +2574,7 @@ function renderHotspotList(containerId, items, colorClass) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!items || !items.length) {
-    showEmptyState(container, { icon: 'inbox', title: 'No data', message: 'No location data available.' });
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-map-pin-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No location data available.</div></div>';
     return;
   }
   const cls = colorClass || '';
@@ -2498,7 +2632,7 @@ function renderVehicleCards(vehicles) {
   const grid = document.getElementById('vehicles-grid');
   if (!grid) return;
   if (!vehicles || !vehicles.length) {
-    showEmptyState(grid, { icon: 'inbox', title: 'No vehicles', message: 'Add vehicles to track fleet usage.' });
+    grid.innerHTML = '<div class="ro-empty"><i class="ti ti-bus-off"></i><div class="ro-empty__title">No vehicles</div><div class="ro-empty__message">Add vehicles to track fleet usage.</div></div>';
     return;
   }
   grid.innerHTML = vehicles.map(v => {
@@ -2538,7 +2672,7 @@ function renderMilestoneList(containerId, people, type) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!people || !people.length) {
-    showEmptyState(container, { icon: 'inbox', title: `No ${type} data`, message: `No completed rides yet.` });
+    container.innerHTML = `<div class="ro-empty"><i class="ti ti-trophy-off"></i><div class="ro-empty__title">No ${type} data</div><div class="ro-empty__message">No completed rides yet.</div></div>`;
     return;
   }
   const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: (tenantConfig?.orgShortName || 'DART') + ' Legend', 1000: 'Diamond' };
@@ -3002,17 +3136,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     dispatchDate.addEventListener('change', () => renderDispatchGrid());
   }
 
-  // Re-render shift grid when employee changes
-  document.getElementById('shift-employee').addEventListener('change', renderShiftGrid);
-  const shiftProfileBtn = document.getElementById('shift-employee-profile');
-  if (shiftProfileBtn) {
-    shiftProfileBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const id = document.getElementById('shift-employee').value;
-      openProfileById(id);
-    });
-  }
-
   const createBtn = document.getElementById('admin-create-btn');
   if (createBtn) createBtn.addEventListener('click', createAdminUser);
   const ridePrev = document.getElementById('ride-week-prev');
@@ -3049,6 +3172,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
+
+  // Fix FullCalendar day header overlap when Staff panel first becomes visible
+  document.querySelector('.ro-nav-item[data-target="staff-panel"]')?.addEventListener('click', () => {
+    if (shiftCalendar) requestAnimationFrame(() => shiftCalendar.updateSize());
+  });
 
   setInterval(loadRides, 5000);
   setInterval(loadVehicles, 15000);
