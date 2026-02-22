@@ -724,16 +724,42 @@ body {
 .empty-title { font-size: 14px; font-weight: 600; color: var(--color-text-secondary); margin: 0 0 4px; }
 .empty-message { font-size: 12px; margin: 0 0 12px; }
 
-/* ── Section 56: Responsive ── */
-@media (max-width: 768px) {
-  .ro-shell { grid-template-columns: var(--sidebar-collapsed) 1fr; }
-  .ro-sidebar { width: var(--sidebar-collapsed); }
+/* ── Section 56: Responsive — Tier 2 (tablet: 481–767px) ── */
+@media (max-width: 767px) {
+  /* Force sidebar to icon-only mode */
+  .ro-shell {
+    grid-template-columns: var(--sidebar-collapsed) 1fr;
+  }
+  .ro-sidebar {
+    width: var(--sidebar-collapsed);
+  }
   .ro-nav-label { display: none; }
-  .ro-nav-item { justify-content: center; padding: 8px; margin: 2px 4px; }
   .ro-brand-text { display: none; }
   .ro-sidebar-toggle { display: none; }
+  .ro-nav-item { justify-content: center; padding: 8px; margin: 2px 4px; }
+  .ro-shell.collapsed .ro-sidebar,
+  .ro-shell:not(.collapsed) .ro-sidebar {
+    width: var(--sidebar-collapsed);
+  }
+
+  /* KPI bar wraps 2x2 */
   .kpi-bar { flex-wrap: wrap; }
-  .kpi-card { min-width: calc(50% - 12px); }
+  .kpi-card { min-width: calc(50% - 16px); flex: 1 1 calc(50% - 16px); }
+
+  /* Tables scroll horizontally */
+  .ro-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Header adjusts */
+  .ro-header { padding: 0 12px; }
+  .ro-header-title { font-size: 14px; }
+
+  /* Section padding tightens */
+  .ro-section { padding: 0 12px 16px; }
+  .filter-bar { padding: 12px; }
+
+  /* Dispatch grid scrolls horizontally */
+  .time-grid { overflow-x: auto; }
+
+  /* Drawer goes full-width */
   .ro-drawer { width: 100%; right: -100%; }
-  .ro-table-wrap { overflow-x: auto; }
 }

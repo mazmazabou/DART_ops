@@ -13,6 +13,39 @@
   <script src="/demo-config.js"></script>
 </head>
 <body>
+  <div id="mobile-office-warning" style="display:none; position:fixed; inset:0; background:var(--color-page-bg); z-index:9999; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:32px; gap:16px;">
+    <i class="ti ti-device-desktop" style="font-size:48px; color:var(--color-primary);"></i>
+    <div style="font-size:20px; font-weight:800; color:var(--color-text);">Desktop Required</div>
+    <div style="font-size:14px; color:var(--color-text-secondary); max-width:280px; line-height:1.6;">
+      The RideOps Operations Console is optimized for desktop and tablet use. Please open this page on a larger screen.
+    </div>
+    <div style="font-size:12px; color:var(--color-text-muted); margin-top:8px;">
+      Drivers and riders can use their role-specific mobile views.
+    </div>
+    <a id="mobile-warning-link" href="/demo.html" class="ro-btn ro-btn--outline" style="display:none; margin-top:8px;">Switch Role →</a>
+  </div>
+  <script>
+    function checkMobileWarning() {
+      var warning = document.getElementById('mobile-office-warning');
+      if (!warning) return;
+      var shell = document.querySelector('.ro-shell');
+      if (window.innerWidth <= 480) {
+        warning.style.display = 'flex';
+        if (shell) shell.style.display = 'none';
+      } else {
+        warning.style.display = 'none';
+        if (shell) shell.style.display = '';
+      }
+    }
+    window.addEventListener('resize', checkMobileWarning);
+    document.addEventListener('DOMContentLoaded', function() {
+      checkMobileWarning();
+      fetch('/api/auth/me').then(function(r) { return r.json(); }).then(function(u) {
+        var link = document.getElementById('mobile-warning-link');
+        if (link && u.demoMode) link.style.display = '';
+      }).catch(function() {});
+    });
+  </script>
   <div class="ro-shell" id="app-shell">
     <!-- Sidebar -->
     <aside class="ro-sidebar">
