@@ -20,11 +20,6 @@ function hideLoader(containerId) {
   el.innerHTML = '';
 }
 
-function fallbackIsDevMode() {
-  const host = window.location.hostname;
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-}
-
 // Status display helpers
 function statusLabel(status) {
   const labels = {
@@ -76,7 +71,7 @@ async function loadTenantConfig() {
   if (orgInitials) orgInitials.textContent = tenantConfig.orgInitials;
   const headerTitle = document.getElementById('header-title');
   if (headerTitle) headerTitle.textContent = tenantConfig.orgName + ' Operations Console';
-  const wrappedTitle = document.getElementById('dart-wrapped-title');
+  const wrappedTitle = document.getElementById('ro-wrapped-title');
   if (wrappedTitle) wrappedTitle.textContent = tenantConfig.orgShortName + ' Wrapped';
 }
 
@@ -86,6 +81,10 @@ async function checkAuth() {
     const res = await fetch('/api/auth/me');
     if (!res.ok) { window.location.href = '/login'; return false; }
     currentUser = await res.json();
+    if (!currentUser.demoMode && currentUser.role !== 'office') {
+      window.location.href = currentUser.role === 'driver' ? '/driver.html' : '/rider.html';
+      return false;
+    }
     return true;
   } catch { window.location.href = '/login'; return false; }
 }
@@ -164,7 +163,7 @@ function filterAdminUsers() {
   const countEl = document.getElementById('admin-user-filter-count');
   const q = (input?.value || '').trim().toLowerCase();
   filteredAdminUsers = q
-    ? adminUsers.filter(u => [u.name, u.username, u.email, u.phone, u.usc_id, u.role]
+    ? adminUsers.filter(u => [u.name, u.username, u.email, u.phone, u.member_id, u.role]
         .some(f => (f || '').toLowerCase().includes(q)))
     : adminUsers;
   renderAdminUsers(filteredAdminUsers);
@@ -184,7 +183,7 @@ function renderAdminUsers(users) {
       </td>
       <td>${u.username || ''}</td>
       <td><span class="role-badge role-${u.role}">${u.role}</span></td>
-      <td>${u.usc_id || ''}</td>
+      <td>${u.member_id || ''}</td>
       <td>${u.phone || ''}</td>
       <td></td>
       <td><i class="ti ti-chevron-right admin-chevron"></i></td>
@@ -299,7 +298,7 @@ async function openAdminDrawer(userId, scrollTo) {
     html += `<div class="drawer-section" id="drawer-details-view">
       <div class="drawer-section-title">Details</div>
       <div class="drawer-field"><div class="drawer-field-label">Email</div><div class="drawer-field-value">${user.email || '—'}</div></div>
-      <div class="drawer-field"><div class="drawer-field-label">USC ID</div><div class="drawer-field-value">${user.usc_id || '—'}</div></div>
+      <div class="drawer-field"><div class="drawer-field-label">${tenantConfig?.idFieldLabel || 'Member ID'}</div><div class="drawer-field-value">${user.member_id || '—'}</div></div>
       <div class="drawer-field"><div class="drawer-field-label">Phone</div><div class="drawer-field-value">${user.phone || '—'}</div></div>
       ${user.role === 'driver' ? `<div class="drawer-field"><div class="drawer-field-label">Status</div><div class="drawer-field-value">${user.active ? '<span style="color:#28a745; font-weight:700;">Clocked In</span>' : '<span style="color:#dc3545;">Clocked Out</span>'}</div></div>` : ''}
       <button class="btn secondary small" id="drawer-edit-toggle" style="margin-top:4px;">Edit</button>
@@ -311,7 +310,7 @@ async function openAdminDrawer(userId, scrollTo) {
       <label>Name<input type="text" id="drawer-edit-name" value="${user.name || ''}"></label>
       <label>Email<input type="email" id="drawer-edit-email" value="${user.email || ''}"></label>
       <label>Phone<input type="tel" id="drawer-edit-phone" value="${user.phone || ''}"></label>
-      <label>USC ID<input type="text" id="drawer-edit-uscid" value="${user.usc_id || ''}" maxlength="10"></label>
+      <label>${tenantConfig?.idFieldLabel || 'Member ID'}<input type="text" id="drawer-edit-memberid" value="${user.member_id || ''}"${tenantConfig?.idFieldMaxLength ? ` maxlength="${tenantConfig.idFieldMaxLength}"` : ''}></label>
       <label>Role
         <select id="drawer-edit-role">
           <option value="rider" ${user.role === 'rider' ? 'selected' : ''}>rider</option>
@@ -414,7 +413,7 @@ async function openAdminDrawer(userId, scrollTo) {
         name: body.querySelector('#drawer-edit-name').value.trim(),
         email: body.querySelector('#drawer-edit-email').value.trim(),
         phone: body.querySelector('#drawer-edit-phone').value.trim(),
-        uscId: body.querySelector('#drawer-edit-uscid').value.trim(),
+        uscId: body.querySelector('#drawer-edit-memberid').value.trim(),
         role: body.querySelector('#drawer-edit-role').value
       };
       try {
@@ -502,9 +501,9 @@ function showEditUserModal(user) {
     <div class="modal-box">
       <h3>Edit User: ${user.name || user.username}</h3>
       <label>Name<input type="text" id="edit-user-name" value="${user.name || ''}"></label>
-      <label>USC Email<input type="email" id="edit-user-email" value="${user.email || ''}"></label>
+      <label>Email<input type="email" id="edit-user-email" value="${user.email || ''}"></label>
       <label>Phone<input type="tel" id="edit-user-phone" value="${user.phone || ''}"></label>
-      <label>USC ID<input type="text" id="edit-user-uscid" value="${user.usc_id || ''}" maxlength="10"></label>
+      <label>${tenantConfig?.idFieldLabel || 'Member ID'}<input type="text" id="edit-user-memberid" value="${user.member_id || ''}"${tenantConfig?.idFieldMaxLength ? ` maxlength="${tenantConfig.idFieldMaxLength}"` : ''}></label>
       <label>Role
         <select id="edit-user-role">
           <option value="rider" ${user.role === 'rider' ? 'selected' : ''}>rider</option>
@@ -534,7 +533,7 @@ function showEditUserModal(user) {
       name: overlay.querySelector('#edit-user-name').value.trim(),
       email: overlay.querySelector('#edit-user-email').value.trim(),
       phone: overlay.querySelector('#edit-user-phone').value.trim(),
-      uscId: overlay.querySelector('#edit-user-uscid').value.trim(),
+      uscId: overlay.querySelector('#edit-user-memberid').value.trim(),
       role: overlay.querySelector('#edit-user-role').value
     };
     try {
@@ -659,33 +658,38 @@ async function deleteUser(id) {
 
 async function createAdminUser() {
   const name = document.getElementById('admin-new-name')?.value.trim();
+  const username = document.getElementById('admin-new-username')?.value.trim();
   const email = document.getElementById('admin-new-email')?.value.trim();
   const phone = document.getElementById('admin-new-phone')?.value.trim();
-  const uscId = document.getElementById('admin-new-uscid')?.value.trim();
+  const uscId = document.getElementById('admin-new-memberid')?.value.trim();
   const role = document.getElementById('admin-new-role')?.value;
   const password = document.getElementById('admin-new-password')?.value;
   const msg = document.getElementById('admin-create-message');
   if (msg) msg.textContent = '';
-  if (!name || !email || !uscId || !role || !password) {
+  if (!name || !username || !email || !uscId || !role || !password) {
     if (msg) msg.textContent = 'All required fields must be filled.';
     return;
   }
-  if (!/^[0-9]{10}$/.test(uscId)) {
-    if (msg) msg.textContent = 'USC ID must be 10 digits.';
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    if (msg) msg.textContent = 'Username may only contain letters, numbers, and underscores.';
+    return;
+  }
+  if (!uscId) {
+    if (msg) msg.textContent = `${tenantConfig?.idFieldLabel || 'Member ID'} is required.`;
     return;
   }
   try {
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, phone, uscId, role, password })
+      body: JSON.stringify({ name, username, email, phone, uscId, role, password })
     });
     const data = await res.json();
     if (!res.ok) {
       if (msg) msg.textContent = data.error || 'Could not create user';
       return;
     }
-    ['admin-new-name','admin-new-email','admin-new-phone','admin-new-uscid','admin-new-password'].forEach(id => {
+    ['admin-new-name','admin-new-username','admin-new-email','admin-new-phone','admin-new-memberid','admin-new-password'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -815,10 +819,20 @@ function initShiftCalendar() {
     eventDrop: onShiftEventDrop,
     eventResize: onShiftEventResize,
     eventDidMount: onShiftEventMount,
-    eventColor: 'var(--color-primary)',
   });
   shiftCalendar.render();
 }
+
+const DRIVER_COLORS = [
+  '#4682B4', // SteelBlue
+  '#2E8B57', // SeaGreen
+  '#8B4513', // SaddleBrown
+  '#6A5ACD', // SlateBlue
+  '#CD853F', // Peru
+  '#20B2AA', // LightSeaTeal
+  '#B8860B', // DarkGoldenrod
+  '#9932CC', // DarkOrchid
+];
 
 function getShiftCalendarEvents() {
   const events = [];
@@ -832,6 +846,8 @@ function getShiftCalendarEvents() {
   shifts.forEach(s => {
     const emp = employees.find(e => e.id === s.employeeId);
     const name = emp?.name || 'Unknown';
+    const employeeIndex = employees.findIndex(e => e.id === s.employeeId);
+    const color = employeeIndex >= 0 ? DRIVER_COLORS[employeeIndex % DRIVER_COLORS.length] : '#94A3B8';
     // Map dayOfWeek (0=Mon) to date
     const eventDate = new Date(monday);
     eventDate.setDate(monday.getDate() + s.dayOfWeek);
@@ -841,7 +857,8 @@ function getShiftCalendarEvents() {
       title: name,
       start: `${dateStr}T${s.startTime}`,
       end: `${dateStr}T${s.endTime}`,
-      color: emp?.active ? '#4682B4' : '#94A3B8',
+      backgroundColor: color,
+      borderColor: color,
       extendedProps: { shiftId: s.id, employeeId: s.employeeId, notes: s.notes || '' }
     });
   });
@@ -1323,39 +1340,72 @@ function renderProfilePanel(data) {
     return;
   }
   const { user, upcoming = [], past = [] } = data;
-  const upcomingList = upcoming.slice(0, 5).map(renderProfileRide).join('') || '<p class="small-text">None.</p>';
-  const pastList = past.slice(0, 5).map(renderProfileRide).join('') || '<p class="small-text">None.</p>';
+  const upcomingList = upcoming.slice(0, 5).map(renderProfileRide).join('') || '<p class="text-sm text-muted">None.</p>';
+  const pastList = past.slice(0, 5).map(renderProfileRide).join('') || '<p class="text-sm text-muted">None.</p>';
   const isSelf = user.id === currentUser.id;
   const passwordSection = isSelf ? `
-    <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); max-width:500px;">
-      <h4>Change Password</h4>
-      <label>Current Password<input type="password" id="profile-pw-current"></label>
-      <label>New Password (min 8 chars)<input type="password" id="profile-pw-new"></label>
-      <label>Confirm New Password<input type="password" id="profile-pw-confirm"></label>
-      <button class="btn secondary" id="profile-pw-btn">Update Password</button>
-      <div id="profile-pw-message" class="small-text" style="margin-top:8px;"></div>
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--color-border);">
+    <div class="ro-section__title" style="margin-bottom:16px;">Change Password</div>
+    <div class="mb-16">
+      <label class="ro-label">Current Password</label>
+      <input type="password" class="ro-input" id="profile-pw-current">
     </div>
+    <div class="mb-16">
+      <label class="ro-label">New Password (min 8 chars)</label>
+      <input type="password" class="ro-input" id="profile-pw-new">
+    </div>
+    <div class="mb-16">
+      <label class="ro-label">Confirm New Password</label>
+      <input type="password" class="ro-input" id="profile-pw-confirm">
+    </div>
+    <button class="ro-btn ro-btn--outline" id="profile-pw-btn">Update Password</button>
+    <div id="profile-pw-message" class="text-sm text-muted" style="margin-top:8px;"></div>
   ` : '';
+
+  const ridesSection = user.role !== 'office' ? `
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--color-border);">
+    <div class="ro-section__title" style="margin-bottom:12px;">Upcoming Rides</div>
+    ${upcomingList}
+    <div class="ro-section__title" style="margin-top:20px; margin-bottom:12px;">Recent Rides</div>
+    ${pastList}
+  ` : '';
+
   content.innerHTML = `
-    <div class="profile-block">
-      <div><strong>${user.name || ''}</strong> (${user.role})</div>
-      <div class="small-text">Username: ${user.username || ''}</div>
-      <div class="small-text">USC Email: ${user.email || ''}</div>
-      <div class="small-text">USC ID: ${user.usc_id || ''}</div>
-      <div class="small-text">Phone: ${user.phone || ''}</div>
+    <div class="ro-section__header">
+      <div>
+        <div class="ro-section__title">My Profile</div>
+        <div class="ro-section__subtitle">Your account information</div>
+      </div>
+      <button class="ro-btn ro-btn--primary" onclick="renderProfileEdit()"><i class="ti ti-edit"></i> Edit</button>
     </div>
-    <div class="flex-row" style="gap:12px; margin:10px 0;">
-      <button class="btn primary" onclick="renderProfileEdit()">Edit Name/Phone</button>
+    <div style="max-width: 480px;">
+      <div class="mb-16">
+        <label class="ro-label">Full Name</label>
+        <input type="text" class="ro-input" value="${user.name || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Username</label>
+        <input type="text" class="ro-input" value="${user.username || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Email</label>
+        <input type="email" class="ro-input" value="${user.email || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">${tenantConfig?.idFieldLabel || 'Member ID'}</label>
+        <input type="text" class="ro-input" value="${user.member_id || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Phone</label>
+        <input type="tel" class="ro-input" value="${user.phone || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Role</label>
+        <input type="text" class="ro-input" value="${user.role || ''}" readonly style="text-transform: capitalize;">
+      </div>
+      ${ridesSection}
+      ${passwordSection}
     </div>
-    ${user.role !== 'office' ? `<div>
-      <h4>Upcoming Rides</h4>
-      ${upcomingList}
-    </div>
-    <div>
-      <h4>Recent Rides</h4>
-      ${pastList}
-    </div>` : ''}
-    ${passwordSection}
   `;
   if (isSelf) {
     const pwBtn = content.querySelector('#profile-pw-btn');
@@ -1366,9 +1416,9 @@ function renderProfilePanel(data) {
       const currentPassword = content.querySelector('#profile-pw-current').value;
       const newPassword = content.querySelector('#profile-pw-new').value;
       const confirm = content.querySelector('#profile-pw-confirm').value;
-      if (!currentPassword || !newPassword || !confirm) { msg.textContent = 'All fields are required.'; msg.style.color = '#c62828'; return; }
-      if (newPassword.length < 8) { msg.textContent = 'New password must be at least 8 characters.'; msg.style.color = '#c62828'; return; }
-      if (newPassword !== confirm) { msg.textContent = 'Passwords do not match.'; msg.style.color = '#c62828'; return; }
+      if (!currentPassword || !newPassword || !confirm) { msg.textContent = 'All fields are required.'; msg.style.color = 'var(--color-danger)'; return; }
+      if (newPassword.length < 8) { msg.textContent = 'New password must be at least 8 characters.'; msg.style.color = 'var(--color-danger)'; return; }
+      if (newPassword !== confirm) { msg.textContent = 'Passwords do not match.'; msg.style.color = 'var(--color-danger)'; return; }
       try {
         const res = await fetch('/api/auth/change-password', {
           method: 'POST',
@@ -1376,21 +1426,21 @@ function renderProfilePanel(data) {
           body: JSON.stringify({ currentPassword, newPassword })
         });
         const data = await res.json();
-        if (!res.ok) { msg.textContent = data.error || 'Failed to change password'; msg.style.color = '#c62828'; return; }
+        if (!res.ok) { msg.textContent = data.error || 'Failed to change password'; msg.style.color = 'var(--color-danger)'; return; }
         msg.textContent = 'Password updated successfully!';
-        msg.style.color = '#228b22';
+        msg.style.color = 'var(--color-success)';
         content.querySelector('#profile-pw-current').value = '';
         content.querySelector('#profile-pw-new').value = '';
         content.querySelector('#profile-pw-confirm').value = '';
-      } catch { msg.textContent = 'Connection error'; msg.style.color = '#c62828'; }
+      } catch { msg.textContent = 'Connection error'; msg.style.color = 'var(--color-danger)'; }
     };
   }
 }
 
 function renderProfileRide(ride) {
-  return `<div class="item">
+  return `<div style="padding:8px 0; border-bottom:1px solid var(--color-border);">
     <div>${statusBadge(ride.status)} ${ride.pickupLocation} → ${ride.dropoffLocation}</div>
-    <div class="small-text">${formatDate(ride.requestedTime)}</div>
+    <div class="text-sm text-muted" style="margin-top:2px;">${formatDate(ride.requestedTime)}</div>
   </div>`;
 }
 
@@ -1398,16 +1448,28 @@ function renderProfileEdit() {
   if (!selectedAdminUser) return;
   const content = document.getElementById('admin-profile-content');
   content.innerHTML = `
-    <div class="profile-block">
-      <label>Name <input type="text" id="admin-profile-name" value="${selectedAdminUser.name || ''}"></label>
-      <label>Phone <input type="tel" id="admin-profile-phone" value="${selectedAdminUser.phone || ''}"></label>
-      <div class="small-text">USC Email: ${selectedAdminUser.email || ''} | Username: ${selectedAdminUser.username}</div>
+    <div class="ro-section__header">
+      <div>
+        <div class="ro-section__title">Edit Profile</div>
+        <div class="ro-section__subtitle">Update your name and phone number</div>
+      </div>
     </div>
-    <div class="flex-row" style="gap:8px; margin-top:8px;">
-      <button class="btn primary" onclick="saveAdminProfile('${selectedAdminUser.id}')">Save</button>
-      <button class="btn secondary" onclick="loadUserProfile('${selectedAdminUser.id}')">Cancel</button>
+    <div style="max-width: 480px;">
+      <div class="mb-16">
+        <label class="ro-label">Name</label>
+        <input type="text" class="ro-input" id="admin-profile-name" value="${selectedAdminUser.name || ''}">
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Phone</label>
+        <input type="tel" class="ro-input" id="admin-profile-phone" value="${selectedAdminUser.phone || ''}" placeholder="(213) 555-0000">
+      </div>
+      <div class="text-sm text-muted" style="margin-bottom:16px;">Email: ${selectedAdminUser.email || ''} · Username: ${selectedAdminUser.username}</div>
+      <div style="display:flex; gap:8px;">
+        <button class="ro-btn ro-btn--primary" onclick="saveAdminProfile('${selectedAdminUser.id}')">Save Changes</button>
+        <button class="ro-btn ro-btn--outline" onclick="loadUserProfile('${selectedAdminUser.id}')">Cancel</button>
+      </div>
+      <div id="admin-profile-message" class="text-sm text-muted" style="margin-top:8px;"></div>
     </div>
-    <div id="admin-profile-message" class="small-text"></div>
   `;
 }
 
@@ -2315,46 +2377,6 @@ function buildGraceInfo(ride) {
   return { message, canNoShow };
 }
 
-// ----- Forms -----
-async function initForms() {
-  // Dev: Load sample rides button
-  const sampleCard = document.getElementById('sample-rides-card');
-  const loadSampleBtn = document.getElementById('load-sample-rides');
-  if (loadSampleBtn) {
-    const isDev = typeof window.resolveDevMode === 'function'
-      ? await window.resolveDevMode()
-      : fallbackIsDevMode();
-
-    if (sampleCard) {
-      sampleCard.hidden = !isDev;
-      sampleCard.setAttribute('aria-hidden', String(!isDev));
-    }
-    loadSampleBtn.disabled = !isDev;
-
-    loadSampleBtn.addEventListener('click', async () => {
-      const allowed = typeof window.resolveDevMode === 'function'
-        ? await window.resolveDevMode()
-        : fallbackIsDevMode();
-      if (!allowed) {
-        showToast('Sample ride loading is only available in local development.', 'warning');
-        return;
-      }
-
-      const res = await fetch('/api/dev/seed-rides', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Could not load sample rides', 'error');
-        return;
-      }
-      showToast(data.message || 'Sample rides loaded', 'success');
-      await loadRides();
-    });
-  } else if (sampleCard) {
-    sampleCard.hidden = true;
-    sampleCard.setAttribute('aria-hidden', 'true');
-  }
-}
-
 // ----- Helpers -----
 function toLADate(input) {
   var d = input instanceof Date ? input : new Date(input);
@@ -2508,11 +2530,13 @@ function showRulesModal() {
     <div class="modal-box" style="max-width:600px;">
       <div class="modal-title">Program Rules &amp; Guidelines</div>
       <ul style="padding-left:20px; line-height:1.8; color:var(--muted); font-size:14px;">
-        <li>${tenantConfig?.orgShortName || 'DART'} is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am\u20137:00pm, Monday\u2013Friday.</li>
-        <li>${tenantConfig?.orgShortName || 'DART'} vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.</li>
-        <li>Riders must be able to independently get in and out of a standard golf cart. Drivers cannot assist with lifting/carrying medical equipment (crutches, wheelchairs, etc.). A wheelchair-accessible golf cart is available upon request.</li>
-        <li>Due to high demand, drivers cannot wait more than five (5) minutes past a scheduled pick-up time. After that grace period, they may leave to continue other assignments.</li>
-        <li>Service is automatically terminated after five (5) consecutive missed pick-ups.</li>
+        ${(tenantConfig?.rules || [
+          'This is a free accessible transportation service available during operating hours, Monday\u2013Friday.',
+          'Vehicles cannot leave campus grounds.',
+          'Riders must be present at the designated pickup location at the requested time.',
+          'Drivers will wait up to 5 minutes (grace period). After that, the ride may be marked as a no-show.',
+          'Service is automatically terminated after 5 consecutive missed pick-ups.'
+        ]).map(r => `<li>${r}</li>`).join('')}
       </ul>
       <div class="modal-actions">
         <button class="btn primary modal-close-btn">Close</button>
@@ -2665,9 +2689,8 @@ function renderHotspotList(containerId, items, colorClass, unit) {
 function getKpiColorClass(label, value) {
   const num = parseFloat(value);
   if (label === 'Completion Rate') {
-    if (num >= 70) return 'kpi-card--good';
-    if (num >= 40) return 'kpi-card--warning';
-    return 'kpi-card--danger';
+    if (num >= 80) return 'kpi-card--good';
+    return 'kpi-card--neutral';
   }
   if (label === 'No-Shows') {
     if (num === 0) return 'kpi-card--good';
@@ -2720,10 +2743,10 @@ function renderVehicleCards(vehicles) {
       actionButtons = `<button class="btn secondary small" onclick="reactivateVehicle('${v.id}', '${escapedName}')">Reactivate</button>`;
     } else if (v.rideCount > 0) {
       actionButtons = `<button class="btn secondary small" onclick="logVehicleMaintenance('${v.id}')">Log Maintenance</button>
-        <button class="btn secondary small" onclick="retireVehicle('${v.id}', '${escapedName}')">Retire</button>`;
+        <button class="btn secondary small" title="Mark this vehicle as no longer in service. History is preserved." onclick="retireVehicle('${v.id}', '${escapedName}')">Retire</button>`;
     } else {
       actionButtons = `<button class="btn secondary small" onclick="logVehicleMaintenance('${v.id}')">Log Maintenance</button>
-        <button class="btn danger small" onclick="deleteVehicle('${v.id}', '${escapedName}')">Delete</button>`;
+        <button class="btn danger small" title="Permanently remove this vehicle from the system. Use only if the vehicle was entered in error." onclick="deleteVehicle('${v.id}', '${escapedName}')">Delete</button>`;
     }
     return `<div class="vehicle-card${overdueClass}${retiredClass}">
       <div class="vehicle-name">${v.name}${retiredBadge}</div>
@@ -2745,7 +2768,7 @@ function renderMilestoneList(containerId, people, type) {
     container.innerHTML = `<div class="ro-empty"><i class="ti ti-trophy-off"></i><div class="ro-empty__title">No ${type} data</div><div class="ro-empty__message">No completed rides yet.</div></div>`;
     return;
   }
-  const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: (tenantConfig?.orgShortName || 'DART') + ' Legend', 1000: 'Diamond' };
+  const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: (tenantConfig?.orgShortName || 'RideOps') + ' Legend', 1000: 'Diamond' };
   const badgeIcons = { 50: '\u{1F31F}', 100: '\u2B50', 250: '\u{1F3C6}', 500: '\u{1F451}', 1000: '\u{1F48E}' };
   container.innerHTML = '<div class="milestone-list">' + people.map(p => {
     const badges = [50, 100, 250, 500, 1000].map(m => {
@@ -2783,7 +2806,7 @@ function renderSemesterReport(data) {
   if (data.monthlyBreakdown && data.monthlyBreakdown.length) {
     monthlyTable = `<h4 style="margin-top:16px;">Monthly Breakdown</h4>
     <table class="grid-table"><thead><tr><th>Month</th><th>Completed</th><th>Total</th><th>Riders</th></tr></thead><tbody>
-    ${data.monthlyBreakdown.map(m => `<tr><td>${m.month}</td><td>${m.completed}</td><td>${m.total}</td><td>${m.riders}</td></tr>`).join('')}
+    ${data.monthlyBreakdown.map(m => `<tr><td>${new Date(m.month + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td><td>${m.completed}</td><td>${m.total}</td><td>${m.riders}</td></tr>`).join('')}
     </tbody></table>`;
   }
 
@@ -2804,20 +2827,20 @@ function renderSemesterReport(data) {
     ${leaderboard}
   `;
 
-  // DART Wrapped
-  const wrapped = document.getElementById('dart-wrapped-content');
+  // RideOps Wrapped
+  const wrapped = document.getElementById('ro-wrapped-content');
   if (wrapped) {
     const c = data.current;
     const mvp = data.driverLeaderboard?.[0];
     if (c.completedRides === 0) {
-      wrapped.innerHTML = `<div class="dart-wrapped">
+      wrapped.innerHTML = `<div class="ro-wrapped">
         <div class="wrapped-big">\u{1F680} 0 Rides</div>
-        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'DART'} has not yet completed any rides this semester.</div>
+        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'RideOps'} has not yet completed any rides this semester.</div>
       </div>`;
     } else {
-      wrapped.innerHTML = `<div class="dart-wrapped">
+      wrapped.innerHTML = `<div class="ro-wrapped">
         <div class="wrapped-big">\u{1F389} ${c.completedRides} Rides</div>
-        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'DART'} completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
+        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'RideOps'} completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
         ${mvp ? `<div class="wrapped-line">MVP Driver: <strong>${mvp.name}</strong> with <strong>${mvp.completed}</strong> completed rides</div>` : ''}
         <div class="wrapped-line">Completion Rate: <strong>${c.completionRate}%</strong></div>
       </div>`;
@@ -2946,27 +2969,44 @@ async function loadAllAnalytics() {
   ]);
 }
 
-async function logVehicleMaintenance(vehicleId) {
-  const confirmed = await showConfirmModal({
+function logVehicleMaintenance(vehicleId) {
+  const formHtml =
+    '<div style="margin-bottom:12px;">' +
+    '<label class="ro-label">What was serviced? <span style="color:var(--status-no-show)">*</span></label>' +
+    '<textarea class="ro-input" id="maintenance-notes" rows="3" placeholder="e.g. Oil change, brake inspection, tire rotation..."></textarea>' +
+    '</div>' +
+    '<div>' +
+    '<label class="ro-label">Mileage at service (optional)</label>' +
+    '<input type="number" class="ro-input" id="maintenance-mileage" placeholder="e.g. 12450">' +
+    '</div>';
+  showModalNew({
     title: 'Log Maintenance',
-    message: 'Mark this vehicle as maintained today?',
+    body: formHtml,
     confirmLabel: 'Log Maintenance',
-    cancelLabel: 'Cancel',
-    type: 'warning'
+    confirmClass: 'ro-btn--primary',
+    onConfirm: async function() {
+      const notes = document.getElementById('maintenance-notes')?.value?.trim();
+      const mileage = document.getElementById('maintenance-mileage')?.value?.trim();
+      if (!notes) {
+        showToast('Please describe what was serviced', 'error');
+        return;
+      }
+      const payload = { notes };
+      if (mileage) payload.mileage = Number(mileage);
+      const res = await fetch(`/api/vehicles/${vehicleId}/maintenance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error || 'Failed to log maintenance', 'error');
+      } else {
+        showToast('Maintenance logged', 'success');
+        loadFleetVehicles();
+      }
+    }
   });
-  if (!confirmed) return;
-  const res = await fetch(`/api/vehicles/${vehicleId}/maintenance`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    showToast(err.error || 'Failed to log maintenance', 'error');
-  } else {
-    showToast('Maintenance logged', 'success');
-    loadFleetVehicles();
-  }
 }
 
 async function deleteVehicle(vehicleId, vehicleName) {
@@ -3005,6 +3045,20 @@ async function retireVehicle(vehicleId, vehicleName) {
     showToast('Vehicle retired', 'success');
     loadFleetVehicles();
   }
+}
+
+function showFleetStatusInfo() {
+  showModalNew({
+    title: 'Vehicle Statuses',
+    body: '<div style="font-size:13px; line-height:1.7;">' +
+      '<strong>Active</strong> — in service and available for assignment.<br>' +
+      '<strong>Retired</strong> — removed from service, ride history preserved.<br>' +
+      '<strong>Maintenance</strong> — temporarily unavailable for assignment.<br><br>' +
+      'Use <strong>Delete</strong> only to remove incorrectly entered vehicles.' +
+      '</div>',
+    confirmLabel: 'Got it',
+    confirmClass: 'ro-btn--primary',
+  });
 }
 
 async function reactivateVehicle(vehicleId, vehicleName) {
@@ -3118,7 +3172,7 @@ function exportSemesterCSV() {
   if (d.driverLeaderboard) {
     d.driverLeaderboard.forEach(dr => rows.push([dr.name, dr.completed, '']));
   }
-  downloadCSV(headers, rows, `dart-report-${d.semesterLabel.replace(/\s/g, '-').toLowerCase()}.csv`);
+  downloadCSV(headers, rows, `rideops-report-${d.semesterLabel.replace(/\s/g, '-').toLowerCase()}.csv`);
   showToast('CSV downloaded', 'success');
 }
 
@@ -3144,7 +3198,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Navigation is initialized via rideops-utils.js initSidebar() + initSubTabs() in index.html
-  await initForms();
 
   // Ride filter pills
   document.querySelectorAll('#rides-filter-bar .filter-pill[data-ride-status]').forEach(pill => {

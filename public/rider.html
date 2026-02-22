@@ -9,7 +9,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="/css/rideops-theme.css">
   <script src="/js/rideops-utils.js"></script>
-  <script src="/usc_building_options.js"></script>
+  <script src="/demo-config.js"></script>
+  <!-- Locations loaded dynamically from /api/locations -->
   <style>
     body { padding-bottom: 56px; }
     .rider-header { position: sticky; top: 0; z-index: 20; height: 48px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
@@ -87,7 +88,7 @@
       <!-- Step 1: Where -->
       <div class="step active" id="step-1">
         <h3 style="font-size:16px; font-weight:700; margin:0 0 4px;">Where are you going?</h3>
-        <p class="text-muted text-sm mb-16">USC campus locations only.</p>
+        <p class="text-muted text-sm mb-16" id="service-scope-text">Campus locations only.</p>
         <div style="margin-bottom:12px;">
           <label class="ro-label">From</label>
           <select id="pickup-location" class="ro-select"><option value="">Select pickup</option></select>
@@ -96,7 +97,7 @@
           <label class="ro-label">To</label>
           <select id="dropoff-location" class="ro-select"><option value="">Select dropoff</option></select>
         </div>
-        <button class="ro-btn ro-btn--primary ro-btn--full" id="step1-next" disabled>NEXT <i class="ti ti-arrow-right"></i></button>
+        <button class="ro-btn ro-btn--primary ro-btn--full" id="step1-next">NEXT <i class="ti ti-arrow-right"></i></button>
       </div>
 
       <!-- Step 2: When -->
@@ -178,7 +179,11 @@
     // ── Init ──
     async function init() {
       var me = await fetchMe();
-      if (!me || me.role !== 'rider') { window.location.href = '/login.html'; return; }
+      if (!me) { window.location.href = '/login.html'; return; }
+      if (!me.demoMode && me.role !== 'rider') {
+        window.location.href = me.role === 'office' ? '/' : '/driver.html';
+        return;
+      }
       meUser = me;
       applyTenantTheme();
       initBottomTabs();
@@ -234,13 +239,24 @@
       var step2Next = document.getElementById('step2-next');
       var rideTime = document.getElementById('ride-time');
 
-      function checkStep1() {
-        step1Next.disabled = !(pickupSel.value && dropoffSel.value);
-      }
-      pickupSel.onchange = checkStep1;
-      dropoffSel.onchange = checkStep1;
+      pickupSel.onchange = function() { pickupSel.style.borderColor = ''; };
+      dropoffSel.onchange = function() { dropoffSel.style.borderColor = ''; };
 
-      step1Next.onclick = function() { goToStep(2); };
+      step1Next.onclick = function() {
+        if (!pickupSel.value) {
+          pickupSel.style.borderColor = 'var(--status-no-show)';
+          showToastNew('Please select a pickup location', 'error');
+          return;
+        }
+        if (!dropoffSel.value) {
+          dropoffSel.style.borderColor = 'var(--status-no-show)';
+          showToastNew('Please select a dropoff location', 'error');
+          return;
+        }
+        pickupSel.style.borderColor = '';
+        dropoffSel.style.borderColor = '';
+        goToStep(2);
+      };
       document.getElementById('step2-back').onclick = function() { goToStep(1); };
       document.getElementById('step3-back').onclick = function() { goToStep(2); };
 
@@ -375,7 +391,6 @@
         document.getElementById('notes').value = '';
         selectedDate = null;
         document.querySelectorAll('#date-chips .filter-pill').forEach(function(p) { p.classList.remove('active'); });
-        document.getElementById('step1-next').disabled = true;
         goToStep(1);
         // Switch to My Rides
         switchToTab('myrides-panel');
@@ -411,8 +426,12 @@
     }
 
     function autoSwitchToActiveRide() {
-      var active = allRides.filter(function(r) { return isActiveStatus(r.status); });
-      if (active.length > 0) switchToTab('myrides-panel');
+      var hasActiveRide = allRides.some(function(r) { return isActiveStatus(r.status); });
+      if (hasActiveRide) {
+        switchToTab('myrides-panel');
+      } else {
+        switchToTab('book-panel');
+      }
     }
 
     function switchToTab(targetId) {
@@ -706,7 +725,7 @@
       // Profile fields
       html += '<div class="drawer-section">';
       html += '<div class="drawer-section-title">Profile</div>';
-      html += '<div style="margin-bottom:8px;"><label class="ro-label">USC ID</label><input type="text" class="ro-input" id="drawer-uscid" readonly></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label" id="drawer-memberid-label">Member ID</label><input type="text" class="ro-input" id="drawer-memberid" readonly></div>';
       html += '<div style="margin-bottom:8px;"><label class="ro-label">Email</label><input type="text" class="ro-input" id="drawer-email" readonly></div>';
       html += '<div style="margin-bottom:8px;"><label class="ro-label">Full Name</label><input type="text" class="ro-input" id="drawer-name"></div>';
       html += '<div style="margin-bottom:8px;"><label class="ro-label">Phone</label><input type="tel" class="ro-input" id="drawer-phone"></div>';
@@ -732,7 +751,7 @@
       setTimeout(function() {
         fetch('/api/me').then(function(r) { return r.json(); }).then(function(p) {
           var el;
-          el = document.getElementById('drawer-uscid'); if (el) el.value = p.usc_id || '';
+          el = document.getElementById('drawer-memberid'); if (el) el.value = p.member_id || '';
           el = document.getElementById('drawer-email'); if (el) el.value = p.email || '';
           el = document.getElementById('drawer-name'); if (el) el.value = p.name || '';
           el = document.getElementById('drawer-phone'); if (el) el.value = p.phone || '';

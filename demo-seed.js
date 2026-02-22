@@ -1,6 +1,7 @@
 // Demo data seeding script for DEMO_MODE
 // Exports seedDemoData(pool) — truncates transactional tables and seeds realistic sample data.
 // Users table is NOT touched — default users are seeded by server.js initDb().
+// Location names match default-locations.js (generic campus locations).
 
 async function seedDemoData(pool) {
   const q = (text, params) => pool.query(text, params);
@@ -51,10 +52,10 @@ async function seedDemoData(pool) {
   }
 
   const locations = [
-    'Leavey Library', 'Tutor Hall', 'Doheny Memorial Library', 'Galen Center',
-    'USC Village', 'Fertitta Hall', 'Tommy Trojan', 'Lyon Center',
-    'Viterbi School of Engineering', 'Annenberg School', 'Bovard Auditorium',
-    'Mudd Hall of Philosophy', 'Taper Hall', 'Kaprielian Hall'
+    'Main Library', 'Student Union', 'Engineering Hall', 'Science Building',
+    'Recreation Center', 'Business School', 'Administration Building', 'Health Center',
+    'Performing Arts Center', 'Dining Hall (North)', 'Gymnasium',
+    'Campus Bookstore', 'Parking Structure A', 'Transportation Hub'
   ];
 
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -117,6 +118,22 @@ async function seedDemoData(pool) {
   const [d1a, d1b] = pickPair();
   addRide('denied', 'rider1', 'Sarah Student', 'hello+sarah@ride-ops.com', '213-555-0111', d1a, d1b, todayAt(12, 0), null, null);
 
+  // Historical completed rides (past weekdays) for analytics charts
+  for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+    const past = new Date(today);
+    past.setDate(past.getDate() - daysAgo);
+    const dayOfWeek = past.getDay(); // 0=Sun, 6=Sat
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue; // skip weekends
+    const [ha, hb] = pickPair();
+    const t = new Date(past);
+    t.setHours(9 + Math.floor(Math.random() * 6), Math.floor(Math.random() * 60), 0, 0);
+    addRide('completed', 'rider1', 'Sarah Student', 'hello+sarah@ride-ops.com', '213-555-0111', ha, hb, t.toISOString(), 'emp1', null);
+    const [ha2, hb2] = pickPair();
+    const t2 = new Date(past);
+    t2.setHours(10 + Math.floor(Math.random() * 5), Math.floor(Math.random() * 60), 0, 0);
+    addRide('completed', 'rider2', 'Tom Faculty', 'hello+tom@ride-ops.com', '213-555-0112', ha2, hb2, t2.toISOString(), 'emp2', null);
+  }
+
   // Insert rides
   for (const r of rides) {
     await q(
@@ -162,13 +179,13 @@ async function seedDemoData(pool) {
   await q(
     `INSERT INTO recurring_rides (id, rider_id, pickup_location, dropoff_location, time_of_day, days_of_week, start_date, end_date, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [generateId('rec'), 'rider1', 'Leavey Library', 'Fertitta Hall', '09:00', [1,3,5], nextMonday.toISOString().slice(0,10), endDate.toISOString().slice(0,10), 'active']
+    [generateId('rec'), 'rider1', 'Main Library', 'Business School', '09:00', [1,3,5], nextMonday.toISOString().slice(0,10), endDate.toISOString().slice(0,10), 'active']
   );
 
   await q(
     `INSERT INTO recurring_rides (id, rider_id, pickup_location, dropoff_location, time_of_day, days_of_week, start_date, end_date, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [generateId('rec'), 'rider1', 'Tutor Hall', 'Galen Center', '14:00', [2,4], nextMonday.toISOString().slice(0,10), endDate.toISOString().slice(0,10), 'active']
+    [generateId('rec'), 'rider1', 'Student Union', 'Recreation Center', '14:00', [2,4], nextMonday.toISOString().slice(0,10), endDate.toISOString().slice(0,10), 'active']
   );
 
   // Set Tom's miss count to 1 for demo visibility

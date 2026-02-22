@@ -61,7 +61,7 @@ function showModalNew(opts) {
     '</div></div>';
   document.body.appendChild(overlay);
   overlay.querySelector('[data-action="cancel"]').onclick = function() { overlay.remove(); };
-  overlay.querySelector('[data-action="confirm"]').onclick = function() { overlay.remove(); if (onConfirm) onConfirm(); };
+  overlay.querySelector('[data-action="confirm"]').onclick = function() { if (onConfirm) onConfirm(); overlay.remove(); };
   overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
 }
 
@@ -119,12 +119,12 @@ function toggleSidebar() {
   var shell = document.querySelector('.ro-shell');
   if (shell) {
     shell.classList.toggle('collapsed');
-    try { localStorage.setItem('dart-sidebar-collapsed', shell.classList.contains('collapsed') ? '1' : ''); } catch(e) {}
+    try { localStorage.setItem('ro-sidebar-collapsed', shell.classList.contains('collapsed') ? '1' : ''); } catch(e) {}
   }
 }
 function restoreSidebarState() {
   try {
-    if (localStorage.getItem('dart-sidebar-collapsed') === '1') {
+    if (localStorage.getItem('ro-sidebar-collapsed') === '1') {
       var shell = document.querySelector('.ro-shell');
       if (shell) shell.classList.add('collapsed');
     }

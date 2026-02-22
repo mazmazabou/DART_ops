@@ -52,8 +52,8 @@
         <button class="ro-btn ro-btn--primary ro-btn--full" onclick="saveProfile()" style="margin-bottom:16px;">Save Changes</button>
         <div id="profile-message" style="font-size:13px; margin-bottom:16px;"></div>
         <div style="margin-bottom:12px;">
-          <label class="ro-label" for="profile-uscid">USC ID</label>
-          <input type="text" id="profile-uscid" class="ro-input" readonly style="background:var(--color-surface-hover); color:var(--color-text-muted);">
+          <label class="ro-label" for="profile-memberid" id="profile-memberid-label">Member ID</label>
+          <input type="text" id="profile-memberid" class="ro-input" readonly style="background:var(--color-surface-hover); color:var(--color-text-muted);">
         </div>
         <div style="margin-bottom:12px;">
           <label class="ro-label" for="profile-email">Email</label>
@@ -254,7 +254,7 @@
         <span class="fw-700" style="font-size:14px;">You're Online</span>
       </div>
       ${renderVehicleSelector()}
-      <button class="ro-btn ro-btn--outline ro-btn--action ro-btn--full" onclick="toggleClock()" style="margin-bottom:24px;"><i class="ti ti-plug-off"></i> CLOCK OUT</button>
+      <button class="ro-btn ro-btn--action ro-btn--full" onclick="toggleClock()" style="background:transparent; color:var(--status-no-show); border:2px solid var(--status-no-show); margin-bottom:24px;"><i class="ti ti-plug-off"></i> CLOCK OUT</button>
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <span class="fw-700" style="font-size:15px;">Available Rides</span>
         <span class="text-xs text-muted">${availableRides.length} ${pluralize(availableRides.length, 'ride')}</span>
@@ -374,6 +374,10 @@
         const res = await fetch('/api/auth/me');
         if (!res.ok) { window.location.href = '/login'; return; }
         currentUser = await res.json();
+        if (!currentUser.demoMode && currentUser.role !== 'driver') {
+          window.location.href = currentUser.role === 'office' ? '/' : '/rider.html';
+          return;
+        }
         document.getElementById('driver-name').textContent = currentUser.name;
         applyTenantTheme();
         initBottomTabs();
@@ -406,7 +410,7 @@
       try {
         const res = await fetch('/api/me');
         const me = await res.json();
-        document.getElementById('profile-uscid').value = me.usc_id || '';
+        document.getElementById('profile-memberid').value = me.member_id || '';
         document.getElementById('profile-email').value = me.email || '';
         document.getElementById('profile-username').value = me.username || '';
         document.getElementById('profile-name').value = me.name || '';
