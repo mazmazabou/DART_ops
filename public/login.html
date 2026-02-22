@@ -80,7 +80,6 @@
         <div id="cp-message"></div>
       </div>
 
-      <div class="login-hint" data-dev-only hidden aria-hidden="true"><strong>Test accounts:</strong><br>Drivers: mazen, jason, jocelin, olivia<br>Office: office<br>Riders: sarah, tom<br>Password: dart123</div>
       <div id="signup-link">
         <a href="/signup">New rider? Create an account</a>
       </div>
@@ -89,16 +88,6 @@
   <script src="/utils.js"></script>
   <script>
     (async () => {
-      if (typeof window.applyDevOnlyVisibility === 'function') {
-        await window.applyDevOnlyVisibility(document);
-      } else {
-        const hint = document.querySelector('[data-dev-only]');
-        const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        if (hint) {
-          hint.hidden = !isDev;
-          hint.setAttribute('aria-hidden', String(!isDev));
-        }
-      }
       try {
         const res = await fetch('/api/auth/signup-allowed');
         if (res.ok) {

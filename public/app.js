@@ -20,11 +20,6 @@ function hideLoader(containerId) {
   el.innerHTML = '';
 }
 
-function fallbackIsDevMode() {
-  const host = window.location.hostname;
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-}
-
 // Status display helpers
 function statusLabel(status) {
   const labels = {
@@ -2315,46 +2310,6 @@ function buildGraceInfo(ride) {
   return { message, canNoShow };
 }
 
-// ----- Forms -----
-async function initForms() {
-  // Dev: Load sample rides button
-  const sampleCard = document.getElementById('sample-rides-card');
-  const loadSampleBtn = document.getElementById('load-sample-rides');
-  if (loadSampleBtn) {
-    const isDev = typeof window.resolveDevMode === 'function'
-      ? await window.resolveDevMode()
-      : fallbackIsDevMode();
-
-    if (sampleCard) {
-      sampleCard.hidden = !isDev;
-      sampleCard.setAttribute('aria-hidden', String(!isDev));
-    }
-    loadSampleBtn.disabled = !isDev;
-
-    loadSampleBtn.addEventListener('click', async () => {
-      const allowed = typeof window.resolveDevMode === 'function'
-        ? await window.resolveDevMode()
-        : fallbackIsDevMode();
-      if (!allowed) {
-        showToast('Sample ride loading is only available in local development.', 'warning');
-        return;
-      }
-
-      const res = await fetch('/api/dev/seed-rides', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Could not load sample rides', 'error');
-        return;
-      }
-      showToast(data.message || 'Sample rides loaded', 'success');
-      await loadRides();
-    });
-  } else if (sampleCard) {
-    sampleCard.hidden = true;
-    sampleCard.setAttribute('aria-hidden', 'true');
-  }
-}
-
 // ----- Helpers -----
 function toLADate(input) {
   var d = input instanceof Date ? input : new Date(input);
@@ -3144,7 +3099,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Navigation is initialized via rideops-utils.js initSidebar() + initSubTabs() in index.html
-  await initForms();
 
   // Ride filter pills
   document.querySelectorAll('#rides-filter-bar .filter-pill[data-ride-status]').forEach(pill => {
