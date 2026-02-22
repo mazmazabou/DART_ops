@@ -1322,39 +1322,72 @@ function renderProfilePanel(data) {
     return;
   }
   const { user, upcoming = [], past = [] } = data;
-  const upcomingList = upcoming.slice(0, 5).map(renderProfileRide).join('') || '<p class="small-text">None.</p>';
-  const pastList = past.slice(0, 5).map(renderProfileRide).join('') || '<p class="small-text">None.</p>';
+  const upcomingList = upcoming.slice(0, 5).map(renderProfileRide).join('') || '<p class="text-sm text-muted">None.</p>';
+  const pastList = past.slice(0, 5).map(renderProfileRide).join('') || '<p class="text-sm text-muted">None.</p>';
   const isSelf = user.id === currentUser.id;
   const passwordSection = isSelf ? `
-    <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); max-width:500px;">
-      <h4>Change Password</h4>
-      <label>Current Password<input type="password" id="profile-pw-current"></label>
-      <label>New Password (min 8 chars)<input type="password" id="profile-pw-new"></label>
-      <label>Confirm New Password<input type="password" id="profile-pw-confirm"></label>
-      <button class="btn secondary" id="profile-pw-btn">Update Password</button>
-      <div id="profile-pw-message" class="small-text" style="margin-top:8px;"></div>
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--color-border);">
+    <div class="ro-section__title" style="margin-bottom:16px;">Change Password</div>
+    <div class="mb-16">
+      <label class="ro-label">Current Password</label>
+      <input type="password" class="ro-input" id="profile-pw-current">
     </div>
+    <div class="mb-16">
+      <label class="ro-label">New Password (min 8 chars)</label>
+      <input type="password" class="ro-input" id="profile-pw-new">
+    </div>
+    <div class="mb-16">
+      <label class="ro-label">Confirm New Password</label>
+      <input type="password" class="ro-input" id="profile-pw-confirm">
+    </div>
+    <button class="ro-btn ro-btn--outline" id="profile-pw-btn">Update Password</button>
+    <div id="profile-pw-message" class="text-sm text-muted" style="margin-top:8px;"></div>
   ` : '';
+
+  const ridesSection = user.role !== 'office' ? `
+    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--color-border);">
+    <div class="ro-section__title" style="margin-bottom:12px;">Upcoming Rides</div>
+    ${upcomingList}
+    <div class="ro-section__title" style="margin-top:20px; margin-bottom:12px;">Recent Rides</div>
+    ${pastList}
+  ` : '';
+
   content.innerHTML = `
-    <div class="profile-block">
-      <div><strong>${user.name || ''}</strong> (${user.role})</div>
-      <div class="small-text">Username: ${user.username || ''}</div>
-      <div class="small-text">USC Email: ${user.email || ''}</div>
-      <div class="small-text">USC ID: ${user.usc_id || ''}</div>
-      <div class="small-text">Phone: ${user.phone || ''}</div>
+    <div class="ro-section__header">
+      <div>
+        <div class="ro-section__title">My Profile</div>
+        <div class="ro-section__subtitle">Your account information</div>
+      </div>
+      <button class="ro-btn ro-btn--primary" onclick="renderProfileEdit()"><i class="ti ti-edit"></i> Edit</button>
     </div>
-    <div class="flex-row" style="gap:12px; margin:10px 0;">
-      <button class="btn primary" onclick="renderProfileEdit()">Edit Name/Phone</button>
+    <div style="max-width: 480px;">
+      <div class="mb-16">
+        <label class="ro-label">Full Name</label>
+        <input type="text" class="ro-input" value="${user.name || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Username</label>
+        <input type="text" class="ro-input" value="${user.username || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Email</label>
+        <input type="email" class="ro-input" value="${user.email || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">USC ID</label>
+        <input type="text" class="ro-input" value="${user.usc_id || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Phone</label>
+        <input type="tel" class="ro-input" value="${user.phone || ''}" readonly>
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Role</label>
+        <input type="text" class="ro-input" value="${user.role || ''}" readonly style="text-transform: capitalize;">
+      </div>
+      ${ridesSection}
+      ${passwordSection}
     </div>
-    ${user.role !== 'office' ? `<div>
-      <h4>Upcoming Rides</h4>
-      ${upcomingList}
-    </div>
-    <div>
-      <h4>Recent Rides</h4>
-      ${pastList}
-    </div>` : ''}
-    ${passwordSection}
   `;
   if (isSelf) {
     const pwBtn = content.querySelector('#profile-pw-btn');
@@ -1365,9 +1398,9 @@ function renderProfilePanel(data) {
       const currentPassword = content.querySelector('#profile-pw-current').value;
       const newPassword = content.querySelector('#profile-pw-new').value;
       const confirm = content.querySelector('#profile-pw-confirm').value;
-      if (!currentPassword || !newPassword || !confirm) { msg.textContent = 'All fields are required.'; msg.style.color = '#c62828'; return; }
-      if (newPassword.length < 8) { msg.textContent = 'New password must be at least 8 characters.'; msg.style.color = '#c62828'; return; }
-      if (newPassword !== confirm) { msg.textContent = 'Passwords do not match.'; msg.style.color = '#c62828'; return; }
+      if (!currentPassword || !newPassword || !confirm) { msg.textContent = 'All fields are required.'; msg.style.color = 'var(--color-danger)'; return; }
+      if (newPassword.length < 8) { msg.textContent = 'New password must be at least 8 characters.'; msg.style.color = 'var(--color-danger)'; return; }
+      if (newPassword !== confirm) { msg.textContent = 'Passwords do not match.'; msg.style.color = 'var(--color-danger)'; return; }
       try {
         const res = await fetch('/api/auth/change-password', {
           method: 'POST',
@@ -1375,21 +1408,21 @@ function renderProfilePanel(data) {
           body: JSON.stringify({ currentPassword, newPassword })
         });
         const data = await res.json();
-        if (!res.ok) { msg.textContent = data.error || 'Failed to change password'; msg.style.color = '#c62828'; return; }
+        if (!res.ok) { msg.textContent = data.error || 'Failed to change password'; msg.style.color = 'var(--color-danger)'; return; }
         msg.textContent = 'Password updated successfully!';
-        msg.style.color = '#228b22';
+        msg.style.color = 'var(--color-success)';
         content.querySelector('#profile-pw-current').value = '';
         content.querySelector('#profile-pw-new').value = '';
         content.querySelector('#profile-pw-confirm').value = '';
-      } catch { msg.textContent = 'Connection error'; msg.style.color = '#c62828'; }
+      } catch { msg.textContent = 'Connection error'; msg.style.color = 'var(--color-danger)'; }
     };
   }
 }
 
 function renderProfileRide(ride) {
-  return `<div class="item">
+  return `<div style="padding:8px 0; border-bottom:1px solid var(--color-border);">
     <div>${statusBadge(ride.status)} ${ride.pickupLocation} → ${ride.dropoffLocation}</div>
-    <div class="small-text">${formatDate(ride.requestedTime)}</div>
+    <div class="text-sm text-muted" style="margin-top:2px;">${formatDate(ride.requestedTime)}</div>
   </div>`;
 }
 
@@ -1397,16 +1430,28 @@ function renderProfileEdit() {
   if (!selectedAdminUser) return;
   const content = document.getElementById('admin-profile-content');
   content.innerHTML = `
-    <div class="profile-block">
-      <label>Name <input type="text" id="admin-profile-name" value="${selectedAdminUser.name || ''}"></label>
-      <label>Phone <input type="tel" id="admin-profile-phone" value="${selectedAdminUser.phone || ''}"></label>
-      <div class="small-text">USC Email: ${selectedAdminUser.email || ''} | Username: ${selectedAdminUser.username}</div>
+    <div class="ro-section__header">
+      <div>
+        <div class="ro-section__title">Edit Profile</div>
+        <div class="ro-section__subtitle">Update your name and phone number</div>
+      </div>
     </div>
-    <div class="flex-row" style="gap:8px; margin-top:8px;">
-      <button class="btn primary" onclick="saveAdminProfile('${selectedAdminUser.id}')">Save</button>
-      <button class="btn secondary" onclick="loadUserProfile('${selectedAdminUser.id}')">Cancel</button>
+    <div style="max-width: 480px;">
+      <div class="mb-16">
+        <label class="ro-label">Name</label>
+        <input type="text" class="ro-input" id="admin-profile-name" value="${selectedAdminUser.name || ''}">
+      </div>
+      <div class="mb-16">
+        <label class="ro-label">Phone</label>
+        <input type="tel" class="ro-input" id="admin-profile-phone" value="${selectedAdminUser.phone || ''}" placeholder="(213) 555-0000">
+      </div>
+      <div class="text-sm text-muted" style="margin-bottom:16px;">USC Email: ${selectedAdminUser.email || ''} · Username: ${selectedAdminUser.username}</div>
+      <div style="display:flex; gap:8px;">
+        <button class="ro-btn ro-btn--primary" onclick="saveAdminProfile('${selectedAdminUser.id}')">Save Changes</button>
+        <button class="ro-btn ro-btn--outline" onclick="loadUserProfile('${selectedAdminUser.id}')">Cancel</button>
+      </div>
+      <div id="admin-profile-message" class="text-sm text-muted" style="margin-top:8px;"></div>
     </div>
-    <div id="admin-profile-message" class="small-text"></div>
   `;
 }
 
