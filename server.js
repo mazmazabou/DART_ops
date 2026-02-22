@@ -1758,7 +1758,7 @@ initDb()
       console.log('Server running from:', __dirname);
       console.log(`RideOps server running on port ${PORT}${DEMO_MODE ? ' (DEMO MODE)' : ''}`);
       if (process.env.NODE_ENV !== 'production') {
-        console.log('Login: jamie/avery/casey/chris/office, riders: sarah/tom, password: demo123');
+        console.log('Login: mazen/jason/jocelin/olivia/office, riders: sarah/tom, password: demo123');
       }
     });
   })
