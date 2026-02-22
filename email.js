@@ -68,13 +68,14 @@ async function sendEmail(to, subject, html) {
   }
 }
 
-async function sendWelcomeEmail(email, name, username, tempPassword, role, orgName) {
+async function sendWelcomeEmail(email, name, username, tempPassword, role, orgName, brandColors) {
   const org = orgName || 'RideOps';
+  const colors = brandColors || { primary: '#4682B4', secondary: '#FFFFFF' };
   const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : 'User';
   const subject = `Welcome to ${org}`;
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
-      <div style="background:#990000;color:#FFCC00;padding:16px 20px;border-radius:8px 8px 0 0;">
+      <div style="background:${colors.primary};color:${colors.secondary};padding:16px 20px;border-radius:8px 8px 0 0;">
         <h2 style="margin:0;">Welcome to ${org}</h2>
       </div>
       <div style="padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;">
@@ -90,12 +91,13 @@ async function sendWelcomeEmail(email, name, username, tempPassword, role, orgNa
   return sendEmail(email, subject, html);
 }
 
-async function sendPasswordResetEmail(email, name, tempPassword, orgName) {
+async function sendPasswordResetEmail(email, name, tempPassword, orgName, brandColors) {
   const org = orgName || 'RideOps';
+  const colors = brandColors || { primary: '#4682B4', secondary: '#FFFFFF' };
   const subject = `${org} — Password Reset`;
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
-      <div style="background:#990000;color:#FFCC00;padding:16px 20px;border-radius:8px 8px 0 0;">
+      <div style="background:${colors.primary};color:${colors.secondary};padding:16px 20px;border-radius:8px 8px 0 0;">
         <h2 style="margin:0;">Password Reset</h2>
       </div>
       <div style="padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;">

@@ -1,4 +1,4 @@
--- Run against Postgres to create tables for DART Ops
+-- Run against Postgres to create tables for RideOps
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
   email TEXT UNIQUE,
-  usc_id VARCHAR(10),
+  member_id VARCHAR(50),
   phone TEXT,
   role TEXT NOT NULL,
   active BOOLEAN DEFAULT FALSE,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Ensure the column exists even if table pre-existed
-ALTER TABLE users ADD COLUMN IF NOT EXISTS usc_id VARCHAR(10);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS member_id VARCHAR(50);
 
 CREATE TABLE IF NOT EXISTS rider_miss_counts (
   email TEXT PRIMARY KEY,

@@ -1,7 +1,7 @@
 {
-  "name": "dart_ops",
+  "name": "rideops",
   "version": "1.0.0",
-  "description": "USC DART operations console (dispatch + driver).",
+  "description": "RideOps — accessible campus transportation platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

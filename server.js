@@ -2,11 +2,11 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
-const campusLocations = require('./public/usc_building_options');
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 let emailModule;
@@ -21,18 +21,55 @@ if (DEMO_MODE) {
 }
 const { isConfigured: emailConfigured, sendWelcomeEmail, sendPasswordResetEmail } = emailModule;
 
-const TENANT = {
-  orgName: 'USC DART',
-  orgShortName: 'DART',
-  orgTagline: 'Disabled Access to Road Transportation',
-  orgInitials: 'DT',
-  primaryColor: '#990000',
-  secondaryColor: '#FFCC00'
+// ----- Tenant configuration -----
+const DEFAULT_TENANT = {
+  orgName: 'RideOps',
+  orgShortName: 'RideOps',
+  orgTagline: 'Accessible Campus Transportation',
+  orgInitials: 'RO',
+  primaryColor: '#4682B4',
+  secondaryColor: '#D2B48C',
+  mapUrl: null,
+  mapTitle: 'Campus Map',
+  idFieldLabel: 'Member ID',
+  idFieldMaxLength: null,
+  idFieldPattern: null,
+  idFieldPlaceholder: '',
+  serviceScopeText: 'Campus only',
+  locationsFile: null,
+  rules: [
+    'This is a free accessible transportation service available during the academic year, between 8:00am–7:00pm, Monday–Friday.',
+    'Vehicles (golf carts) are not street-legal and cannot leave campus grounds.',
+    'If the driver arrives and the rider is not present, the driver will wait up to 5 minutes (grace period). After 5 minutes, the ride is marked as a no-show.',
+    '5 consecutive no-shows will result in automatic service termination. Completed rides reset the no-show counter.',
+    'Riders must be present at the designated pickup location at the requested time.'
+  ]
 };
+
+function loadTenantConfig() {
+  const tenantFile = process.env.TENANT_FILE;
+  if (!tenantFile) return { ...DEFAULT_TENANT };
+  try {
+    const overrides = JSON.parse(fs.readFileSync(path.resolve(__dirname, tenantFile), 'utf8'));
+    return { ...DEFAULT_TENANT, ...overrides };
+  } catch (err) {
+    console.warn(`[tenant] Could not load ${tenantFile}, using defaults.`);
+    return { ...DEFAULT_TENANT };
+  }
+}
+const TENANT = loadTenantConfig();
+
+// Locations: tenant file or generic defaults
+let campusLocations;
+try {
+  campusLocations = TENANT.locationsFile
+    ? require(path.resolve(__dirname, 'tenants', TENANT.locationsFile))
+    : require('./tenants/default-locations');
+} catch { campusLocations = require('./tenants/default-locations'); }
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/dart_ops';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/rideops';
 const SIGNUP_ENABLED = process.env.DISABLE_RIDER_SIGNUP !== 'true';
 
 const pool = new Pool({
@@ -47,13 +84,13 @@ pool.on('connect', (client) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dart-ops-secret-change-in-production',
+  secret: process.env.SESSION_SECRET || 'rideops-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-const defaultPasswordHash = bcrypt.hashSync('dart123', 10);
+const defaultPasswordHash = bcrypt.hashSync('demo123', 10);
 
 // ----- DB helpers -----
 async function query(text, params) {
@@ -135,7 +172,8 @@ async function initDb() {
 
 async function runMigrations() {
   const statements = [
-    `ALTER TABLE users ADD COLUMN IF NOT EXISTS usc_id VARCHAR(10);`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS member_id VARCHAR(50);`,
+    `DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='member_id') THEN ALTER TABLE users RENAME COLUMN member_id TO member_id; EXCEPTION WHEN duplicate_column THEN NULL; END IF; END $$;`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;`,
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS recurring_id TEXT;`,
@@ -169,28 +207,28 @@ async function runMigrations() {
 
 async function seedDefaultUsers() {
   const defaults = [
-    { id: 'emp1', username: 'mazen', name: 'Mazen', email: 'hello+mazen@ride-ops.com', usc_id: '1000000001', phone: '213-555-0101', role: 'driver', active: false },
-    { id: 'emp2', username: 'jason', name: 'Jason', email: 'hello+jason@ride-ops.com', usc_id: '1000000002', phone: '213-555-0102', role: 'driver', active: false },
-    { id: 'emp3', username: 'jocelin', name: 'Jocelin', email: 'hello+jocelin@ride-ops.com', usc_id: '1000000003', phone: '213-555-0103', role: 'driver', active: false },
-    { id: 'emp4', username: 'olivia', name: 'Olivia', email: 'hello+olivia@ride-ops.com', usc_id: '1000000004', phone: '213-555-0104', role: 'driver', active: false },
-    { id: 'office', username: 'office', name: 'Office', email: 'hello+office@ride-ops.com', usc_id: '1000009999', phone: '213-555-0199', role: 'office', active: true },
-    { id: 'rider1', username: 'sarah', name: 'Sarah Student', email: 'hello+sarah@ride-ops.com', usc_id: '1000000011', phone: '213-555-0111', role: 'rider', active: false },
-    { id: 'rider2', username: 'tom', name: 'Tom Faculty', email: 'hello+tom@ride-ops.com', usc_id: '1000000012', phone: '213-555-0112', role: 'rider', active: false }
+    { id: 'emp1', username: 'mazen', name: 'Mazen', email: 'hello+mazen@ride-ops.com', member_id: '1000000001', phone: '213-555-0101', role: 'driver', active: false },
+    { id: 'emp2', username: 'jason', name: 'Jason', email: 'hello+jason@ride-ops.com', member_id: '1000000002', phone: '213-555-0102', role: 'driver', active: false },
+    { id: 'emp3', username: 'jocelin', name: 'Jocelin', email: 'hello+jocelin@ride-ops.com', member_id: '1000000003', phone: '213-555-0103', role: 'driver', active: false },
+    { id: 'emp4', username: 'olivia', name: 'Olivia', email: 'hello+olivia@ride-ops.com', member_id: '1000000004', phone: '213-555-0104', role: 'driver', active: false },
+    { id: 'office', username: 'office', name: 'Office', email: 'hello+office@ride-ops.com', member_id: '1000009999', phone: '213-555-0199', role: 'office', active: true },
+    { id: 'rider1', username: 'sarah', name: 'Sarah Student', email: 'hello+sarah@ride-ops.com', member_id: '1000000011', phone: '213-555-0111', role: 'rider', active: false },
+    { id: 'rider2', username: 'tom', name: 'Tom Faculty', email: 'hello+tom@ride-ops.com', member_id: '1000000012', phone: '213-555-0112', role: 'rider', active: false }
   ];
 
   for (const user of defaults) {
     await query(
-      `INSERT INTO users (id, username, password_hash, name, email, usc_id, phone, role, active)
+      `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id) DO UPDATE SET
          username = EXCLUDED.username,
          name = EXCLUDED.name,
          email = EXCLUDED.email,
-         usc_id = EXCLUDED.usc_id,
+         member_id = EXCLUDED.member_id,
          phone = EXCLUDED.phone,
          role = EXCLUDED.role,
          active = EXCLUDED.active`,
-      [user.id, user.username, defaultPasswordHash, user.name, user.email, user.usc_id || null, user.phone || null, user.role, user.active]
+      [user.id, user.username, defaultPasswordHash, user.name, user.email, user.member_id || null, user.phone || null, user.role, user.active]
     );
   }
 }
@@ -227,8 +265,10 @@ function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function isValidUSCID(value) {
-  return typeof value === 'string' && /^[0-9]{10}$/.test(value);
+function isValidMemberId(value) {
+  if (!value || typeof value !== 'string') return false;
+  if (!TENANT.idFieldPattern) return value.trim().length > 0;
+  return new RegExp(TENANT.idFieldPattern).test(value);
 }
 
 function isValidPhone(value) {
@@ -388,7 +428,7 @@ function setSessionFromUser(req, user) {
   req.session.name = user.name;
   req.session.role = user.role;
   req.session.email = user.email;
-  req.session.uscId = user.usc_id;
+  req.session.memberId = user.member_id;
 }
 
 // ----- Auth endpoints -----
@@ -420,7 +460,8 @@ app.get('/api/auth/me', (req, res) => {
     username: req.session.username,
     name: req.session.name,
     email: req.session.email,
-    usc_id: req.session.uscId,
+    member_id: req.session.memberId,
+    memberId: req.session.memberId,
     role: req.session.role,
     demoMode: DEMO_MODE
   });
@@ -439,7 +480,7 @@ app.get('/api/tenant-config', (req, res) => res.json(TENANT));
 // Self-service profile
 app.get('/api/me', requireAuth, async (req, res) => {
   const result = await query(
-    `SELECT id, username, name, email, usc_id, phone, role FROM users WHERE id = $1`,
+    `SELECT id, username, name, email, member_id, phone, role FROM users WHERE id = $1`,
     [req.session.userId]
   );
   const user = result.rows[0];
@@ -454,7 +495,7 @@ app.put('/api/me', requireAuth, async (req, res) => {
   const result = await query(
     `UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), updated_at = NOW()
      WHERE id = $3
-     RETURNING id, username, name, email, usc_id, phone, role`,
+     RETURNING id, username, name, email, member_id, phone, role`,
     [name || null, phone || null, req.session.userId]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'User not found' });
@@ -494,7 +535,7 @@ app.post('/api/auth/signup', async (req, res) => {
   }
   const { name, email, phone, password, uscId } = req.body;
   if (!name || !email || !password || !uscId) {
-    return res.status(400).json({ error: 'Name, email, password, and USC ID are required' });
+    return res.status(400).json({ error: `Name, email, password, and ${TENANT.idFieldLabel} are required` });
   }
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'A valid email is required' });
@@ -502,18 +543,18 @@ app.post('/api/auth/signup', async (req, res) => {
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
-  if (!isValidUSCID(uscId)) {
-    return res.status(400).json({ error: 'USC ID must be 10 digits' });
+  if (!isValidMemberId(uscId)) {
+    return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
   }
   const uname = email.toLowerCase().split('@')[0];
-  const existing = await query('SELECT 1 FROM users WHERE username = $1 OR email = $2 OR phone = $3 OR usc_id = $4', [uname, email.toLowerCase(), phone || null, uscId]);
+  const existing = await query('SELECT 1 FROM users WHERE username = $1 OR email = $2 OR phone = $3 OR member_id = $4', [uname, email.toLowerCase(), phone || null, uscId]);
   if (existing.rowCount) {
-    return res.status(400).json({ error: 'Username, email, phone, or USC ID already exists' });
+    return res.status(400).json({ error: `Username, email, phone, or ${TENANT.idFieldLabel} already exists` });
   }
   const id = generateId('rider');
   const hash = bcrypt.hashSync(password, 10);
   await query(
-    `INSERT INTO users (id, username, password_hash, name, email, usc_id, phone, role, active)
+    `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'rider', FALSE)`,
     [id, uname, hash, name, email.toLowerCase(), uscId, phone || null]
   );
@@ -526,17 +567,17 @@ app.post('/api/auth/signup', async (req, res) => {
 // ----- Admin endpoints -----
 app.get('/api/admin/users', requireOffice, async (req, res) => {
   const result = await query(
-    `SELECT id, username, name, email, usc_id, phone, role, active FROM users ORDER BY role, name`
+    `SELECT id, username, name, email, member_id, phone, role, active FROM users ORDER BY role, name`
   );
   res.json(result.rows);
 });
 
 app.get('/api/admin/users/search', requireOffice, async (req, res) => {
-  const { usc_id } = req.query;
-  if (!usc_id || !isValidUSCID(usc_id)) return res.status(400).json({ error: 'usc_id must be 10 digits' });
+  const member_id = req.query.member_id || req.query.usc_id;
+  if (!member_id || !isValidMemberId(member_id)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
   const result = await query(
-    `SELECT id, username, name, email, usc_id, phone, role, active FROM users WHERE usc_id = $1`,
-    [usc_id]
+    `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE member_id = $1`,
+    [member_id]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'No user found' });
   res.json(result.rows[0]);
@@ -572,10 +613,10 @@ app.delete('/api/admin/users/:id', requireOffice, async (req, res) => {
 app.post('/api/admin/users', requireOffice, async (req, res) => {
   const { name, email, phone, uscId, role, password, username: reqUsername } = req.body;
   if (!name || !email || !uscId || !role || !password) {
-    return res.status(400).json({ error: 'Name, email, USC ID, role, and password are required' });
+    return res.status(400).json({ error: `Name, email, ${TENANT.idFieldLabel}, role, and password are required` });
   }
   if (!isValidEmail(email)) return res.status(400).json({ error: 'A valid email is required' });
-  if (!isValidUSCID(uscId)) return res.status(400).json({ error: 'USC ID must be 10 digits' });
+  if (!isValidMemberId(uscId)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
   if (!isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
   if (!['rider', 'driver', 'office'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
@@ -583,15 +624,15 @@ app.post('/api/admin/users', requireOffice, async (req, res) => {
   if (!/^[a-z0-9_]+$/.test(username)) {
     return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
   }
-  const existing = await query('SELECT 1 FROM users WHERE username = $1 OR email = $2 OR usc_id = $3 OR phone = $4', [username, email.toLowerCase(), uscId, phone || null]);
+  const existing = await query('SELECT 1 FROM users WHERE username = $1 OR email = $2 OR member_id = $3 OR phone = $4', [username, email.toLowerCase(), uscId, phone || null]);
   if (existing.rowCount) {
-    return res.status(400).json({ error: 'Username, email, phone, or USC ID already exists' });
+    return res.status(400).json({ error: `Username, email, phone, or ${TENANT.idFieldLabel} already exists` });
   }
 
   const id = generateId(role);
   const hash = bcrypt.hashSync(password, 10);
   await query(
-    `INSERT INTO users (id, username, password_hash, name, email, usc_id, phone, role, active, must_change_password)
+    `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active, must_change_password)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, TRUE)`,
     [id, username, hash, name, email.toLowerCase(), uscId, phone || null, role]
   );
@@ -600,11 +641,11 @@ app.post('/api/admin/users', requireOffice, async (req, res) => {
   let emailSent = false;
   try {
     emailSent = emailConfigured();
-    if (emailSent) sendWelcomeEmail(email.toLowerCase(), name, username, password, role, TENANT.orgName).catch(() => {});
+    if (emailSent) sendWelcomeEmail(email.toLowerCase(), name, username, password, role, TENANT.orgName, { primary: TENANT.primaryColor, secondary: TENANT.secondaryColor }).catch(() => {});
   } catch {}
 
   const result = await query(
-    `SELECT id, username, name, email, usc_id, phone, role, active FROM users WHERE id = $1`,
+    `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE id = $1`,
     [id]
   );
   res.json({ ...result.rows[0], emailSent });
@@ -617,25 +658,25 @@ app.put('/api/admin/users/:id', requireOffice, async (req, res) => {
   if (name && name.length > 120) return res.status(400).json({ error: 'Name too long' });
   if (!isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
   if (email && !isValidEmail(email)) return res.status(400).json({ error: 'A valid email is required' });
-  if (uscId && !isValidUSCID(uscId)) return res.status(400).json({ error: 'USC ID must be 10 digits' });
+  if (uscId && !isValidMemberId(uscId)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
   if (role && !['rider', 'driver', 'office'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
-  // Uniqueness checks for email and usc_id
+  // Uniqueness checks for email and member_id
   if (email) {
     const dup = await query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.toLowerCase(), targetId]);
     if (dup.rowCount) return res.status(400).json({ error: 'Email already in use by another user' });
   }
   if (uscId) {
-    const dup = await query('SELECT id FROM users WHERE usc_id = $1 AND id != $2', [uscId, targetId]);
-    if (dup.rowCount) return res.status(400).json({ error: 'USC ID already in use by another user' });
+    const dup = await query('SELECT id FROM users WHERE member_id = $1 AND id != $2', [uscId, targetId]);
+    if (dup.rowCount) return res.status(400).json({ error: `${TENANT.idFieldLabel} already in use by another user` });
   }
 
   const result = await query(
     `UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone),
-     email = COALESCE($3, email), usc_id = COALESCE($4, usc_id), role = COALESCE($5, role),
+     email = COALESCE($3, email), member_id = COALESCE($4, member_id), role = COALESCE($5, role),
      updated_at = NOW()
      WHERE id = $6
-     RETURNING id, username, name, email, usc_id, phone, role, active`,
+     RETURNING id, username, name, email, member_id, phone, role, active`,
     [name || null, phone || null, email ? email.toLowerCase() : null, uscId || null, role || null, targetId]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'User not found' });
@@ -645,7 +686,7 @@ app.put('/api/admin/users/:id', requireOffice, async (req, res) => {
 app.get('/api/admin/users/:id/profile', requireOffice, async (req, res) => {
   const key = req.params.id;
   const userRes = await query(
-    `SELECT id, username, name, email, usc_id, phone, role, active FROM users WHERE id = $1 OR email = $1 OR username = $1`,
+    `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE id = $1 OR email = $1 OR username = $1`,
     [key]
   );
   if (!userRes.rowCount) return res.status(404).json({ error: 'User not found' });
@@ -723,7 +764,7 @@ app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) 
   let emailSent = false;
   try {
     emailSent = emailConfigured();
-    if (emailSent && user.email) sendPasswordResetEmail(user.email, user.name, newPassword, TENANT.orgName).catch(() => {});
+    if (emailSent && user.email) sendPasswordResetEmail(user.email, user.name, newPassword, TENANT.orgName, { primary: TENANT.primaryColor, secondary: TENANT.secondaryColor }).catch(() => {});
   } catch {}
 
   res.json({ success: true, emailSent });
@@ -1718,7 +1759,7 @@ initDb()
       console.log('Server running from:', __dirname);
       console.log(`RideOps server running on port ${PORT}${DEMO_MODE ? ' (DEMO MODE)' : ''}`);
       if (process.env.NODE_ENV !== 'production') {
-        console.log('Login: jamie/avery/casey/chris/office, riders: sarah/tom, password: dart123');
+        console.log('Login: jamie/avery/casey/chris/office, riders: sarah/tom, password: demo123');
       }
     });
   })
