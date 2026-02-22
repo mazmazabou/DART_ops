@@ -99,6 +99,9 @@ body {
 .ro-shell.collapsed .ro-brand-text { display: none; }
 .ro-sidebar-toggle { background: none; border: none; color: var(--color-sidebar-text); cursor: pointer; margin-left: auto; padding: 4px; }
 .ro-shell.collapsed .ro-sidebar-toggle i { transform: rotate(180deg); }
+.ro-shell.collapsed .ro-sidebar-brand { padding: 12px 0; justify-content: center; gap: 0; }
+.ro-shell.collapsed .ro-sidebar-toggle { display: none; }
+.ro-shell.collapsed .ro-brand-icon { cursor: pointer; }
 .ro-nav { flex: 1; padding: 8px 0; }
 .ro-nav-item { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: var(--radius-sm); margin: 2px 8px; color: var(--color-sidebar-text); cursor: pointer; transition: background 0.15s, color 0.15s; font-size: 13px; font-weight: 500; background: transparent; border: none; width: calc(100% - 16px); text-align: left; }
 .ro-nav-item:hover { background: var(--color-sidebar-hover); color: #E2E8F0; }
@@ -110,6 +113,7 @@ body {
 .ro-sidebar-footer-actions { display: flex; gap: 4px; padding: 4px 8px; }
 .ro-sidebar-footer-actions button { background: none; border: none; color: var(--color-sidebar-text); cursor: pointer; padding: 6px; border-radius: var(--radius-sm); }
 .ro-sidebar-footer-actions button:hover { background: var(--color-sidebar-hover); color: #E2E8F0; }
+.ro-shell.collapsed .ro-sidebar-footer-actions { flex-direction: column; align-items: center; padding: 4px 0; }
 
 /* ── Section 7: Content area ── */
 .ro-main { grid-column: 2; min-height: 100vh; display: flex; flex-direction: column; }

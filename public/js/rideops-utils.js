@@ -92,6 +92,15 @@ function closeDrawer() {
 
 // Sidebar navigation
 function initSidebar() {
+  var brandIcon = document.querySelector('.ro-brand-icon');
+  if (brandIcon) {
+    brandIcon.addEventListener('click', function() {
+      var shell = document.querySelector('.ro-shell');
+      if (shell && shell.classList.contains('collapsed')) {
+        toggleSidebar();
+      }
+    });
+  }
   document.querySelectorAll('.ro-nav-item[data-target]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var target = btn.dataset.target;
