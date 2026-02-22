@@ -172,7 +172,7 @@
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
     if (Number.isNaN(date.getTime())) return dateStr;
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return `${date.toLocaleDateString(undefined, { timeZone: 'America/Los_Angeles' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Los_Angeles' })}`;
   }
 
   window.resolveDevMode = resolveDevMode;
