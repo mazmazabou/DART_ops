@@ -2192,7 +2192,7 @@ function renderDispatchGrid() {
     html += `<div class="time-grid__row" style="${gridColStyle}">`;
     html += `<div class="time-grid__driver"><span class="time-grid__driver-dot time-grid__driver-dot--offline"></span>Unassigned</div>`;
     for (let h = startHour; h < startHour + cols; h++) {
-      html += `<div class="time-grid__shift-band" style="position:relative;">`;
+      html += `<div style="position:relative;border-right:1px solid var(--color-border-light);">`;
       unassignedRides.forEach(r => {
         const laTime = toLADate(r.requestedTime);
         const rideHour = laTime.getHours();
@@ -2224,14 +2224,6 @@ function renderDispatchGrid() {
 
   grid.innerHTML = html;
 
-  // Add click handlers to ride strips
-  grid.querySelectorAll('.time-grid__ride-strip[data-ride-id]').forEach(strip => {
-    strip.onclick = (e) => {
-      e.stopPropagation();
-      const ride = rides.find(r => r.id === strip.dataset.rideId);
-      if (ride) openRideDrawer(ride);
-    };
-  });
 }
 
 function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, isActive) {
@@ -2243,13 +2235,34 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
   const dateInput = document.getElementById('dispatch-date');
   const selectedDate = dateInput?.value ? parseDateInputLocal(dateInput.value) : new Date();
   const dayOfWeek = selectedDate ? ((selectedDate.getDay() + 6) % 7) : ((new Date().getDay() + 6) % 7); // Mon=0
-
   const currentWeekStart = formatDateInputLocal(getMondayOfWeek(selectedDate));
+
+  // Shift bars (absolutely positioned overlays)
+  const driverShifts = shifts.filter(s =>
+    s.employeeId === driver.id &&
+    s.dayOfWeek === dayOfWeek &&
+    (!s.weekStart || s.weekStart.slice(0, 10) === currentWeekStart)
+  );
+
+  driverShifts.forEach(s => {
+    const [sh, sm] = s.startTime.split(':').map(Number);
+    const [eh, em] = s.endTime.split(':').map(Number);
+    const startFrac = sh + sm / 60;
+    const endFrac = eh + em / 60;
+
+    // Clamp to visible grid range
+    const visStart = Math.max(startFrac, startHour);
+    const visEnd = Math.min(endFrac, startHour + cols);
+    if (visEnd <= visStart) return;
+
+    const leftFrac = ((visStart - startHour) / cols).toFixed(6);
+    const widthFrac = ((visEnd - visStart) / cols).toFixed(6);
+
+    html += `<div class="time-grid__shift-band" style="left:calc(100px + (100% - 100px) * ${leftFrac});width:calc((100% - 100px) * ${widthFrac});"></div>`;
+  });
+
   for (let h = startHour; h < startHour + cols; h++) {
-    const slot = `${String(h).padStart(2, '0')}:00`;
-    const hasShift = shifts.some(s => s.employeeId === driver.id && s.dayOfWeek === dayOfWeek && s.startTime <= slot && s.endTime > slot && (!s.weekStart || s.weekStart.slice(0, 10) === currentWeekStart));
-    const bgStyle = hasShift ? 'background:var(--color-primary-subtle);' : '';
-    html += `<div style="position:relative;${bgStyle}border-right:1px solid var(--color-border-light);">`;
+    html += `<div style="position:relative;border-right:1px solid var(--color-border-light);">`;
 
     // Render rides at this hour
     driverRides.forEach(r => {
@@ -3334,6 +3347,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (dispatchDate) {
     dispatchDate.value = getTodayLocalDate();
     dispatchDate.addEventListener('change', () => renderDispatchGrid());
+  }
+
+  // Delegated click handler for dispatch grid ride strips
+  const dispatchGrid = document.getElementById('dispatch-grid');
+  if (dispatchGrid) {
+    dispatchGrid.addEventListener('click', (e) => {
+      const strip = e.target.closest('.time-grid__ride-strip[data-ride-id]');
+      if (!strip) return;
+      e.stopPropagation();
+      const ride = rides.find(r => r.id === strip.dataset.rideId);
+      if (ride) openRideDrawer(ride);
+    });
   }
 
   const createBtn = document.getElementById('admin-create-btn');
