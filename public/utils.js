@@ -49,10 +49,10 @@
 
   function getToastIcon(type) {
     const icons = {
-      success: 'check_circle',
-      error: 'error',
-      warning: 'warning',
-      info: 'info'
+      success: 'ti ti-circle-check',
+      error: 'ti ti-circle-x',
+      warning: 'ti ti-alert-triangle',
+      info: 'ti ti-info-circle'
     };
     return icons[type] || icons.info;
   }
@@ -61,7 +61,7 @@
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
-      <span class="toast-icon"><span class="material-symbols-outlined">${getToastIcon(type)}</span></span>
+      <span class="toast-icon"><i class="${getToastIcon(type)}"></i></span>
       <span class="toast-message">${message}</span>
     `;
     document.body.appendChild(toast);
