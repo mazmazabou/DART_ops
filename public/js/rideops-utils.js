@@ -16,7 +16,9 @@ async function applyTenantTheme() {
 
 // Status badge HTML
 function statusBadge(status) {
-  const label = (status || '').replace(/_/g, ' ').replace('driver ', '');
+  const label = status === 'driver_arrived_grace'
+    ? '5-min grace period'
+    : (status || '').replace(/_/g, ' ').replace('driver ', '');
   return '<span class="status-badge status-badge--' + status + '">' + label + '</span>';
 }
 

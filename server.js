@@ -367,7 +367,9 @@ function mapRide(row) {
     notes: row.notes || '',
     recurringId: row.recurring_id || null,
     cancelledBy: row.cancelled_by || null,
-    vehicleId: row.vehicle_id || null
+    vehicleId: row.vehicle_id || null,
+    driverName: row.driver_name || null,
+    driverPhone: row.driver_phone || null
   };
 }
 
@@ -1094,9 +1096,12 @@ app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
 
 app.get('/api/my-rides', requireRider, async (req, res) => {
   const result = await query(
-    `SELECT id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-            requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, rider_id, vehicle_id
-     FROM rides WHERE rider_email = $1 ORDER BY requested_time DESC`,
+    `SELECT r.id, r.rider_name, r.rider_email, r.rider_phone, r.pickup_location, r.dropoff_location, r.notes,
+            r.requested_time, r.status, r.assigned_driver_id, r.grace_start_time, r.consecutive_misses, r.recurring_id, r.rider_id, r.vehicle_id,
+            u.name AS driver_name, u.phone AS driver_phone
+     FROM rides r
+     LEFT JOIN users u ON r.assigned_driver_id = u.id
+     WHERE r.rider_email = $1 ORDER BY r.requested_time DESC`,
     [req.session.email]
   );
   res.json(result.rows.map(mapRide));

@@ -24,7 +24,7 @@ function hideLoader(containerId) {
 function statusLabel(status) {
   const labels = {
     pending: 'Pending', approved: 'Approved', scheduled: 'Scheduled',
-    driver_on_the_way: 'On The Way', driver_arrived_grace: 'Driver Arrived',
+    driver_on_the_way: 'On The Way', driver_arrived_grace: '5-min Grace Period',
     completed: 'Completed', no_show: 'No-Show', denied: 'Denied', cancelled: 'Cancelled'
   };
   return labels[status] || status.replace(/_/g, ' ');

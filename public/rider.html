@@ -127,6 +127,25 @@
           <label class="ro-label">Notes (optional)</label>
           <textarea id="notes" class="ro-input" rows="3" placeholder="Accessibility needs, exact spot, etc."></textarea>
         </div>
+        <!-- Recurring ride toggle -->
+        <div style="margin-bottom:16px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; font-weight:600;">
+            <input type="checkbox" id="recurring-toggle" style="width:18px; height:18px; accent-color:var(--color-primary);">
+            <i class="ti ti-repeat" style="font-size:16px; color:var(--color-primary);"></i> Make this a recurring ride
+          </label>
+        </div>
+        <div id="recurring-options" style="display:none; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:16px; margin-bottom:16px;">
+          <label class="ro-label">Repeat on (Mon–Fri)</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;" id="recurring-days">
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="1" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Mon</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="2" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Tue</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="3" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Wed</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="4" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Thu</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="5" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Fri</label>
+          </div>
+          <label class="ro-label">End date</label>
+          <input type="date" id="recurring-end-date" class="ro-input">
+        </div>
         <button class="ro-btn ro-btn--primary ro-btn--action ro-btn--full" id="confirm-btn">CONFIRM REQUEST</button>
       </div>
     </div>
@@ -194,7 +213,7 @@
       document.getElementById('gear-btn').onclick = openAccountDrawer;
       await loadAllRides();
       autoSwitchToActiveRide();
-      setInterval(loadAllRides, 5000);
+      window._pollIntervals = [setInterval(loadAllRides, 5000)];
     }
 
     async function fetchMe() {
@@ -272,10 +291,35 @@
         document.getElementById('confirm-to').textContent = dropoffSel.value;
         var dt = toLADate(selectedDate + 'T' + rideTime.value + ':00');
         document.getElementById('confirm-when').textContent = dt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+
+        // Reset recurring toggle and pre-check matching day
+        document.getElementById('recurring-toggle').checked = false;
+        document.getElementById('recurring-options').style.display = 'none';
+        document.getElementById('confirm-btn').textContent = 'CONFIRM REQUEST';
+        // Map JS getDay() (0=Sun..6=Sat) to our 1=Mon..5=Fri
+        var jsDay = new Date(selectedDate + 'T12:00:00').getDay();
+        var dayMap = { 1:1, 2:2, 3:3, 4:4, 5:5 };
+        document.querySelectorAll('.recurring-day-cb').forEach(function(cb) {
+          cb.checked = (Number(cb.value) === dayMap[jsDay]);
+        });
+        // Set end date min to selected date
+        var endDateInput = document.getElementById('recurring-end-date');
+        endDateInput.min = selectedDate;
+        endDateInput.value = '';
+
         goToStep(3);
       };
 
       document.getElementById('confirm-btn').onclick = submitRide;
+
+      // Recurring toggle behavior
+      var recurToggle = document.getElementById('recurring-toggle');
+      var recurOptions = document.getElementById('recurring-options');
+      var confirmBtn = document.getElementById('confirm-btn');
+      recurToggle.onchange = function() {
+        recurOptions.style.display = recurToggle.checked ? 'block' : 'none';
+        confirmBtn.textContent = recurToggle.checked ? 'CONFIRM RECURRING REQUEST' : 'CONFIRM REQUEST';
+      };
     }
 
     function goToStep(step) {
@@ -357,38 +401,87 @@
 
     async function submitRide() {
       var btn = document.getElementById('confirm-btn');
+      var isRecurring = document.getElementById('recurring-toggle').checked;
+      var btnLabel = isRecurring ? 'CONFIRM RECURRING REQUEST' : 'CONFIRM REQUEST';
       btn.disabled = true;
       btn.textContent = 'Submitting...';
       var pickup = document.getElementById('pickup-location').value;
       var dropoff = document.getElementById('dropoff-location').value;
       var time = document.getElementById('ride-time').value;
       var notes = document.getElementById('notes').value.trim();
-      var requestedTime = toLADate(selectedDate + 'T' + time + ':00').toISOString();
 
       try {
-        var res = await fetch('/api/rides', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pickupLocation: pickup,
-            dropoffLocation: dropoff,
-            requestedTime: requestedTime,
-            riderName: meUser.name,
-            notes: notes
-          })
-        });
-        if (!res.ok) {
-          var err = await res.json();
-          showToastNew(err.error || 'Could not submit request', 'error');
-          btn.disabled = false;
-          btn.textContent = 'CONFIRM REQUEST';
-          return;
+        var res;
+        if (isRecurring) {
+          // Gather selected days
+          var days = [];
+          document.querySelectorAll('.recurring-day-cb:checked').forEach(function(cb) {
+            days.push(Number(cb.value));
+          });
+          if (!days.length) {
+            showToastNew('Select at least one day of the week', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          var endDate = document.getElementById('recurring-end-date').value;
+          if (!endDate) {
+            showToastNew('Select an end date for the recurring rides', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          res = await fetch('/api/recurring-rides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickup,
+              dropoffLocation: dropoff,
+              timeOfDay: time,
+              daysOfWeek: days,
+              startDate: selectedDate,
+              endDate: endDate,
+              notes: notes,
+              riderPhone: meUser.phone || null
+            })
+          });
+          if (!res.ok) {
+            var err = await res.json();
+            showToastNew(err.error || 'Could not create recurring rides', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          var data = await res.json();
+          showToastNew(data.createdRides + ' recurring ride' + (data.createdRides !== 1 ? 's' : '') + ' created!', 'success');
+        } else {
+          var requestedTime = toLADate(selectedDate + 'T' + time + ':00').toISOString();
+          res = await fetch('/api/rides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickup,
+              dropoffLocation: dropoff,
+              requestedTime: requestedTime,
+              riderName: meUser.name,
+              notes: notes
+            })
+          });
+          if (!res.ok) {
+            var err = await res.json();
+            showToastNew(err.error || 'Could not submit request', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          showToastNew('Ride requested!', 'success');
         }
-        showToastNew('Ride requested!', 'success');
         // Reset form
         document.getElementById('pickup-location').value = '';
         document.getElementById('dropoff-location').value = '';
         document.getElementById('notes').value = '';
+        document.getElementById('recurring-toggle').checked = false;
+        document.getElementById('recurring-options').style.display = 'none';
         selectedDate = null;
         document.querySelectorAll('#date-chips .filter-pill').forEach(function(p) { p.classList.remove('active'); });
         goToStep(1);
@@ -519,6 +612,13 @@
         h += '</div>';
         h += '<div class="grace-timer__label">Your driver is waiting</div>';
         h += '</div>';
+      }
+
+      // Text Driver button for active rides with an assigned driver
+      if (['scheduled','driver_on_the_way','driver_arrived_grace'].indexOf(ride.status) >= 0 && ride.driverPhone) {
+        h += '<a href="sms:' + escHtml(ride.driverPhone) + '" class="ro-btn ro-btn--outline ro-btn--full" style="margin-top:12px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px;">';
+        h += '<i class="ti ti-message"></i> Text Driver';
+        h += '</a>';
       }
 
       if (ride.notes) {
@@ -827,6 +927,10 @@
     }
 
     async function logout() {
+      if (window._pollIntervals) {
+        window._pollIntervals.forEach(id => clearInterval(id));
+        window._pollIntervals = [];
+      }
       await fetch('/api/auth/logout', { method: 'POST' });
       window.location.href = '/login.html';
     }
