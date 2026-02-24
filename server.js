@@ -67,6 +67,19 @@ try {
     : require('./tenants/default-locations');
 } catch { campusLocations = require('./tenants/default-locations'); }
 
+// ----- Notification event types -----
+const NOTIFICATION_EVENT_TYPES = [
+  { key: 'driver_tardy', label: 'Driver Clocked In Late', description: 'A driver clocks in after their scheduled shift start time', defaultThreshold: null, thresholdUnit: null, category: 'staff' },
+  { key: 'driver_no_clock_in', label: 'Driver Missing from Shift', description: 'A driver has not clocked in within X minutes of their shift start', defaultThreshold: 15, thresholdUnit: 'minutes_after_shift_start', category: 'staff' },
+  { key: 'rider_no_show', label: 'Rider No-Show', description: 'A rider is marked as a no-show', defaultThreshold: null, thresholdUnit: null, category: 'rides' },
+  { key: 'rider_approaching_termination', label: 'Rider Approaching Termination', description: 'A rider reaches N-1 consecutive no-shows', defaultThreshold: null, thresholdUnit: null, category: 'rides' },
+  { key: 'rider_terminated', label: 'Rider Terminated', description: 'A rider hits the max no-show strikes and is terminated', defaultThreshold: null, thresholdUnit: null, category: 'rides' },
+  { key: 'ride_pending_stale', label: 'Ride Pending Too Long', description: 'A ride request has been pending with no action for X minutes', defaultThreshold: 10, thresholdUnit: 'minutes', category: 'rides' },
+  { key: 'ride_completed', label: 'Ride Completed', description: 'A ride is marked as completed', defaultThreshold: null, thresholdUnit: null, category: 'rides' },
+  { key: 'new_ride_request', label: 'New Ride Request', description: 'A new ride is submitted by a rider', defaultThreshold: null, thresholdUnit: null, category: 'rides' },
+  { key: 'daily_summary', label: 'Daily Summary', description: 'End-of-day summary email with ride stats, tardiness, and issues', defaultThreshold: null, thresholdUnit: null, category: 'reports' }
+];
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/rideops';
@@ -223,7 +236,19 @@ async function runMigrations() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );`,
     `CREATE INDEX IF NOT EXISTS idx_clock_events_employee ON clock_events(employee_id);`,
-    `CREATE INDEX IF NOT EXISTS idx_clock_events_date ON clock_events(event_date);`
+    `CREATE INDEX IF NOT EXISTS idx_clock_events_date ON clock_events(event_date);`,
+    `CREATE TABLE IF NOT EXISTS notification_preferences (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_type VARCHAR(80) NOT NULL,
+      channel VARCHAR(20) NOT NULL,
+      enabled BOOLEAN DEFAULT true,
+      threshold_value INTEGER,
+      threshold_unit VARCHAR(30),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, event_type, channel)
+    );`
   ];
   for (const stmt of statements) {
     await query(stmt);
@@ -294,6 +319,20 @@ async function seedDefaultSettings() {
        ON CONFLICT (setting_key) DO NOTHING`,
       [generateId('setting'), s.key, s.value, s.type, s.label, s.description, s.category]
     );
+  }
+}
+
+async function seedNotificationPreferences(userId) {
+  const emailOnByDefault = ['driver_tardy', 'rider_no_show', 'rider_approaching_termination', 'rider_terminated', 'daily_summary'];
+  for (const evt of NOTIFICATION_EVENT_TYPES) {
+    for (const channel of ['email', 'in_app']) {
+      const defaultEnabled = channel === 'in_app' ? true : emailOnByDefault.includes(evt.key);
+      await query(`
+        INSERT INTO notification_preferences (id, user_id, event_type, channel, enabled, threshold_value, threshold_unit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (user_id, event_type, channel) DO NOTHING
+      `, [generateId('notifpref'), userId, evt.key, channel, defaultEnabled, evt.defaultThreshold, evt.thresholdUnit]);
+    }
   }
 }
 
@@ -2244,6 +2283,69 @@ app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
 });
 
 // ----- Dev endpoint -----
+// ----- Notification Preferences -----
+app.get('/api/notification-preferences', requireOffice, async (req, res) => {
+  try {
+    // Lazy-seed if no preferences exist for this user
+    const check = await query('SELECT COUNT(*) FROM notification_preferences WHERE user_id = $1', [req.session.userId]);
+    if (parseInt(check.rows[0].count) === 0) {
+      await seedNotificationPreferences(req.session.userId);
+    }
+
+    const result = await query(
+      'SELECT * FROM notification_preferences WHERE user_id = $1 ORDER BY event_type, channel',
+      [req.session.userId]
+    );
+
+    // Group by event_type for easier frontend rendering
+    const grouped = {};
+    for (const row of result.rows) {
+      if (!grouped[row.event_type]) {
+        const def = NOTIFICATION_EVENT_TYPES.find(e => e.key === row.event_type);
+        grouped[row.event_type] = {
+          key: row.event_type,
+          label: def ? def.label : row.event_type,
+          description: def ? def.description : '',
+          category: def ? def.category : 'other',
+          thresholdUnit: def ? def.thresholdUnit : null,
+          channels: {}
+        };
+      }
+      grouped[row.event_type].channels[row.channel] = {
+        enabled: row.enabled,
+        thresholdValue: row.threshold_value
+      };
+    }
+
+    res.json({ eventTypes: NOTIFICATION_EVENT_TYPES, preferences: grouped });
+  } catch (err) {
+    console.error('GET notification-preferences error:', err);
+    res.status(500).json({ error: 'Failed to load notification preferences' });
+  }
+});
+
+app.put('/api/notification-preferences', requireOffice, async (req, res) => {
+  try {
+    const { preferences } = req.body;
+    if (!Array.isArray(preferences)) return res.status(400).json({ error: 'preferences must be an array' });
+
+    let updated = 0;
+    for (const p of preferences) {
+      const r = await query(`
+        UPDATE notification_preferences
+        SET enabled = $1, threshold_value = $2, updated_at = NOW()
+        WHERE user_id = $3 AND event_type = $4 AND channel = $5
+      `, [p.enabled, p.thresholdValue ?? null, req.session.userId, p.eventType, p.channel]);
+      updated += r.rowCount;
+    }
+
+    res.json({ updated });
+  } catch (err) {
+    console.error('PUT notification-preferences error:', err);
+    res.status(500).json({ error: 'Failed to save notification preferences' });
+  }
+});
+
 app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
   if (!isDevRequest(req)) {
     return res.status(403).json({ error: 'Dev seeding is only available in local development mode' });

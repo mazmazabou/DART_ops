@@ -3545,6 +3545,130 @@ async function saveBusinessRules() {
   }
 }
 
+// ----- Notification Preferences -----
+let notifPrefsLoaded = false;
+
+async function loadNotificationPreferences() {
+  const container = document.getElementById('notif-prefs-container');
+  if (!container) return;
+  container.innerHTML = '<div class="text-muted">Loading notification preferences...</div>';
+
+  try {
+    const res = await fetch('/api/notification-preferences');
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    const prefs = data.preferences;
+
+    const categoryLabels = { staff: 'Staff Alerts', rides: 'Ride Alerts', reports: 'Reports' };
+    const byCategory = {};
+    for (const [key, pref] of Object.entries(prefs)) {
+      const cat = pref.category || 'other';
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(pref);
+    }
+
+    let html = '';
+    html += '<div class="mb-16"><div class="ro-section__title">Notification Preferences</div>';
+    html += '<div class="ro-section__subtitle">Choose which events notify you and how</div></div>';
+
+    // Channel legend header
+    html += '<div class="flex items-center gap-16 mb-16" style="padding-left:50%">';
+    html += '<span class="text-xs fw-600 text-muted" style="width:60px;text-align:center">Email</span>';
+    html += '<span class="text-xs fw-600 text-muted" style="width:60px;text-align:center">In-App</span>';
+    html += '<span class="text-xs fw-600 text-muted" style="width:80px;text-align:center">Threshold</span>';
+    html += '</div>';
+
+    for (const [category, events] of Object.entries(byCategory)) {
+      html += '<div class="mb-24">';
+      html += '<h3 class="ro-section__title mb-8" style="font-size:14px">' + (categoryLabels[category] || category) + '</h3>';
+
+      for (const evt of events) {
+        const emailCh = evt.channels.email || { enabled: false };
+        const inAppCh = evt.channels.in_app || { enabled: false };
+        const threshold = emailCh.thresholdValue;
+
+        html += '<div class="flex items-center" style="padding:10px 0;border-bottom:1px solid var(--color-border-light);gap:16px">';
+
+        // Label + description
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div class="fw-600" style="font-size:13px">' + evt.label + '</div>';
+        html += '<div class="text-muted text-xs">' + (evt.description || '') + '</div>';
+        html += '</div>';
+
+        // Email toggle
+        html += '<div style="width:60px;text-align:center">';
+        html += '<input type="checkbox" data-event="' + evt.key + '" data-channel="email" '
+          + (emailCh.enabled ? 'checked' : '') + ' style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer">';
+        html += '</div>';
+
+        // In-app toggle
+        html += '<div style="width:60px;text-align:center">';
+        html += '<input type="checkbox" data-event="' + evt.key + '" data-channel="in_app" '
+          + (inAppCh.enabled ? 'checked' : '') + ' style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer">';
+        html += '</div>';
+
+        // Threshold
+        html += '<div style="width:80px;text-align:center">';
+        if (evt.thresholdUnit) {
+          const unit = evt.thresholdUnit === 'minutes' || evt.thresholdUnit === 'minutes_after_shift_start' ? 'min' : '';
+          html += '<div class="flex items-center gap-4" style="justify-content:center">';
+          html += '<input type="number" class="ro-input" data-event="' + evt.key + '" data-field="threshold" value="' + (threshold || '') + '" style="width:50px;text-align:center;padding:4px" min="1">';
+          html += '<span class="text-xs text-muted">' + unit + '</span>';
+          html += '</div>';
+        } else {
+          html += '<span class="text-muted">\u2014</span>';
+        }
+        html += '</div>';
+
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div style="padding-top:16px"><button class="ro-btn ro-btn--primary" id="save-notif-prefs-btn"><i class="ti ti-device-floppy"></i> Save Preferences</button></div>';
+    container.innerHTML = html;
+
+    document.getElementById('save-notif-prefs-btn').addEventListener('click', saveNotificationPreferences);
+  } catch (e) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-bell-off"></i><div class="ro-empty__title">Error</div><div class="ro-empty__message">Could not load notification preferences.</div></div>';
+    console.error('loadNotificationPreferences error:', e);
+  }
+}
+
+async function saveNotificationPreferences() {
+  const preferences = [];
+  const checkboxes = document.querySelectorAll('#notif-prefs-container input[data-event][data-channel]');
+  checkboxes.forEach(function(el) {
+    const eventType = el.dataset.event;
+    const channel = el.dataset.channel;
+    const thresholdEl = document.querySelector('#notif-prefs-container input[data-event="' + eventType + '"][data-field="threshold"]');
+    preferences.push({
+      eventType,
+      channel,
+      enabled: el.checked,
+      thresholdValue: thresholdEl ? (parseInt(thresholdEl.value) || null) : null
+    });
+  });
+
+  const btn = document.getElementById('save-notif-prefs-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader"></i> Saving...';
+
+  try {
+    const res = await fetch('/api/notification-preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferences })
+    });
+    if (!res.ok) throw new Error('Save failed');
+    showToastNew('Notification preferences saved', 'success');
+  } catch (e) {
+    showToastNew('Failed to save preferences', 'error');
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-device-floppy"></i> Save Preferences';
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   await loadTenantConfig();
   if (!await checkAuth()) return;
@@ -3694,6 +3818,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!businessRulesLoaded) {
         businessRulesLoaded = true;
         loadBusinessRules();
+      }
+    });
+  }
+
+  // Notifications: lazy load on first sub-tab click
+  const notifTab = document.querySelector('.ro-tab[data-subtarget="notif-settings"]');
+  if (notifTab) {
+    notifTab.addEventListener('click', () => {
+      if (!notifPrefsLoaded) {
+        notifPrefsLoaded = true;
+        loadNotificationPreferences();
       }
     });
   }

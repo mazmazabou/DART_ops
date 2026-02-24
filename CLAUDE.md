@@ -130,6 +130,9 @@ Default login credentials (password: `demo123`):
   - Fields: email (PK), count
 - **clock_events** — Historical record of driver clock-in/out with tardiness tracking
   - Fields: id, employee_id, shift_id, event_date (DATE), scheduled_start (TIME), clock_in_at, clock_out_at, tardiness_minutes, created_at
+- **notification_preferences** — Per-user, per-event-type, per-channel notification settings
+  - Fields: id, user_id, event_type, channel, enabled, threshold_value, threshold_unit, created_at, updated_at
+  - UNIQUE(user_id, event_type, channel)
 
 ### ID Generation
 IDs follow pattern: `prefix_${random}` (e.g., `ride_abc123`, `shift_xyz789`, `driver_xy12ab`, `rider_ab34cd`)
@@ -225,6 +228,13 @@ pending → approved → scheduled → driver_on_the_way → driver_arrived_grac
 
 ### Analytics (Office only)
 - `GET /api/analytics/tardiness` — Aggregate tardiness stats: summary, by-driver, by-day-of-week, daily trend (optional `?from=&to=`)
+
+### Notification Preferences (Office only)
+- `GET /api/notification-preferences` — Get current user's notification preferences (lazy-seeds defaults on first call)
+- `PUT /api/notification-preferences` — Bulk-update notification preferences (accepts `{ preferences: [{ eventType, channel, enabled, thresholdValue }] }`)
+
+### Constants
+- `NOTIFICATION_EVENT_TYPES` — Master list of notification event types with keys, labels, descriptions, categories, and default thresholds
 
 ### Dev Tools
 - `POST /api/dev/seed-rides` — Seed sample rides (office only, disabled in production)
