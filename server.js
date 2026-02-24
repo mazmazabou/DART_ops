@@ -163,11 +163,23 @@ async function initDb() {
       notes TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS tenant_settings (
+      id TEXT PRIMARY KEY,
+      setting_key VARCHAR(100) NOT NULL UNIQUE,
+      setting_value VARCHAR(500) NOT NULL,
+      setting_type VARCHAR(20) NOT NULL DEFAULT 'string',
+      label VARCHAR(200),
+      description TEXT,
+      category VARCHAR(50) DEFAULT 'general',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `;
   await query(schemaSql);
   await runMigrations();
   await seedDefaultUsers();
   await seedDefaultVehicles();
+  await seedDefaultSettings();
 }
 
 async function runMigrations() {
@@ -198,7 +210,20 @@ async function runMigrations() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );`,
     `ALTER TABLE shifts ADD COLUMN IF NOT EXISTS notes TEXT;`,
-    `ALTER TABLE shifts ADD COLUMN IF NOT EXISTS week_start DATE;`
+    `ALTER TABLE shifts ADD COLUMN IF NOT EXISTS week_start DATE;`,
+    `CREATE TABLE IF NOT EXISTS clock_events (
+      id TEXT PRIMARY KEY,
+      employee_id TEXT NOT NULL REFERENCES users(id),
+      shift_id TEXT REFERENCES shifts(id),
+      event_date DATE NOT NULL,
+      scheduled_start TIME,
+      clock_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      clock_out_at TIMESTAMPTZ,
+      tardiness_minutes INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_clock_events_employee ON clock_events(employee_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_clock_events_date ON clock_events(event_date);`
   ];
   for (const stmt of statements) {
     await query(stmt);
@@ -248,6 +273,30 @@ async function seedDefaultVehicles() {
   }
 }
 
+async function seedDefaultSettings() {
+  const defaults = [
+    { key: 'max_no_show_strikes', value: '5', type: 'number', label: 'Max No-Show Strikes', description: 'Number of consecutive no-shows before service termination', category: 'rides' },
+    { key: 'grace_period_minutes', value: '5', type: 'number', label: 'Grace Period (minutes)', description: 'Minutes driver waits at pickup before no-show is allowed', category: 'rides' },
+    { key: 'strikes_enabled', value: 'true', type: 'boolean', label: 'Strikes Enabled', description: 'Whether no-show strikes result in service termination', category: 'rides' },
+    { key: 'tardy_threshold_minutes', value: '1', type: 'number', label: 'Tardy Threshold (minutes)', description: 'Minutes late before a clock-in counts as tardy', category: 'staff' },
+    { key: 'service_hours_start', value: '08:00', type: 'time', label: 'Service Hours Start', description: 'Earliest time rides can be requested', category: 'operations' },
+    { key: 'service_hours_end', value: '19:00', type: 'time', label: 'Service Hours End', description: 'Latest time rides can be requested', category: 'operations' },
+    { key: 'operating_days', value: '0,1,2,3,4', type: 'string', label: 'Operating Days', description: 'Days of the week service operates (0=Mon, 1=Tue, ... 6=Sun)', category: 'operations' },
+    { key: 'auto_deny_outside_hours', value: 'true', type: 'boolean', label: 'Auto-Deny Outside Hours', description: 'Automatically reject ride requests outside service hours', category: 'operations' },
+    { key: 'notify_office_tardy', value: 'true', type: 'boolean', label: 'Notify Office of Tardiness', description: 'Alert office when a driver clocks in late', category: 'notifications' },
+    { key: 'notify_rider_no_show', value: 'true', type: 'boolean', label: 'Notify Rider of No-Show', description: 'Send notification to rider when marked no-show', category: 'notifications' },
+    { key: 'notify_rider_strike_warning', value: 'true', type: 'boolean', label: 'Notify Rider of Strike Warning', description: 'Warn rider when approaching strike limit', category: 'notifications' }
+  ];
+  for (const s of defaults) {
+    await query(
+      `INSERT INTO tenant_settings (id, setting_key, setting_value, setting_type, label, description, category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (setting_key) DO NOTHING`,
+      [generateId('setting'), s.key, s.value, s.type, s.label, s.description, s.category]
+    );
+  }
+}
+
 // ----- Helpers -----
 function generateId(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -259,6 +308,38 @@ function formatLocalDate(date) {
   const m = String(la.getMonth() + 1).padStart(2, '0');
   const d = String(la.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+async function findTodayShift(employeeId) {
+  const now = new Date();
+  const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const todayDow = (la.getDay() + 6) % 7; // Mon=0..Fri=4, matches shifts.day_of_week
+
+  const monday = new Date(la);
+  monday.setDate(la.getDate() - todayDow);
+  const weekStart = formatLocalDate(monday);
+
+  const result = await query(
+    `SELECT id, start_time, end_time, week_start FROM shifts
+     WHERE employee_id = $1 AND day_of_week = $2
+       AND (week_start IS NULL OR week_start = $3)
+     ORDER BY week_start DESC NULLS LAST, start_time ASC`,
+    [employeeId, todayDow, weekStart]
+  );
+  if (!result.rowCount) return null;
+
+  // Pick the shift whose start_time is closest to now (handles split shifts)
+  const nowMinutes = la.getHours() * 60 + la.getMinutes();
+  let best = result.rows[0], bestDist = Infinity;
+  for (const row of result.rows) {
+    const [h, m] = row.start_time.split(':').map(Number);
+    const dist = Math.abs(nowMinutes - (h * 60 + m));
+    // Week-specific shifts take priority over recurring
+    if (row.week_start && !best.week_start) { best = row; bestDist = dist; continue; }
+    if (!row.week_start && best.week_start) continue;
+    if (dist < bestDist) { best = row; bestDist = dist; }
+  }
+  return best;
 }
 
 function isValidEmail(email) {
@@ -276,16 +357,31 @@ function isValidPhone(value) {
   return typeof value === 'string' && /^[0-9+()\-\s]{7,20}$/.test(value);
 }
 
-function isWithinServiceHours(requestedTime) {
+async function isWithinServiceHours(requestedTime) {
   const date = new Date(requestedTime);
   if (isNaN(date.getTime())) return false;
   const la = new Date(date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
   const day = la.getDay();
-  if (day < 1 || day > 5) return false;
-  const hours = la.getHours();
-  const minutes = la.getMinutes();
-  const totalMinutes = hours * 60 + minutes;
-  return totalMinutes >= 8 * 60 && totalMinutes <= 19 * 60;
+  const ourDay = jsDateToOurDay(day);
+  const opDaysStr = await getSetting('operating_days', '0,1,2,3,4');
+  const opDays = String(opDaysStr).split(',').map(Number);
+  if (!opDays.includes(ourDay)) return false;
+  const startStr = await getSetting('service_hours_start', '08:00');
+  const endStr = await getSetting('service_hours_end', '19:00');
+  const [startH, startM] = String(startStr).split(':').map(Number);
+  const [endH, endM] = String(endStr).split(':').map(Number);
+  const totalMinutes = la.getHours() * 60 + la.getMinutes();
+  return totalMinutes >= (startH * 60 + (startM || 0)) && totalMinutes <= (endH * 60 + (endM || 0));
+}
+
+async function getServiceHoursMessage() {
+  const startStr = await getSetting('service_hours_start', '08:00');
+  const endStr = await getSetting('service_hours_end', '19:00');
+  const opDaysStr = await getSetting('operating_days', '0,1,2,3,4');
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const opDays = String(opDaysStr).split(',').map(Number).sort();
+  const dayNames = opDays.map(d => dayLabels[d]).join(', ');
+  return `Requested time outside service hours (${startStr}-${endStr} ${dayNames})`;
 }
 
 function isLocalHostname(hostname) {
@@ -309,6 +405,53 @@ async function setRiderMissCount(email, count) {
      ON CONFLICT (email) DO UPDATE SET count = EXCLUDED.count`,
     [email, count]
   );
+}
+
+const SETTING_DEFAULTS = {
+  max_no_show_strikes: '5',
+  grace_period_minutes: '5',
+  strikes_enabled: 'true',
+  tardy_threshold_minutes: '1',
+  service_hours_start: '08:00',
+  service_hours_end: '19:00',
+  operating_days: '0,1,2,3,4',
+  auto_deny_outside_hours: 'true',
+  notify_office_tardy: 'true',
+  notify_rider_no_show: 'true',
+  notify_rider_strike_warning: 'true'
+};
+
+const SETTING_TYPES = {
+  max_no_show_strikes: 'number',
+  grace_period_minutes: 'number',
+  strikes_enabled: 'boolean',
+  tardy_threshold_minutes: 'number',
+  service_hours_start: 'time',
+  service_hours_end: 'time',
+  operating_days: 'string',
+  auto_deny_outside_hours: 'boolean',
+  notify_office_tardy: 'boolean',
+  notify_rider_no_show: 'boolean',
+  notify_rider_strike_warning: 'boolean'
+};
+
+async function getSetting(key, defaultValue) {
+  try {
+    const res = await query('SELECT setting_value, setting_type FROM tenant_settings WHERE setting_key = $1', [key]);
+    const raw = res.rows[0] ? res.rows[0].setting_value : (defaultValue !== undefined ? String(defaultValue) : SETTING_DEFAULTS[key]);
+    if (raw === undefined || raw === null) return defaultValue;
+    const type = res.rows[0] ? res.rows[0].setting_type : (SETTING_TYPES[key] || 'string');
+    if (type === 'number') return Number(raw);
+    if (type === 'boolean') return raw === 'true';
+    return raw;
+  } catch {
+    const fallback = defaultValue !== undefined ? defaultValue : SETTING_DEFAULTS[key];
+    return fallback;
+  }
+}
+
+function jsDateToOurDay(jsDay) {
+  return jsDay === 0 ? 6 : jsDay - 1;
 }
 
 async function incrementRiderMissCount(email) {
@@ -373,20 +516,22 @@ function mapRide(row) {
   };
 }
 
-function normalizeDays(days) {
+async function normalizeDays(days) {
   if (!Array.isArray(days)) return [];
-  return Array.from(new Set(days.map((d) => Number(d)).filter((n) => n >= 1 && n <= 5))).sort();
+  const opDaysStr = await getSetting('operating_days', '0,1,2,3,4');
+  const opDays = String(opDaysStr).split(',').map(Number);
+  return Array.from(new Set(days.map((d) => Number(d)).filter((n) => n >= 0 && n <= 6 && opDays.includes(n)))).sort();
 }
 
 function generateRecurringDates(startDate, endDate, days) {
+  // days uses 0=Mon...6=Sun convention
   const result = [];
   const current = new Date(startDate);
   const end = new Date(endDate);
   while (current <= end) {
     const la = new Date(current.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-    const day = la.getDay(); // 0-6
-    const weekday = day === 0 ? 7 : day; // Sunday=7, Monday=1
-    if (days.includes(weekday)) {
+    const ourDay = jsDateToOurDay(la.getDay());
+    if (days.includes(ourDay)) {
       result.push(new Date(current));
     }
     current.setDate(current.getDate() + 1);
@@ -498,6 +643,84 @@ app.get('/api/client-config', (req, res) => {
 });
 
 app.get('/api/tenant-config', (req, res) => res.json(TENANT));
+
+// ----- Settings endpoints -----
+app.get('/api/settings', requireOffice, async (req, res) => {
+  try {
+    const result = await query('SELECT setting_key, setting_value, setting_type, label, description, category FROM tenant_settings ORDER BY category, setting_key');
+    const grouped = {};
+    for (const row of result.rows) {
+      if (!grouped[row.category]) grouped[row.category] = [];
+      grouped[row.category].push({
+        key: row.setting_key,
+        value: row.setting_value,
+        type: row.setting_type,
+        label: row.label,
+        description: row.description
+      });
+    }
+    res.json(grouped);
+  } catch (err) {
+    console.error('settings fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+app.put('/api/settings', requireOffice, async (req, res) => {
+  try {
+    const updates = req.body;
+    if (!Array.isArray(updates)) return res.status(400).json({ error: 'Expected array of { key, value }' });
+    for (const { key, value } of updates) {
+      if (!key || value === undefined) continue;
+      await query(
+        `UPDATE tenant_settings SET setting_value = $1, updated_at = NOW() WHERE setting_key = $2`,
+        [String(value), key]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('settings update error:', err);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+app.get('/api/settings/public/operations', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT setting_key, setting_value FROM tenant_settings WHERE category = 'operations' OR setting_key IN ('grace_period_minutes', 'max_no_show_strikes', 'strikes_enabled')`
+    );
+    const config = {};
+    for (const row of result.rows) {
+      config[row.setting_key] = row.setting_value;
+    }
+    // Apply defaults for any missing keys
+    for (const key of ['service_hours_start', 'service_hours_end', 'operating_days', 'grace_period_minutes', 'max_no_show_strikes', 'strikes_enabled']) {
+      if (!config[key]) config[key] = SETTING_DEFAULTS[key];
+    }
+    res.json(config);
+  } catch (err) {
+    console.error('public operations config error:', err);
+    res.json({
+      service_hours_start: '08:00',
+      service_hours_end: '19:00',
+      operating_days: '0,1,2,3,4',
+      grace_period_minutes: '5',
+      max_no_show_strikes: '5',
+      strikes_enabled: 'true'
+    });
+  }
+});
+
+app.get('/api/settings/:key', requireAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT setting_value, setting_type FROM tenant_settings WHERE setting_key = $1', [req.params.key]);
+    if (!result.rowCount) return res.status(404).json({ error: 'Setting not found' });
+    res.json({ key: req.params.key, value: result.rows[0].setting_value, type: result.rows[0].setting_type });
+  } catch (err) {
+    console.error('setting fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch setting' });
+  }
+});
 
 // Self-service profile
 app.get('/api/me', requireAuth, async (req, res) => {
@@ -893,7 +1116,40 @@ app.post('/api/employees/clock-in', requireStaff, async (req, res) => {
     [employeeId]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Employee not found' });
-  res.json(result.rows[0]);
+
+  let clockEvent = null;
+  try {
+    const now = new Date();
+    const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const eventDate = formatLocalDate(now);
+    const nowMinutes = la.getHours() * 60 + la.getMinutes();
+
+    const shift = await findTodayShift(employeeId);
+    let tardinessMinutes = 0;
+    let scheduledStart = null;
+    let shiftId = null;
+
+    if (shift) {
+      shiftId = shift.id;
+      scheduledStart = shift.start_time;
+      const [h, m] = shift.start_time.split(':').map(Number);
+      const tardyThreshold = await getSetting('tardy_threshold_minutes', 1);
+      const rawLateness = nowMinutes - (h * 60 + m);
+      tardinessMinutes = rawLateness > Number(tardyThreshold) ? rawLateness : 0;
+    }
+
+    const clockId = generateId('clock');
+    const ceResult = await query(
+      `INSERT INTO clock_events (id, employee_id, shift_id, event_date, scheduled_start, clock_in_at, tardiness_minutes)
+       VALUES ($1, $2, $3, $4, $5, NOW(), $6) RETURNING *`,
+      [clockId, employeeId, shiftId, eventDate, scheduledStart, tardinessMinutes]
+    );
+    clockEvent = ceResult.rows[0];
+  } catch (err) {
+    console.error('Clock event recording failed (clock-in still succeeded):', err.message);
+  }
+
+  res.json({ ...result.rows[0], clockEvent });
 });
 
 app.post('/api/employees/clock-out', requireStaff, async (req, res) => {
@@ -903,7 +1159,109 @@ app.post('/api/employees/clock-out', requireStaff, async (req, res) => {
     [employeeId]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Employee not found' });
-  res.json(result.rows[0]);
+
+  let clockEvent = null;
+  try {
+    const ceResult = await query(
+      `UPDATE clock_events SET clock_out_at = NOW()
+       WHERE id = (SELECT id FROM clock_events WHERE employee_id = $1 AND clock_out_at IS NULL
+                   ORDER BY clock_in_at DESC LIMIT 1)
+       RETURNING *`,
+      [employeeId]
+    );
+    clockEvent = ceResult.rows[0] || null;
+  } catch (err) {
+    console.error('Clock event recording failed (clock-out still succeeded):', err.message);
+  }
+
+  res.json({ ...result.rows[0], clockEvent });
+});
+
+app.get('/api/employees/today-status', requireStaff, async (req, res) => {
+  try {
+    const now = new Date();
+    const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const todayDate = formatLocalDate(now);
+    const todayDow = (la.getDay() + 6) % 7;
+    const monday = new Date(la);
+    monday.setDate(la.getDate() - todayDow);
+    const weekStart = formatLocalDate(monday);
+
+    const [driversRes, clockRes, shiftsRes] = await Promise.all([
+      query(`SELECT id, username, name, email, phone, role, active FROM users WHERE role = 'driver' ORDER BY name`),
+      query(`SELECT * FROM clock_events WHERE event_date = $1 ORDER BY clock_in_at`, [todayDate]),
+      query(
+        `SELECT id, employee_id, start_time, end_time, notes, week_start FROM shifts
+         WHERE day_of_week = $1 AND (week_start IS NULL OR week_start = $2)
+         ORDER BY start_time`, [todayDow, weekStart]
+      )
+    ]);
+
+    const clockByDriver = {};
+    for (const ce of clockRes.rows) {
+      if (!clockByDriver[ce.employee_id]) clockByDriver[ce.employee_id] = [];
+      clockByDriver[ce.employee_id].push(ce);
+    }
+
+    const shiftsByDriver = {};
+    for (const s of shiftsRes.rows) {
+      if (!shiftsByDriver[s.employee_id]) shiftsByDriver[s.employee_id] = [];
+      shiftsByDriver[s.employee_id].push(s);
+    }
+
+    const drivers = driversRes.rows.map(d => ({
+      ...d,
+      todayClockEvents: clockByDriver[d.id] || [],
+      todayShifts: shiftsByDriver[d.id] || []
+    }));
+
+    res.json(drivers);
+  } catch (err) {
+    console.error('today-status error:', err);
+    res.status(500).json({ error: 'Failed to fetch today status' });
+  }
+});
+
+app.get('/api/employees/:id/tardiness', requireOffice, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { from, to } = req.query;
+
+    const driverRes = await query(
+      `SELECT id, username, name, email FROM users WHERE id = $1 AND role = 'driver'`, [id]
+    );
+    if (!driverRes.rowCount) return res.status(404).json({ error: 'Driver not found' });
+
+    let eventsQuery = `SELECT * FROM clock_events WHERE employee_id = $1`;
+    const params = [id];
+    if (from) { params.push(from); eventsQuery += ` AND event_date >= $${params.length}`; }
+    if (to) { params.push(to); eventsQuery += ` AND event_date <= $${params.length}`; }
+    eventsQuery += ` ORDER BY clock_in_at DESC`;
+
+    const eventsRes = await query(eventsQuery, params);
+    const events = eventsRes.rows;
+
+    const totalClockIns = events.length;
+    const tardyEvents = events.filter(e => e.tardiness_minutes > 0);
+    const tardyCount = tardyEvents.length;
+    const onTimeCount = totalClockIns - tardyCount;
+    const tardyRate = totalClockIns > 0 ? Math.round((tardyCount / totalClockIns) * 100) : 0;
+    const avgTardinessMinutes = tardyCount > 0
+      ? Math.round(tardyEvents.reduce((sum, e) => sum + e.tardiness_minutes, 0) / tardyCount)
+      : 0;
+    const maxTardinessMinutes = tardyCount > 0
+      ? Math.max(...tardyEvents.map(e => e.tardiness_minutes))
+      : 0;
+
+    res.json({
+      driver: driverRes.rows[0],
+      summary: { totalClockIns, tardyCount, onTimeCount, tardyRate, avgTardinessMinutes, maxTardinessMinutes },
+      events
+    });
+  } catch (err) {
+    console.error('tardiness error:', err);
+    res.status(500).json({ error: 'Failed to fetch tardiness data' });
+  }
 });
 
 // ----- Shift endpoints -----
@@ -927,6 +1285,16 @@ app.get('/api/shifts', requireStaff, async (req, res) => {
 
 app.post('/api/shifts', requireOffice, async (req, res) => {
   const { employeeId, dayOfWeek, startTime, endTime, notes, weekStart } = req.body;
+  // Validate dayOfWeek against operating days
+  const dow = Number(dayOfWeek);
+  if (!Number.isInteger(dow) || dow < 0 || dow > 6) {
+    return res.status(400).json({ error: 'dayOfWeek must be 0-6 (Mon-Sun)' });
+  }
+  const opDaysStr = await getSetting('operating_days', '0,1,2,3,4');
+  const opDays = String(opDaysStr).split(',').map(Number);
+  if (!opDays.includes(dow)) {
+    return res.status(400).json({ error: 'Shifts can only be created on operating days' });
+  }
   const shift = {
     id: generateId('shift'),
     employeeId,
@@ -958,8 +1326,13 @@ app.put('/api/shifts/:id', requireOffice, async (req, res) => {
   // Validate dayOfWeek if provided
   if (dayOfWeek !== undefined) {
     const dow = Number(dayOfWeek);
-    if (!Number.isInteger(dow) || dow < 0 || dow > 4) {
-      return res.status(400).json({ error: 'dayOfWeek must be 0-4 (Mon-Fri)' });
+    if (!Number.isInteger(dow) || dow < 0 || dow > 6) {
+      return res.status(400).json({ error: 'dayOfWeek must be 0-6 (Mon-Sun)' });
+    }
+    const opDaysStr = await getSetting('operating_days', '0,1,2,3,4');
+    const opDays = String(opDaysStr).split(',').map(Number);
+    if (!opDays.includes(dow)) {
+      return res.status(400).json({ error: 'Shifts can only be created on operating days' });
     }
   }
 
@@ -1023,8 +1396,8 @@ app.post('/api/rides', requireAuth, async (req, res) => {
   if (!pickupLocation || !dropoffLocation || !requestedTime) {
     return res.status(400).json({ error: 'Pickup, dropoff, and requested time are required' });
   }
-  if (!isWithinServiceHours(requestedTime)) {
-    return res.status(400).json({ error: 'Requested time outside service hours (8:00-19:00 Mon-Fri)' });
+  if (!(await isWithinServiceHours(requestedTime))) {
+    return res.status(400).json({ error: await getServiceHoursMessage() });
   }
 
   const requesterRole = req.session.role;
@@ -1063,11 +1436,13 @@ app.post('/api/rides/:id/approve', requireOffice, async (req, res) => {
   if (ride.status !== 'pending') return res.status(400).json({ error: 'Only pending rides can be approved' });
   const missCountRes = await query('SELECT count FROM rider_miss_counts WHERE email = $1', [ride.rider_email]);
   const missCount = missCountRes.rows[0] != null ? missCountRes.rows[0].count : (ride.consecutive_misses || 0);
-  if (missCount >= 5) {
-    return res.status(400).json({ error: 'SERVICE TERMINATED: rider has 5 consecutive no-shows' });
+  const strikesEnabled = await getSetting('strikes_enabled', true);
+  const maxStrikes = await getSetting('max_no_show_strikes', 5);
+  if (strikesEnabled && maxStrikes > 0 && missCount >= maxStrikes) {
+    return res.status(400).json({ error: `SERVICE TERMINATED: rider has ${maxStrikes} consecutive no-shows` });
   }
-  if (!isWithinServiceHours(ride.requested_time)) {
-    return res.status(400).json({ error: 'Requested time outside service hours (8:00-19:00 Mon-Fri)' });
+  if (!(await isWithinServiceHours(ride.requested_time))) {
+    return res.status(400).json({ error: await getServiceHoursMessage() });
   }
   const result = await query(
     `UPDATE rides SET status = 'approved', updated_at = NOW() WHERE id = $1
@@ -1215,8 +1590,8 @@ app.put('/api/rides/:id', requireOffice, async (req, res) => {
   if (terminalStatuses.includes(ride.status)) {
     return res.status(400).json({ error: 'Cannot edit a ride that is completed, no-show, cancelled, or denied' });
   }
-  if (requestedTime && !isWithinServiceHours(requestedTime)) {
-    return res.status(400).json({ error: 'Requested time outside service hours (8:00-19:00 Mon-Fri)' });
+  if (requestedTime && !(await isWithinServiceHours(requestedTime))) {
+    return res.status(400).json({ error: await getServiceHoursMessage() });
   }
 
   const updates = [];
@@ -1251,8 +1626,8 @@ app.post('/api/recurring-rides', requireRider, async (req, res) => {
   if (!pickupLocation || !dropoffLocation || !timeOfDay || !startDate || !endDate) {
     return res.status(400).json({ error: 'Pickup, dropoff, start/end date, and time are required' });
   }
-  const days = normalizeDays(daysOfWeek);
-  if (!days.length) return res.status(400).json({ error: 'Choose at least one weekday (Mon-Fri)' });
+  const days = await normalizeDays(daysOfWeek);
+  if (!days.length) return res.status(400).json({ error: 'Choose at least one operating day' });
   const start = new Date(startDate);
   const end = new Date(endDate);
   if (isNaN(start) || isNaN(end) || start > end) return res.status(400).json({ error: 'Invalid date range' });
@@ -1260,8 +1635,12 @@ app.post('/api/recurring-rides', requireRider, async (req, res) => {
   const hour = Number(hourStr);
   const minute = Number(minuteStr || 0);
   const minutesTotal = hour * 60 + minute;
-  if (minutesTotal < 8 * 60 || minutesTotal > 19 * 60) {
-    return res.status(400).json({ error: 'Time must be between 08:00 and 19:00' });
+  const svcStart = await getSetting('service_hours_start', '08:00');
+  const svcEnd = await getSetting('service_hours_end', '19:00');
+  const [sH, sM] = String(svcStart).split(':').map(Number);
+  const [eH, eM] = String(svcEnd).split(':').map(Number);
+  if (minutesTotal < (sH * 60 + (sM || 0)) || minutesTotal > (eH * 60 + (eM || 0))) {
+    return res.status(400).json({ error: `Time must be between ${svcStart} and ${svcEnd}` });
   }
 
   const recurId = generateId('recur');
@@ -1278,7 +1657,7 @@ app.post('/api/recurring-rides', requireRider, async (req, res) => {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     const requestedTime = `${y}-${m}-${d}T${hourStr.padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    if (!isWithinServiceHours(requestedTime)) continue;
+    if (!(await isWithinServiceHours(requestedTime))) continue;
     const rideId = generateId('ride');
     const missCount = await getRiderMissCount(req.session.email);
     await query(
@@ -1441,11 +1820,13 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
   if (ride.status !== 'driver_arrived_grace') return res.status(400).json({ error: 'Ride must be in grace period to mark no-show' });
   if (!(await allowDriverAction(req, res, ride))) return;
-  // Enforce 5-minute grace period server-side
+  // Enforce grace period server-side
   if (ride.grace_start_time) {
+    const graceMins = await getSetting('grace_period_minutes', 5);
+    const graceMs = Number(graceMins) * 60 * 1000;
     const elapsed = Date.now() - new Date(ride.grace_start_time).getTime();
-    if (elapsed < 5 * 60 * 1000) {
-      const remaining = Math.ceil((5 * 60 * 1000 - elapsed) / 1000);
+    if (elapsed < graceMs) {
+      const remaining = Math.ceil((graceMs - elapsed) / 1000);
       return res.status(400).json({ error: `Grace period not elapsed. ${remaining} seconds remaining.` });
     }
   }
@@ -1774,6 +2155,92 @@ app.get('/api/analytics/semester-report', requireOffice, async (req, res) => {
     topLocations: topLocRes.rows,
     driverLeaderboard: driverBoardRes.rows
   });
+});
+
+app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    let dateFilter = '';
+    const params = [];
+    if (from) { params.push(from); dateFilter += ` AND event_date >= $${params.length}`; }
+    if (to) { params.push(to); dateFilter += ` AND event_date <= $${params.length}`; }
+
+    const [summaryRes, byDriverRes, byDowRes, trendRes] = await Promise.all([
+      query(
+        `SELECT COUNT(*) AS total_clock_ins,
+                COUNT(*) FILTER (WHERE tardiness_minutes > 0) AS tardy_count,
+                COALESCE(ROUND(AVG(tardiness_minutes) FILTER (WHERE tardiness_minutes > 0)), 0) AS avg_tardiness,
+                COALESCE(MAX(tardiness_minutes), 0) AS max_tardiness
+         FROM clock_events WHERE 1=1${dateFilter}`, params
+      ),
+      query(
+        `SELECT ce.employee_id, u.name,
+                COUNT(*) AS total_clock_ins,
+                COUNT(*) FILTER (WHERE ce.tardiness_minutes > 0) AS tardy_count,
+                COALESCE(ROUND(AVG(ce.tardiness_minutes) FILTER (WHERE ce.tardiness_minutes > 0)), 0) AS avg_tardiness,
+                COALESCE(MAX(ce.tardiness_minutes), 0) AS max_tardiness
+         FROM clock_events ce JOIN users u ON ce.employee_id = u.id
+         WHERE 1=1${dateFilter.replace(/event_date/g, 'ce.event_date')}
+         GROUP BY ce.employee_id, u.name ORDER BY tardy_count DESC`,
+        params
+      ),
+      query(
+        `SELECT EXTRACT(DOW FROM event_date)::int AS dow,
+                COUNT(*) AS total_clock_ins,
+                COUNT(*) FILTER (WHERE tardiness_minutes > 0) AS tardy_count,
+                COALESCE(ROUND(AVG(tardiness_minutes) FILTER (WHERE tardiness_minutes > 0)), 0) AS avg_tardiness
+         FROM clock_events WHERE 1=1${dateFilter}
+         GROUP BY dow ORDER BY dow`, params
+      ),
+      query(
+        `SELECT event_date::text AS date,
+                COUNT(*) AS total_clock_ins,
+                COUNT(*) FILTER (WHERE tardiness_minutes > 0) AS tardy_count,
+                COALESCE(ROUND(AVG(tardiness_minutes) FILTER (WHERE tardiness_minutes > 0)), 0) AS avg_tardiness
+         FROM clock_events WHERE 1=1${dateFilter}
+         GROUP BY event_date ORDER BY event_date`, params
+      )
+    ]);
+
+    const s = summaryRes.rows[0];
+    const totalClockIns = parseInt(s.total_clock_ins);
+    const tardyCount = parseInt(s.tardy_count);
+
+    res.json({
+      summary: {
+        totalClockIns,
+        tardyCount,
+        onTimeCount: totalClockIns - tardyCount,
+        tardyRate: totalClockIns > 0 ? Math.round((tardyCount / totalClockIns) * 100) : 0,
+        avgTardinessMinutes: parseInt(s.avg_tardiness),
+        maxTardinessMinutes: parseInt(s.max_tardiness)
+      },
+      byDriver: byDriverRes.rows.map(r => ({
+        employeeId: r.employee_id,
+        name: r.name,
+        totalClockIns: parseInt(r.total_clock_ins),
+        tardyCount: parseInt(r.tardy_count),
+        avgTardinessMinutes: parseInt(r.avg_tardiness),
+        maxTardinessMinutes: parseInt(r.max_tardiness)
+      })),
+      byDayOfWeek: byDowRes.rows.map(r => ({
+        dayOfWeek: parseInt(r.dow),
+        totalClockIns: parseInt(r.total_clock_ins),
+        tardyCount: parseInt(r.tardy_count),
+        avgTardinessMinutes: parseInt(r.avg_tardiness)
+      })),
+      dailyTrend: trendRes.rows.map(r => ({
+        date: r.date,
+        totalClockIns: parseInt(r.total_clock_ins),
+        tardyCount: parseInt(r.tardy_count),
+        avgTardinessMinutes: parseInt(r.avg_tardiness)
+      }))
+    });
+  } catch (err) {
+    console.error('analytics tardiness error:', err);
+    res.status(500).json({ error: 'Failed to fetch tardiness analytics' });
+  }
 });
 
 // ----- Dev endpoint -----

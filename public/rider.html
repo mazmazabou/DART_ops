@@ -196,6 +196,7 @@
     }
 
     // ── Init ──
+    var opsConfig = null;
     async function init() {
       var me = await fetchMe();
       if (!me) { window.location.href = '/login.html'; return; }
@@ -204,16 +205,49 @@
         return;
       }
       meUser = me;
+      opsConfig = await getOpsConfig();
       applyTenantTheme();
       initBottomTabs();
       await loadLocations();
       initStepNav();
+      applyDynamicServiceHours();
       buildDateChips();
       setDefaultTime();
       document.getElementById('gear-btn').onclick = openAccountDrawer;
       await loadAllRides();
       autoSwitchToActiveRide();
       window._pollIntervals = [setInterval(loadAllRides, 5000)];
+    }
+
+    function applyDynamicServiceHours() {
+      // Update service hours text
+      var svcText = document.querySelector('#step-2 .text-muted.text-sm');
+      if (svcText && opsConfig) svcText.textContent = formatServiceHoursText(opsConfig);
+      // Update time input min/max
+      var timeInput = document.getElementById('ride-time');
+      if (timeInput && opsConfig) {
+        timeInput.min = opsConfig.service_hours_start || '08:00';
+        timeInput.max = opsConfig.service_hours_end || '19:00';
+      }
+      // Build recurring day checkboxes dynamically
+      var recurDaysContainer = document.getElementById('recurring-days');
+      if (recurDaysContainer && opsConfig) {
+        var opDays = String(opsConfig.operating_days || '0,1,2,3,4').split(',').map(Number).sort();
+        var labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        recurDaysContainer.innerHTML = '';
+        opDays.forEach(function(d) {
+          var lbl = document.createElement('label');
+          lbl.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;';
+          lbl.innerHTML = '<input type="checkbox" value="' + d + '" class="recurring-day-cb" style="accent-color:var(--color-primary);"> ' + labels[d];
+          recurDaysContainer.appendChild(lbl);
+        });
+        // Update label text
+        var recurLabel = recurDaysContainer.previousElementSibling;
+        if (recurLabel && recurLabel.classList.contains('ro-label')) {
+          var dayRange = opDays.length > 2 ? labels[opDays[0]] + '\u2013' + labels[opDays[opDays.length - 1]] : opDays.map(function(d) { return labels[d]; }).join(', ');
+          recurLabel.textContent = 'Repeat on (' + dayRange + ')';
+        }
+      }
     }
 
     async function fetchMe() {
@@ -296,11 +330,11 @@
         document.getElementById('recurring-toggle').checked = false;
         document.getElementById('recurring-options').style.display = 'none';
         document.getElementById('confirm-btn').textContent = 'CONFIRM REQUEST';
-        // Map JS getDay() (0=Sun..6=Sat) to our 1=Mon..5=Fri
+        // Pre-check the matching day (0=Mon convention)
         var jsDay = new Date(selectedDate + 'T12:00:00').getDay();
-        var dayMap = { 1:1, 2:2, 3:3, 4:4, 5:5 };
+        var ourDay = jsDateToOurDay(jsDay);
         document.querySelectorAll('.recurring-day-cb').forEach(function(cb) {
-          cb.checked = (Number(cb.value) === dayMap[jsDay]);
+          cb.checked = (Number(cb.value) === ourDay);
         });
         // Set end date min to selected date
         var endDateInput = document.getElementById('recurring-end-date');
@@ -349,12 +383,13 @@
       var chips = [];
       var d = new Date(today);
       var count = 0;
-      // Generate next 5 weekdays
-      for (var i = 0; i < 14 && count < 5; i++) {
+      var opDays = opsConfig ? String(opsConfig.operating_days || '0,1,2,3,4').split(',').map(Number) : [0,1,2,3,4];
+      // Generate next 5 operating days
+      for (var i = 0; i < 21 && count < 5; i++) {
         var test = new Date(d);
         test.setDate(test.getDate() + i);
         var dow = test.getDay();
-        if (dow === 0 || dow === 6) continue;
+        if (opDays.indexOf(jsDateToOurDay(dow)) === -1) continue;
         var label;
         if (count === 0 && test.getTime() === today.getTime() && today.getDay() >= 1 && today.getDay() <= 5) {
           label = 'Today';
@@ -389,13 +424,16 @@
     }
 
     function setDefaultTime() {
+      var svcStart = opsConfig ? String(opsConfig.service_hours_start || '08:00').split(':').map(Number) : [8, 0];
+      var svcEnd = opsConfig ? String(opsConfig.service_hours_end || '19:00').split(':').map(Number) : [19, 0];
+      var startH = svcStart[0], endH = svcEnd[0];
       var now = new Date();
       var h = now.getHours();
       var m = now.getMinutes();
       m = m > 30 ? 0 : 30;
       if (m === 0) h++;
-      if (h < 8) h = 8;
-      if (h >= 19) h = 8;
+      if (h < startH) h = startH;
+      if (h >= endH) h = startH;
       document.getElementById('ride-time').value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
     }
 
@@ -608,7 +646,8 @@
         h += '<div class="grace-timer" id="grace-timer-container">';
         h += '<div class="grace-timer__circle">';
         h += '<svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="54"></circle><circle class="progress" id="grace-progress" cx="60" cy="60" r="54" stroke-dasharray="339.3" stroke-dashoffset="0"></circle></svg>';
-        h += '<div class="grace-timer__time" id="grace-time-display">5:00</div>';
+        var graceMinDisplay = opsConfig ? Math.round(Number(opsConfig.grace_period_minutes || 5)) : 5;
+        h += '<div class="grace-timer__time" id="grace-time-display">' + graceMinDisplay + ':00</div>';
         h += '</div>';
         h += '<div class="grace-timer__label">Your driver is waiting</div>';
         h += '</div>';
@@ -636,7 +675,8 @@
 
     function startGraceTimer(graceStartTime) {
       if (graceInterval) clearInterval(graceInterval);
-      var GRACE_MS = 5 * 60 * 1000;
+      var graceMins = opsConfig ? Number(opsConfig.grace_period_minutes || 5) : 5;
+      var GRACE_MS = graceMins * 60 * 1000;
       var circumference = 2 * Math.PI * 54;
 
       function updateTimer() {

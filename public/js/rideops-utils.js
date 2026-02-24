@@ -15,10 +15,14 @@ async function applyTenantTheme() {
 }
 
 // Status badge HTML
-function statusBadge(status) {
-  const label = status === 'driver_arrived_grace'
-    ? '5-min grace period'
-    : (status || '').replace(/_/g, ' ').replace('driver ', '');
+function statusBadge(status, graceMins) {
+  var label;
+  if (status === 'driver_arrived_grace') {
+    var mins = graceMins || window._opsGraceMins || 5;
+    label = mins + '-min grace period';
+  } else {
+    label = (status || '').replace(/_/g, ' ').replace('driver ', '');
+  }
   return '<span class="status-badge status-badge--' + status + '">' + label + '</span>';
 }
 
@@ -185,6 +189,73 @@ function timeAgo(iso) {
   var hrs = Math.floor(mins / 60);
   if (hrs < 24) return hrs + 'h ago';
   return Math.floor(hrs / 24) + 'd ago';
+}
+
+// ----- Business Rules / Ops Config helpers -----
+function jsDateToOurDay(date) {
+  // JS getDay: 0=Sun, 1=Mon ... 6=Sat → our: 0=Mon ... 6=Sun
+  var d = typeof date === 'number' ? date : date.getDay();
+  return d === 0 ? 6 : d - 1;
+}
+function ourDayToFCDay(ourDay) {
+  // our 0=Mon → FC/JS 1=Mon, our 6=Sun → FC/JS 0=Sun
+  return (ourDay + 1) % 7;
+}
+function ourDayLabel(ourDay) {
+  return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][ourDay] || '';
+}
+
+var _opsConfigPromise = null;
+function getOpsConfig() {
+  if (!_opsConfigPromise) {
+    _opsConfigPromise = fetch('/api/settings/public/operations')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(cfg) {
+        return cfg || {
+          service_hours_start: '08:00',
+          service_hours_end: '19:00',
+          operating_days: '0,1,2,3,4',
+          grace_period_minutes: '5'
+        };
+      })
+      .catch(function() {
+        return {
+          service_hours_start: '08:00',
+          service_hours_end: '19:00',
+          operating_days: '0,1,2,3,4',
+          grace_period_minutes: '5'
+        };
+      });
+  }
+  return _opsConfigPromise;
+}
+function invalidateOpsConfig() {
+  _opsConfigPromise = null;
+}
+
+function formatServiceHoursText(cfg) {
+  var opDays = String(cfg.operating_days || '0,1,2,3,4').split(',').map(Number).sort();
+  var labels = opDays.map(ourDayLabel);
+  var dayStr;
+  // Check if consecutive
+  if (labels.length > 2) {
+    var consecutive = true;
+    for (var i = 1; i < opDays.length; i++) {
+      if (opDays[i] !== opDays[i - 1] + 1) { consecutive = false; break; }
+    }
+    dayStr = consecutive ? labels[0] + '\u2013' + labels[labels.length - 1] : labels.join(', ');
+  } else {
+    dayStr = labels.join(', ');
+  }
+  function fmtTime(t) {
+    var parts = String(t).split(':');
+    var h = parseInt(parts[0]);
+    var m = parts[1] || '00';
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12 || 12;
+    return h12 + ':' + m + ' ' + ampm;
+  }
+  return dayStr + ', ' + fmtTime(cfg.service_hours_start || '08:00') + ' \u2013 ' + fmtTime(cfg.service_hours_end || '19:00');
 }
 
 // Show specific tab programmatically

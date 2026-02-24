@@ -622,7 +622,7 @@ test.describe.serial('API: Recurring Rides', () => {
         timeOfDay: '10:00',
         startDate,
         endDate,
-        daysOfWeek: [1, 3, 5],
+        daysOfWeek: [0, 2, 4],
         notes: 'E2E recurring test',
       },
     });

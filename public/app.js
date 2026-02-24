@@ -803,7 +803,7 @@ function renderScheduleGrid() {
   initShiftCalendar();
 }
 
-function initShiftCalendar() {
+async function initShiftCalendar() {
   const calendarEl = document.getElementById('shift-calendar');
   if (!calendarEl) return;
 
@@ -812,13 +812,24 @@ function initShiftCalendar() {
     return;
   }
 
+  const cfg = await getOpsConfig();
+  const opDays = String(cfg.operating_days || '0,1,2,3,4').split(',').map(Number);
+  const hiddenDays = [];
+  for (let d = 0; d < 7; d++) {
+    if (!opDays.includes(d)) hiddenDays.push(ourDayToFCDay(d));
+  }
+  const [startH] = String(cfg.service_hours_start || '08:00').split(':').map(Number);
+  const [endH] = String(cfg.service_hours_end || '19:00').split(':').map(Number);
+  const slotMin = String(Math.max(0, startH - 1)).padStart(2, '0') + ':00:00';
+  const slotMax = String(Math.min(24, endH + 1)).padStart(2, '0') + ':00:00';
+
   shiftCalendar = new FullCalendar.Calendar(calendarEl, {
     initialView: 'timeGridWeek',
     headerToolbar: { left: 'prev,next today', center: 'title', right: 'timeGridWeek,timeGridDay' },
-    slotMinTime: '07:00:00',
-    slotMaxTime: '20:00:00',
+    slotMinTime: slotMin,
+    slotMaxTime: slotMax,
     allDaySlot: false,
-    weekends: false,
+    hiddenDays: hiddenDays,
     height: 'auto',
     events: async function(fetchInfo, successCallback) {
       try {
@@ -897,8 +908,10 @@ function getShiftCalendarEvents(viewStart) {
 async function onCalendarSelect(info) {
   // Determine day of week (Mon=0)
   const jsDay = info.start.getDay();
-  const dayOfWeek = (jsDay + 6) % 7;
-  if (dayOfWeek > 4) return; // Skip weekends
+  const dayOfWeek = jsDateToOurDay(jsDay);
+  const cfg = await getOpsConfig();
+  const opDays = String(cfg.operating_days || '0,1,2,3,4').split(',').map(Number);
+  if (!opDays.includes(dayOfWeek)) return;
 
   const startTime = info.start.toTimeString().substring(0, 8);
   const endTime = info.end.toTimeString().substring(0, 8);
@@ -927,7 +940,7 @@ async function onCalendarSelect(info) {
 
 // ----- Shift Event Handlers (drag/drop, resize, popover, context menu) -----
 
-const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function formatTimeLabel(timeStr) {
   if (!timeStr) return '';
@@ -940,10 +953,12 @@ function formatTimeLabel(timeStr) {
 async function onShiftEventDrop(info) {
   const shiftId = info.event.extendedProps.shiftId;
   const jsDay = info.event.start.getDay();
-  const dayOfWeek = (jsDay + 6) % 7;
-  if (dayOfWeek > 4) {
+  const dayOfWeek = jsDateToOurDay(jsDay);
+  const cfg = await getOpsConfig();
+  const opDays = String(cfg.operating_days || '0,1,2,3,4').split(',').map(Number);
+  if (!opDays.includes(dayOfWeek)) {
     info.revert();
-    showToast('Shifts must be on weekdays', 'error');
+    showToast('Shifts must be on operating days', 'error');
     return;
   }
   const startTime = info.event.start.toTimeString().substring(0, 5);
@@ -2148,14 +2163,17 @@ function renderPendingQueue() {
   });
 }
 
-function renderDispatchGrid() {
+async function renderDispatchGrid() {
   const grid = document.getElementById('dispatch-grid');
   if (!grid) return;
   const dateInput = document.getElementById('dispatch-date');
   const selectedDate = dateInput?.value ? parseDateInputLocal(dateInput.value) : new Date();
   const dateStr = formatDateInputLocal(selectedDate || new Date());
-  const cols = 13; // 7am to 7pm (hours 7-19)
-  const startHour = 7;
+  const cfg = await getOpsConfig();
+  const [sH] = String(cfg.service_hours_start || '08:00').split(':').map(Number);
+  const [eH] = String(cfg.service_hours_end || '19:00').split(':').map(Number);
+  const startHour = Math.max(0, sH - 1);
+  const cols = Math.min(24, eH + 1) - startHour;
 
   // Classify drivers
   const activeDrivers = employees.filter(e => e.active);
@@ -3267,6 +3285,135 @@ function exportSemesterCSV() {
 }
 
 // ----- Initialize -----
+// ----- Business Rules -----
+let businessRulesLoaded = false;
+
+async function loadBusinessRules() {
+  const container = document.getElementById('business-rules-container');
+  if (!container) return;
+  container.innerHTML = '<div class="text-muted text-sm">Loading settings...</div>';
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) throw new Error('Failed to fetch');
+    const grouped = await res.json();
+
+    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const CATEGORY_LABELS = { operations: 'Operations', rides: 'Rides', staff: 'Staff', notifications: 'Notifications' };
+    const CATEGORY_ICONS = { operations: 'ti-clock', rides: 'ti-car', staff: 'ti-users', notifications: 'ti-bell' };
+    const categoryOrder = ['operations', 'rides', 'staff', 'notifications'];
+
+    let html = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">';
+    html += '<h3 class="ro-section__title" style="margin:0;">Business Rules</h3>';
+    html += '<button class="ro-btn ro-btn--primary" id="save-business-rules"><i class="ti ti-device-floppy"></i> Save Changes</button>';
+    html += '</div>';
+
+    for (const cat of categoryOrder) {
+      const settings = grouped[cat];
+      if (!settings) continue;
+      html += `<div class="ro-section" style="margin-bottom:20px;">`;
+      html += `<h4 style="font-size:14px; font-weight:700; margin:0 0 12px; display:flex; align-items:center; gap:6px;"><i class="ti ${CATEGORY_ICONS[cat] || 'ti-settings'}"></i> ${CATEGORY_LABELS[cat] || cat}</h4>`;
+      html += '<div style="display:flex; flex-direction:column; gap:12px;">';
+      for (const s of settings) {
+        if (s.key === 'operating_days') {
+          // Render as day pills
+          const activeDays = String(s.value).split(',').map(Number);
+          html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
+          html += `<div style="display:flex; gap:6px; flex-wrap:wrap;">`;
+          for (let d = 0; d < 7; d++) {
+            const active = activeDays.includes(d);
+            html += `<button type="button" class="ro-btn ro-btn--sm day-pill-btn${active ? ' ro-btn--primary' : ' ro-btn--outline'}" data-day="${d}" style="min-width:48px;">${DAY_LABELS[d]}</button>`;
+          }
+          html += '</div>';
+          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
+          html += '</div>';
+        } else if (s.type === 'boolean') {
+          html += `<div class="field-group" style="display:flex; align-items:center; gap:8px;">`;
+          html += `<input type="checkbox" id="setting-${s.key}" data-key="${s.key}" data-type="boolean" ${s.value === 'true' ? 'checked' : ''} style="width:18px; height:18px; accent-color:var(--color-primary);">`;
+          html += `<label for="setting-${s.key}" style="font-size:14px; font-weight:500; cursor:pointer;">${s.label}</label>`;
+          if (s.description) html += `<span class="text-xs text-muted">${s.description}</span>`;
+          html += '</div>';
+        } else if (s.type === 'number') {
+          html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
+          html += `<input type="number" id="setting-${s.key}" data-key="${s.key}" data-type="number" value="${s.value}" class="ro-input" style="max-width:120px;" min="0">`;
+          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
+          html += '</div>';
+        } else if (s.type === 'time') {
+          html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
+          html += `<input type="time" id="setting-${s.key}" data-key="${s.key}" data-type="time" value="${s.value}" class="ro-input" style="max-width:150px;">`;
+          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
+          html += '</div>';
+        } else {
+          html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
+          html += `<input type="text" id="setting-${s.key}" data-key="${s.key}" data-type="string" value="${s.value}" class="ro-input" style="max-width:300px;">`;
+          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
+          html += '</div>';
+        }
+      }
+      html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+
+    // Day pill toggle behavior
+    container.querySelectorAll('.day-pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('ro-btn--primary');
+        btn.classList.toggle('ro-btn--outline');
+      });
+    });
+
+    // Save button
+    document.getElementById('save-business-rules')?.addEventListener('click', saveBusinessRules);
+  } catch (err) {
+    container.innerHTML = '<div class="text-muted text-sm">Failed to load settings.</div>';
+    console.error('loadBusinessRules error:', err);
+  }
+}
+
+async function saveBusinessRules() {
+  const updates = [];
+  // Collect operating_days from day pills
+  const activeDays = [];
+  document.querySelectorAll('.day-pill-btn.ro-btn--primary').forEach(btn => {
+    activeDays.push(Number(btn.dataset.day));
+  });
+  updates.push({ key: 'operating_days', value: activeDays.sort().join(',') });
+
+  // Collect all other settings
+  document.querySelectorAll('[data-key][data-type]').forEach(el => {
+    const key = el.dataset.key;
+    const type = el.dataset.type;
+    let value;
+    if (type === 'boolean') {
+      value = el.checked ? 'true' : 'false';
+    } else {
+      value = el.value;
+    }
+    updates.push({ key, value });
+  });
+
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (!res.ok) throw new Error('Save failed');
+    showToast('Business rules saved', 'success');
+    // Invalidate cached ops config
+    if (typeof invalidateOpsConfig === 'function') invalidateOpsConfig();
+    // Refresh calendar if it's visible
+    if (shiftCalendar) {
+      shiftCalendar.destroy();
+      shiftCalendar = null;
+      initShiftCalendar();
+    }
+  } catch (err) {
+    showToast('Failed to save business rules', 'error');
+    console.error('saveBusinessRules error:', err);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   await loadTenantConfig();
   if (!await checkAuth()) return;
@@ -3405,6 +3552,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!fleetLoaded) {
         fleetLoaded = true;
         loadFleetVehicles();
+      }
+    });
+  }
+
+  // Business Rules: lazy load on first sub-tab click
+  const rulesTab = document.querySelector('.ro-tab[data-subtarget="admin-rules-view"]');
+  if (rulesTab) {
+    rulesTab.addEventListener('click', () => {
+      if (!businessRulesLoaded) {
+        businessRulesLoaded = true;
+        loadBusinessRules();
       }
     });
   }

@@ -128,6 +128,8 @@ Default login credentials (password: `demo123`):
   - Fields: id, rider_id, pickup_location, dropoff_location, time_of_day, days_of_week (array), start_date, end_date, status
 - **rider_miss_counts** — Tracks consecutive no-shows per rider email
   - Fields: email (PK), count
+- **clock_events** — Historical record of driver clock-in/out with tardiness tracking
+  - Fields: id, employee_id, shift_id, event_date (DATE), scheduled_start (TIME), clock_in_at, clock_out_at, tardiness_minutes, created_at
 
 ### ID Generation
 IDs follow pattern: `prefix_${random}` (e.g., `ride_abc123`, `shift_xyz789`, `driver_xy12ab`, `rider_ab34cd`)
@@ -192,6 +194,8 @@ pending → approved → scheduled → driver_on_the_way → driver_arrived_grac
 - `GET /api/employees` — List all drivers
 - `POST /api/employees/clock-in` — Clock in driver
 - `POST /api/employees/clock-out` — Clock out driver
+- `GET /api/employees/today-status` — Get all drivers with today's clock events and shifts (staff only)
+- `GET /api/employees/:id/tardiness` — Get driver tardiness history and summary (office only, optional `?from=&to=`)
 
 ### Shifts (Office only)
 - `GET /api/shifts` — List all shifts
@@ -218,6 +222,9 @@ pending → approved → scheduled → driver_on_the_way → driver_arrived_grac
 - `POST /api/recurring-rides` — Create recurring ride series (rider only)
 - `GET /api/recurring-rides/my` — Get own recurring rides (rider only)
 - `PATCH /api/recurring-rides/:id` — Update recurring ride status (rider only)
+
+### Analytics (Office only)
+- `GET /api/analytics/tardiness` — Aggregate tardiness stats: summary, by-driver, by-day-of-week, daily trend (optional `?from=&to=`)
 
 ### Dev Tools
 - `POST /api/dev/seed-rides` — Seed sample rides (office only, disabled in production)
