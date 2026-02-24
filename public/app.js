@@ -57,6 +57,7 @@ let rideScheduleAnchor = new Date();
 let emailConfigured = false;
 let tenantConfig = null;
 let historyExpandedGroups = new Set();
+let todayDriverStatus = [];
 
 async function loadTenantConfig() {
   try {
@@ -104,7 +105,15 @@ async function loadEmployees() {
     const res = await fetch('/api/employees');
     if (res.ok) employees = await res.json();
   } catch (e) { console.error('Failed to load employees', e); }
+  await loadTodayDriverStatus();
   renderEmployees();
+}
+
+async function loadTodayDriverStatus() {
+  try {
+    const res = await fetch('/api/employees/today-status');
+    if (res.ok) todayDriverStatus = await res.json();
+  } catch (e) { console.error('today-status error:', e); }
 }
 
 async function loadShifts() {
@@ -737,6 +746,18 @@ function renderEmployees() {
     actionBtn.title = emp.active ? `Clock out ${emp.name}` : `Clock in ${emp.name}`;
     actionBtn.textContent = emp.active ? 'Clock Out' : 'Clock In';
     actionBtn.onclick = () => clockEmployee(emp.id, !emp.active);
+    // Add punctuality indicator from today's clock events
+    const statusData = todayDriverStatus.find(d => d.id === emp.id);
+    const todayClock = statusData?.todayClockEvents?.slice(-1)[0];
+    if (todayClock) {
+      const tardyMins = todayClock.tardiness_minutes || 0;
+      if (tardyMins > 0) {
+        const tardySpan = document.createElement('span');
+        tardySpan.className = 'tardy-badge';
+        tardySpan.innerHTML = `<i class="ti ti-clock-exclamation"></i>${tardyMins}m late`;
+        chip.appendChild(tardySpan);
+      }
+    }
     chip.querySelector('.emp-name').onclick = () => openProfileById(emp.id);
     chip.appendChild(actionBtn);
     container.appendChild(chip);
@@ -2121,6 +2142,26 @@ function renderDispatchSummary() {
   el('dispatch-active-rides', activeRides);
   el('dispatch-pending-rides', pendingRides);
   el('dispatch-completed-today', completedToday);
+
+  // Tardy today: drivers not clocked in but currently within a shift window
+  const now = toLADate(new Date());
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const todayDow = (now.getDay() + 6) % 7; // Mon=0
+  const currentWeekStart = formatDateInputLocal(getMondayOfWeek(now));
+  const tardyToday = employees.filter(e => {
+    if (e.active) return false;
+    return shifts.some(s =>
+      s.employeeId === e.id &&
+      s.dayOfWeek === todayDow &&
+      (!s.weekStart || s.weekStart.slice(0, 10) === currentWeekStart) &&
+      (() => {
+        const [sh, sm] = s.startTime.split(':').map(Number);
+        const [eh, em] = s.endTime.split(':').map(Number);
+        return nowMins >= (sh * 60 + sm) && nowMins < (eh * 60 + em);
+      })()
+    );
+  }).length;
+  el('dispatch-tardy-today', tardyToday);
 }
 
 function renderPendingQueue() {
@@ -2271,7 +2312,18 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
   const tardyClass = isTardy ? ' time-grid__row--tardy' : '';
   const rowOpacity = (!isActive && !isTardy) ? ';opacity:0.5;' : '';
   let html = `<div class="time-grid__row${tardyClass}" style="${gridColStyle}${rowOpacity}">`;
-  html += `<div class="time-grid__driver"><span class="time-grid__driver-dot ${dotClass}"></span><span class="clickable-name" data-user="${driver.id}">${driver.name}</span></div>`;
+  let tardyBadgeHtml = '';
+  if (isTardy) {
+    const statusData = todayDriverStatus.find(d => d.id === driver.id);
+    const lastClock = statusData?.todayClockEvents?.slice(-1)[0];
+    const tardyMins = lastClock?.tardiness_minutes;
+    if (tardyMins && tardyMins > 0) {
+      tardyBadgeHtml = `<span class="tardy-badge"><i class="ti ti-clock-exclamation"></i>${tardyMins}m late</span>`;
+    } else {
+      tardyBadgeHtml = `<span class="tardy-badge"><i class="ti ti-clock-exclamation"></i>Not clocked in</span>`;
+    }
+  }
+  html += `<div class="time-grid__driver"><span class="time-grid__driver-dot ${dotClass}"></span><span class="clickable-name" data-user="${driver.id}">${driver.name}</span>${tardyBadgeHtml}</div>`;
 
   driverShifts.forEach(s => {
     const [sh, sm] = s.startTime.split(':').map(Number);
@@ -3067,13 +3119,92 @@ async function loadSemesterReport() {
   } catch (e) { console.error('Semester report error:', e); }
 }
 
+async function loadTardinessAnalytics() {
+  const container = document.getElementById('tardiness-analytics-container');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/analytics/tardiness' + getAnalyticsDateParams());
+    if (!res.ok) return;
+    const data = await res.json();
+    renderTardinessSection(container, data);
+  } catch (e) { console.error('Tardiness analytics error:', e); }
+}
+
+function renderTardinessSection(container, data) {
+  const { summary, byDriver, byDayOfWeek, dailyTrend } = data;
+  let html = '';
+
+  // 1. Summary KPI bar
+  const onTimeRate = summary.totalClockIns > 0 ? Math.round((summary.onTimeCount / summary.totalClockIns) * 100) : 100;
+  const onTimeClass = onTimeRate >= 90 ? 'kpi-card--good' : onTimeRate >= 80 ? 'kpi-card--warning' : 'kpi-card--danger';
+  const tardyClass = summary.tardyCount === 0 ? 'kpi-card--good' : 'kpi-card--danger';
+  const avgTardy = summary.avgTardinessMinutes ? parseFloat(summary.avgTardinessMinutes).toFixed(1) : '0';
+
+  html += '<div class="kpi-bar">';
+  html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${summary.totalClockIns}</div><div class="kpi-card__label">Total Clock-Ins</div></div>`;
+  html += `<div class="kpi-card ${onTimeClass}"><div class="kpi-card__value">${onTimeRate}%</div><div class="kpi-card__label">On-Time Rate</div></div>`;
+  html += `<div class="kpi-card ${tardyClass}"><div class="kpi-card__value">${summary.tardyCount}</div><div class="kpi-card__label">Tardy Count</div></div>`;
+  html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${avgTardy}m</div><div class="kpi-card__label">Avg Tardiness</div></div>`;
+  html += '</div>';
+
+  // 2. By Driver table
+  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Punctuality by Driver</h3>';
+  if (byDriver && byDriver.length) {
+    html += '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th></tr></thead><tbody>';
+    byDriver.forEach(d => {
+      const driverOnTime = d.totalClockIns > 0 ? Math.round(((d.totalClockIns - d.tardyCount) / d.totalClockIns) * 100) : 100;
+      const tardyPct = d.totalClockIns > 0 ? (d.tardyCount / d.totalClockIns * 100) : 0;
+      const dotClass = d.tardyCount === 0 ? 'punctuality-dot--good' : tardyPct < 20 ? 'punctuality-dot--warning' : 'punctuality-dot--poor';
+      const avg = d.avgTardinessMinutes ? parseFloat(d.avgTardinessMinutes).toFixed(1) + 'm' : '—';
+      html += `<tr>
+        <td><span class="punctuality-dot ${dotClass}"></span>${d.name}</td>
+        <td>${d.totalClockIns}</td>
+        <td>${d.tardyCount > 0 ? '<span class="tardy-badge">' + d.tardyCount + '</span>' : '0'}</td>
+        <td>${driverOnTime}%</td>
+        <td>${avg}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  } else {
+    html += '<div class="ro-empty"><i class="ti ti-clock-check"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No clock-in data available for this period.</div></div>';
+  }
+  html += '</div>';
+
+  // 3. Tardiness by Day of Week
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Tardiness by Day of Week</h3><div id="tardiness-dow-chart"></div></div>';
+
+  // 4. Daily Trend
+  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Daily Tardiness Trend</h3><div id="tardiness-daily-chart"></div></div>';
+
+  container.innerHTML = html;
+
+  // Render bar charts after DOM is set
+  if (byDayOfWeek && byDayOfWeek.length) {
+    const dowData = byDayOfWeek.map(d => ({
+      label: dayLabels[d.dayOfWeek] || `Day ${d.dayOfWeek}`,
+      count: d.tardyCount
+    }));
+    renderBarChart('tardiness-dow-chart', dowData, { colorClass: 'red', yLabel: 'Tardy count', unit: 'tardy clock-ins' });
+  }
+
+  if (dailyTrend && dailyTrend.length) {
+    const trendData = dailyTrend.map(d => ({
+      label: d.date.slice(5), // MM-DD
+      count: d.tardyCount
+    }));
+    renderBarChart('tardiness-daily-chart', trendData, { colorClass: 'orange', yLabel: 'Tardy count', unit: 'tardy clock-ins' });
+  }
+}
+
 async function loadAllAnalytics() {
   await Promise.all([
     loadAnalyticsSummary(),
     loadAnalyticsFrequency(),
     loadAnalyticsHotspots(),
     loadAnalyticsMilestones(),
-    loadSemesterReport()
+    loadSemesterReport(),
+    loadTardinessAnalytics()
   ]);
 }
 

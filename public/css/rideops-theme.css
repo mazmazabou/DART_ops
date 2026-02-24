@@ -215,6 +215,16 @@ body {
 .time-grid__ride-strip:hover { opacity: 0.85; }
 .time-grid__separator { grid-column: 1 / -1; padding: 6px 16px; font-size: 11px; font-weight: 600; color: var(--color-text-muted); border-bottom: 1px dashed var(--color-border); text-transform: uppercase; letter-spacing: 0.5px; }
 
+/* ── Tardiness indicators ── */
+.tardy-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 700; background: rgba(239, 68, 68, 0.1); color: var(--status-no-show); white-space: nowrap; margin-left: 4px; }
+.tardy-badge i { font-size: 11px; }
+.tardy-badge--warning { background: rgba(245, 158, 11, 0.1); color: var(--status-on-the-way); }
+.kpi-card--tardy { border-top: 3px solid var(--status-no-show); }
+.punctuality-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.punctuality-dot--good { background: var(--status-completed); }
+.punctuality-dot--warning { background: var(--status-on-the-way); }
+.punctuality-dot--poor { background: var(--status-no-show); }
+
 /* ── Section 18: Bottom tab bar (mobile) ── */
 .ro-bottom-tabs { position: fixed; bottom: 0; left: 0; right: 0; height: 56px; background: var(--color-surface); border-top: 1px solid var(--color-border); display: flex; z-index: 50; }
 .ro-bottom-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10px; font-weight: 600; color: var(--color-text-muted); background: none; border: none; cursor: pointer; font-family: inherit; }

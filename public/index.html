@@ -117,6 +117,10 @@
               <div class="kpi-card__value" id="dispatch-completed-today">0</div>
               <div class="kpi-card__label">Completed Today</div>
             </div>
+            <div class="kpi-card kpi-card--tardy">
+              <div class="kpi-card__value" id="dispatch-tardy-today">0</div>
+              <div class="kpi-card__label">Tardy Today</div>
+            </div>
           </div>
 
           <!-- Pending queue -->
@@ -223,6 +227,7 @@
             <button class="ro-tab" data-subtarget="analytics-hotspots-view">Hotspots</button>
             <button class="ro-tab" data-subtarget="analytics-milestones-view">Milestones</button>
             <button class="ro-tab" data-subtarget="analytics-reports-view">Reports</button>
+            <button class="ro-tab" data-subtarget="analytics-tardiness-view">Tardiness</button>
           </div>
 
           <div class="sub-panel active" id="analytics-dashboard-view">
@@ -268,6 +273,10 @@
               <h3 class="ro-section__title mb-8" id="ro-wrapped-title">RideOps Wrapped</h3>
               <div id="ro-wrapped-content"></div>
             </div>
+          </div>
+
+          <div class="sub-panel" id="analytics-tardiness-view">
+            <div id="tardiness-analytics-container"></div>
           </div>
         </section>
 
