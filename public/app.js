@@ -746,16 +746,26 @@ function renderEmployees() {
     actionBtn.title = emp.active ? `Clock out ${emp.name}` : `Clock in ${emp.name}`;
     actionBtn.textContent = emp.active ? 'Clock Out' : 'Clock In';
     actionBtn.onclick = () => clockEmployee(emp.id, !emp.active);
-    // Add punctuality indicator from today's clock events
+    // Add punctuality indicator: only show if driver hasn't clocked in today and shift is active
     const statusData = todayDriverStatus.find(d => d.id === emp.id);
-    const todayClock = statusData?.todayClockEvents?.slice(-1)[0];
-    if (todayClock) {
-      const tardyMins = todayClock.tardiness_minutes || 0;
-      if (tardyMins > 0) {
-        const tardySpan = document.createElement('span');
-        tardySpan.className = 'tardy-badge';
-        tardySpan.innerHTML = `<i class="ti ti-clock-exclamation"></i>${tardyMins}m late`;
-        chip.appendChild(tardySpan);
+    const hasClockedInToday = statusData?.todayClockEvents?.length > 0;
+    if (!emp.active && !hasClockedInToday && statusData?.todayShifts?.length) {
+      const now = toLADate(new Date());
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const activeShift = statusData.todayShifts.find(s => {
+        const [sh, sm] = s.start_time.split(':').map(Number);
+        const [eh, em] = s.end_time.split(':').map(Number);
+        return nowMins >= (sh * 60 + sm) && nowMins < (eh * 60 + em);
+      });
+      if (activeShift) {
+        const [sh, sm] = activeShift.start_time.split(':').map(Number);
+        const tardyMins = nowMins - (sh * 60 + sm);
+        if (tardyMins > 0) {
+          const tardySpan = document.createElement('span');
+          tardySpan.className = 'tardy-badge';
+          tardySpan.innerHTML = `<i class="ti ti-clock-exclamation"></i>${tardyMins}m late`;
+          chip.appendChild(tardySpan);
+        }
       }
     }
     chip.querySelector('.emp-name').onclick = () => openProfileById(emp.id);
@@ -2150,6 +2160,8 @@ function renderDispatchSummary() {
   const currentWeekStart = formatDateInputLocal(getMondayOfWeek(now));
   const tardyToday = employees.filter(e => {
     if (e.active) return false;
+    const hasClockedInToday = todayDriverStatus.find(d => d.id === e.id)?.todayClockEvents?.length > 0;
+    if (hasClockedInToday) return false;
     return shifts.some(s =>
       s.employeeId === e.id &&
       s.dayOfWeek === todayDow &&
@@ -2300,7 +2312,8 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
 
   // Tardiness detection: not clocked in + viewing today + currently within a shift window
   const isToday = formatDateInputLocal(selectedDate) === getTodayLocalDate();
-  const isTardy = !isActive && isToday && driverShifts.some(s => {
+  const hasClockedInToday = todayDriverStatus.find(d => d.id === driver.id)?.todayClockEvents?.length > 0;
+  const isTardy = !isActive && !hasClockedInToday && isToday && driverShifts.some(s => {
     const [sh, sm] = s.startTime.split(':').map(Number);
     const [eh, em] = s.endTime.split(':').map(Number);
     const now = toLADate(new Date());
@@ -2314,13 +2327,17 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
   let html = `<div class="time-grid__row${tardyClass}" style="${gridColStyle}${rowOpacity}">`;
   let tardyBadgeHtml = '';
   if (isTardy) {
-    const statusData = todayDriverStatus.find(d => d.id === driver.id);
-    const lastClock = statusData?.todayClockEvents?.slice(-1)[0];
-    const tardyMins = lastClock?.tardiness_minutes;
-    if (tardyMins && tardyMins > 0) {
+    const now = toLADate(new Date());
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const activeShift = driverShifts.find(s => {
+      const [sh, sm] = s.startTime.split(':').map(Number);
+      const [eh, em] = s.endTime.split(':').map(Number);
+      return nowMins >= (sh * 60 + sm) && nowMins < (eh * 60 + em);
+    });
+    if (activeShift) {
+      const [sh, sm] = activeShift.startTime.split(':').map(Number);
+      const tardyMins = nowMins - (sh * 60 + sm);
       tardyBadgeHtml = `<span class="tardy-badge"><i class="ti ti-clock-exclamation"></i>${tardyMins}m late</span>`;
-    } else {
-      tardyBadgeHtml = `<span class="tardy-badge"><i class="ti ti-clock-exclamation"></i>Not clocked in</span>`;
     }
   }
   html += `<div class="time-grid__driver"><span class="time-grid__driver-dot ${dotClass}"></span><span class="clickable-name" data-user="${driver.id}">${driver.name}</span>${tardyBadgeHtml}</div>`;
