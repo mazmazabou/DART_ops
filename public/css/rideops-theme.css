@@ -429,7 +429,7 @@ body {
 .legend-color.shift { background: var(--color-primary-subtle); border: 1px solid var(--color-primary); }
 .legend-color.ride { background: rgba(245,158,11,0.1); border: 1px solid var(--status-on-the-way); }
 .grid-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.grid-table th, .grid-table td { border: 1px solid var(--color-border-light); padding: 4px 6px; text-align: center; }
+.grid-table th, .grid-table td { border: 1px solid var(--color-border); padding: 4px 6px; text-align: center; }
 .grid-table th { background: var(--color-surface-hover); font-weight: 600; font-size: 11px; color: var(--color-text-secondary); }
 .grid-table td { vertical-align: top; }
 .grid-table .time-col { width: 60px; font-size: 11px; color: var(--color-text-muted); }
