@@ -55,6 +55,13 @@ PORT=3000                      # Server port (default: 3000)
 DATABASE_URL=postgres://...    # PostgreSQL connection string (default: postgres://localhost/rideops)
 TENANT_FILE=tenants/usc-dart.json  # Tenant config file path (optional)
 DISABLE_RIDER_SIGNUP=true      # Disable public rider signup (default: false)
+SMTP_HOST=                     # SMTP server hostname (optional — falls back to console logging)
+SMTP_PORT=587                  # SMTP port (default: 587)
+SMTP_SECURE=false              # Use TLS (default: false)
+SMTP_USER=                     # SMTP username
+SMTP_PASS=                     # SMTP password
+NOTIFICATION_FROM=noreply@ride-ops.com  # Notification sender address
+NOTIFICATION_FROM_NAME=RideOps          # Notification sender name
 ```
 
 Default login credentials (password: `demo123`):
@@ -79,6 +86,7 @@ Default login credentials (password: `demo123`):
 - `tenants/usc-buildings.js` — 304 USC campus locations
 - `tenants/default-locations.js` — 32 generic campus locations (default when no tenant)
 - `email.js` — Email sending (nodemailer) with tenant-aware brand colors
+- `notification-service.js` — Notification dispatch engine: checks preferences, renders templates, sends emails via Nodemailer (fire-and-forget)
 - `demo-seed.js` — Seeds demo data for the demo mode flow
 - `public/favicon.svg` — RideOps favicon (blue circle with RO)
 - `db/schema.sql` — PostgreSQL schema reference

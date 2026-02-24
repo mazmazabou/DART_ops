@@ -20,6 +20,8 @@ if (DEMO_MODE) {
   emailModule = require('./email');
 }
 const { isConfigured: emailConfigured, sendWelcomeEmail, sendPasswordResetEmail } = emailModule;
+const { initTransporter, dispatchNotification } = require('./notification-service');
+initTransporter();
 
 // ----- Tenant configuration -----
 const DEFAULT_TENANT = {
@@ -1189,6 +1191,17 @@ app.post('/api/employees/clock-in', requireStaff, async (req, res) => {
   }
 
   res.json({ ...result.rows[0], clockEvent });
+
+  // Fire-and-forget: notify if tardy
+  if (clockEvent && clockEvent.tardiness_minutes > 0) {
+    dispatchNotification('driver_tardy', {
+      driverName: result.rows[0].name,
+      tardyMinutes: clockEvent.tardiness_minutes,
+      scheduledStart: clockEvent.scheduled_start || 'N/A',
+      clockInTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' }),
+      thresholdCheck: clockEvent.tardiness_minutes
+    }, query).catch(() => {});
+  }
 });
 
 app.post('/api/employees/clock-out', requireStaff, async (req, res) => {
@@ -1466,6 +1479,14 @@ app.post('/api/rides', requireAuth, async (req, res) => {
     [rideId]
   );
   res.json(mapRide(ride.rows[0]));
+
+  // Fire-and-forget: new ride request notification
+  dispatchNotification('new_ride_request', {
+    riderName: name,
+    pickup: pickupLocation,
+    dropoff: dropoffLocation,
+    requestedTime: new Date(requestedTime).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
+  }, query).catch(() => {});
 });
 
 app.post('/api/rides/:id/approve', requireOffice, async (req, res) => {
@@ -1879,6 +1900,43 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'no_show');
   res.json(mapRide(result.rows[0]));
+
+  // Fire-and-forget: no-show notifications
+  (async () => {
+    try {
+      const driverRow = ride.assigned_driver_id ? await query('SELECT name FROM users WHERE id = $1', [ride.assigned_driver_id]) : null;
+      const driverName = driverRow?.rows[0]?.name || 'Unassigned';
+
+      dispatchNotification('rider_no_show', {
+        riderName: ride.rider_name,
+        pickup: ride.pickup_location,
+        dropoff: ride.dropoff_location,
+        requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+        driverName,
+        consecutiveMisses: newCount
+      }, query);
+
+      const maxStrikes = Number(await getSetting('max_no_show_strikes', 5));
+      const strikesEnabled = (await getSetting('strikes_enabled', true)) !== 'false';
+
+      if (strikesEnabled && newCount >= maxStrikes) {
+        dispatchNotification('rider_terminated', {
+          riderName: ride.rider_name,
+          consecutiveMisses: newCount,
+          maxStrikes
+        }, query);
+      } else if (strikesEnabled && newCount >= maxStrikes - 1) {
+        dispatchNotification('rider_approaching_termination', {
+          riderName: ride.rider_name,
+          consecutiveMisses: newCount,
+          maxStrikes,
+          missesRemaining: maxStrikes - newCount
+        }, query);
+      }
+    } catch (err) {
+      console.error('[Notifications] no-show dispatch error:', err.message);
+    }
+  })();
 });
 
 // ----- Set vehicle on ride -----
@@ -2388,6 +2446,41 @@ initDb()
         console.log('Login: alex/jordan/taylor/morgan/office, riders: casey/riley, password: demo123');
       }
     });
+
+    // Check for stale pending rides every 5 minutes
+    setInterval(async () => {
+      try {
+        const stalePref = await query(`
+          SELECT DISTINCT threshold_value FROM notification_preferences
+          WHERE event_type = 'ride_pending_stale' AND enabled = true AND threshold_value IS NOT NULL
+        `);
+        if (!stalePref.rowCount) return;
+
+        const minThreshold = Math.min(...stalePref.rows.map(r => r.threshold_value));
+        const cutoff = new Date(Date.now() - minThreshold * 60000);
+
+        const staleRides = await query(`
+          SELECT r.*, u.name as rider_display_name
+          FROM rides r
+          LEFT JOIN users u ON u.id = r.rider_id
+          WHERE r.status = 'pending' AND r.created_at <= $1
+        `, [cutoff.toISOString()]);
+
+        for (const ride of staleRides.rows) {
+          const minutesPending = Math.round((Date.now() - new Date(ride.created_at).getTime()) / 60000);
+          dispatchNotification('ride_pending_stale', {
+            riderName: ride.rider_display_name || ride.rider_name || 'Unknown',
+            pickup: ride.pickup_location,
+            dropoff: ride.dropoff_location,
+            requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+            minutesPending,
+            thresholdCheck: minutesPending
+          }, query).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[Notifications] Stale check error:', err.message);
+      }
+    }, 5 * 60 * 1000);
   })
   .catch((err) => {
     console.error('Failed to initialize database', err);
