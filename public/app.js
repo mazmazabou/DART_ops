@@ -3450,7 +3450,22 @@ async function loadBusinessRules() {
     const CATEGORY_ICONS = { operations: 'ti-clock', rides: 'ti-car', staff: 'ti-users', notifications: 'ti-bell' };
     const categoryOrder = ['operations', 'rides', 'staff', 'notifications'];
 
-    let html = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">';
+    // Sort settings within each category: put time fields in logical order (start before end)
+    const SORT_ORDER = {
+      'service_hours_start': 0,
+      'service_hours_end': 1
+    };
+    for (const cat of categoryOrder) {
+      if (grouped[cat]) {
+        grouped[cat].sort((a, b) => {
+          const oa = SORT_ORDER[a.key] !== undefined ? SORT_ORDER[a.key] : 50;
+          const ob = SORT_ORDER[b.key] !== undefined ? SORT_ORDER[b.key] : 50;
+          return oa - ob;
+        });
+      }
+    }
+
+    let html = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">';
     html += '<h3 class="ro-section__title" style="margin:0;">Business Rules</h3>';
     html += '<button class="ro-btn ro-btn--primary" id="save-business-rules"><i class="ti ti-device-floppy"></i> Save Changes</button>';
     html += '</div>';
@@ -3458,9 +3473,13 @@ async function loadBusinessRules() {
     for (const cat of categoryOrder) {
       const settings = grouped[cat];
       if (!settings) continue;
-      html += `<div class="ro-section" style="margin-bottom:20px;">`;
-      html += `<h4 style="font-size:14px; font-weight:700; margin:0 0 12px; display:flex; align-items:center; gap:6px;"><i class="ti ${CATEGORY_ICONS[cat] || 'ti-settings'}"></i> ${CATEGORY_LABELS[cat] || cat}</h4>`;
-      html += '<div style="display:flex; flex-direction:column; gap:12px;">';
+      // Card wrapper for each category
+      html += `<div class="ro-table-wrap" style="margin-bottom:16px;">`;
+      html += `<div style="padding:14px 16px 10px; border-bottom:1px solid var(--color-border-light); display:flex; align-items:center; gap:6px;">`;
+      html += `<i class="ti ${CATEGORY_ICONS[cat] || 'ti-settings'}" style="font-size:16px; color:var(--color-text-secondary);"></i>`;
+      html += `<span style="font-size:13px; font-weight:700; color:var(--color-text);">${CATEGORY_LABELS[cat] || cat}</span>`;
+      html += `</div>`;
+      html += '<div style="padding:16px; display:flex; flex-direction:column; gap:14px;">';
       for (const s of settings) {
         if (s.key === 'operating_days') {
           // Render as day pills
@@ -3472,13 +3491,14 @@ async function loadBusinessRules() {
             html += `<button type="button" class="ro-btn ro-btn--sm day-pill-btn${active ? ' ro-btn--primary' : ' ro-btn--outline'}" data-day="${d}" style="min-width:48px;">${DAY_LABELS[d]}</button>`;
           }
           html += '</div>';
-          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
           html += '</div>';
         } else if (s.type === 'boolean') {
-          html += `<div class="field-group" style="display:flex; align-items:center; gap:8px;">`;
-          html += `<input type="checkbox" id="setting-${s.key}" data-key="${s.key}" data-type="boolean" ${s.value === 'true' ? 'checked' : ''} style="width:18px; height:18px; accent-color:var(--color-primary);">`;
-          html += `<label for="setting-${s.key}" style="font-size:14px; font-weight:500; cursor:pointer;">${s.label}</label>`;
-          if (s.description) html += `<span class="text-xs text-muted">${s.description}</span>`;
+          html += `<div class="field-group" style="display:flex; align-items:center; gap:8px; flex-direction:row;">`;
+          html += `<input type="checkbox" id="setting-${s.key}" data-key="${s.key}" data-type="boolean" ${s.value === 'true' ? 'checked' : ''} style="width:16px; height:16px; accent-color:var(--color-primary); flex-shrink:0;">`;
+          html += `<div>`;
+          html += `<label for="setting-${s.key}" style="font-size:13px; font-weight:600; cursor:pointer; color:var(--color-text);">${s.label}</label>`;
+          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:1px;">${s.description}</div>`;
+          html += `</div>`;
           html += '</div>';
         } else if (s.type === 'number') {
           html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
@@ -3585,64 +3605,77 @@ async function loadNotificationPreferences() {
     }
 
     let html = '';
-    html += '<div class="mb-16"><div class="ro-section__title">Notification Preferences</div>';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">';
+    html += '<div><div class="ro-section__title">Notification Preferences</div>';
     html += '<div class="ro-section__subtitle">Choose which events notify you and how</div></div>';
-
-    // Channel legend header
-    html += '<div class="flex items-center gap-16 mb-16" style="padding-left:50%">';
-    html += '<span class="text-xs fw-600 text-muted" style="width:60px;text-align:center">Email</span>';
-    html += '<span class="text-xs fw-600 text-muted" style="width:60px;text-align:center">In-App</span>';
-    html += '<span class="text-xs fw-600 text-muted" style="width:80px;text-align:center">Threshold</span>';
+    html += '<button class="ro-btn ro-btn--primary" id="save-notif-prefs-btn"><i class="ti ti-device-floppy"></i> Save Preferences</button>';
     html += '</div>';
 
-    for (const [category, events] of Object.entries(byCategory)) {
-      html += '<div class="mb-24">';
-      html += '<h3 class="ro-section__title mb-8" style="font-size:14px">' + (categoryLabels[category] || category) + '</h3>';
+    const categoryOrder = ['reports', 'staff', 'rides'];
+    const orderedCategories = categoryOrder.filter(c => byCategory[c]).map(c => [c, byCategory[c]]);
+    // Include any categories not in our explicit order
+    for (const [c, evts] of Object.entries(byCategory)) {
+      if (!categoryOrder.includes(c)) orderedCategories.push([c, evts]);
+    }
+
+    for (const [category, events] of orderedCategories) {
+      // Card wrapper per category
+      html += '<div class="ro-table-wrap" style="margin-bottom:16px;">';
+      html += '<table class="ro-table" style="table-layout:fixed;">';
+      // Category header row
+      html += '<thead>';
+      html += '<tr>';
+      html += '<th style="width:auto;">' + (categoryLabels[category] || category) + '</th>';
+      html += '<th style="width:64px; text-align:center;">Email</th>';
+      html += '<th style="width:64px; text-align:center;">In-App</th>';
+      html += '<th style="width:100px; text-align:center; padding-right:16px;">Threshold</th>';
+      html += '</tr>';
+      html += '</thead>';
+      html += '<tbody>';
 
       for (const evt of events) {
         const emailCh = evt.channels.email || { enabled: false };
         const inAppCh = evt.channels.in_app || { enabled: false };
         const threshold = emailCh.thresholdValue;
 
-        html += '<div class="flex items-center" style="padding:10px 0;border-bottom:1px solid var(--color-border-light);gap:16px">';
+        html += '<tr style="cursor:default;">';
 
         // Label + description
-        html += '<div style="flex:1;min-width:0">';
-        html += '<div class="fw-600" style="font-size:13px">' + evt.label + '</div>';
+        html += '<td style="vertical-align:middle;">';
+        html += '<div class="fw-600" style="font-size:13px; color:var(--color-text);">' + evt.label + '</div>';
         html += '<div class="text-muted text-xs">' + (evt.description || '') + '</div>';
-        html += '</div>';
+        html += '</td>';
 
         // Email toggle
-        html += '<div style="width:60px;text-align:center">';
+        html += '<td style="text-align:center; vertical-align:middle;">';
         html += '<input type="checkbox" data-event="' + evt.key + '" data-channel="email" '
-          + (emailCh.enabled ? 'checked' : '') + ' style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer">';
-        html += '</div>';
+          + (emailCh.enabled ? 'checked' : '') + ' style="width:16px;height:16px;accent-color:var(--color-primary);cursor:pointer">';
+        html += '</td>';
 
         // In-app toggle
-        html += '<div style="width:60px;text-align:center">';
+        html += '<td style="text-align:center; vertical-align:middle;">';
         html += '<input type="checkbox" data-event="' + evt.key + '" data-channel="in_app" '
-          + (inAppCh.enabled ? 'checked' : '') + ' style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer">';
-        html += '</div>';
+          + (inAppCh.enabled ? 'checked' : '') + ' style="width:16px;height:16px;accent-color:var(--color-primary);cursor:pointer">';
+        html += '</td>';
 
         // Threshold
-        html += '<div style="width:80px;text-align:center">';
+        html += '<td style="text-align:center; vertical-align:middle; padding-right:16px;">';
         if (evt.thresholdUnit) {
           const unit = evt.thresholdUnit === 'minutes' || evt.thresholdUnit === 'minutes_after_shift_start' ? 'min' : '';
-          html += '<div class="flex items-center gap-4" style="justify-content:center">';
+          html += '<div style="display:flex; align-items:center; gap:4px; justify-content:center;">';
           html += '<input type="number" class="ro-input" data-event="' + evt.key + '" data-field="threshold" value="' + (threshold || '') + '" style="width:50px;text-align:center;padding:4px" min="1">';
           html += '<span class="text-xs text-muted">' + unit + '</span>';
           html += '</div>';
         } else {
-          html += '<span class="text-muted">\u2014</span>';
+          html += '<span class="text-muted" style="font-size:12px;">\u2014</span>';
         }
-        html += '</div>';
+        html += '</td>';
 
-        html += '</div>';
+        html += '</tr>';
       }
+      html += '</tbody></table>';
       html += '</div>';
     }
-
-    html += '<div style="padding-top:16px"><button class="ro-btn ro-btn--primary" id="save-notif-prefs-btn"><i class="ti ti-device-floppy"></i> Save Preferences</button></div>';
     container.innerHTML = html;
 
     document.getElementById('save-notif-prefs-btn').addEventListener('click', saveNotificationPreferences);
