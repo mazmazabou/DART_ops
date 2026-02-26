@@ -2201,12 +2201,18 @@ function renderDispatchSummary() {
   el('dispatch-pending-rides', pendingRides);
   el('dispatch-completed-today', completedToday);
 
-  // Tardy today: drivers not clocked in but currently within a shift window
+  // Tardy today: drivers who clocked in late today (confirmed tardiness from clock_events)
+  const tardyToday = todayDriverStatus.filter(d =>
+    d.todayClockEvents?.some(ce => ce.tardiness_minutes > 0)
+  ).length;
+  el('dispatch-tardy-today', tardyToday);
+
+  // Missing: drivers not clocked in but currently within a shift window
   const now = toLADate(new Date());
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const todayDow = (now.getDay() + 6) % 7; // Mon=0
   const currentWeekStart = formatDateInputLocal(getMondayOfWeek(now));
-  const tardyToday = employees.filter(e => {
+  const missingDrivers = employees.filter(e => {
     if (e.active) return false;
     const hasClockedInToday = todayDriverStatus.find(d => d.id === e.id)?.todayClockEvents?.length > 0;
     if (hasClockedInToday) return false;
@@ -2221,7 +2227,8 @@ function renderDispatchSummary() {
       })()
     );
   }).length;
-  el('dispatch-tardy-today', tardyToday);
+  const missingEl = document.getElementById('dispatch-missing-drivers');
+  if (missingEl) missingEl.textContent = missingDrivers;
 }
 
 function renderPendingQueue() {
