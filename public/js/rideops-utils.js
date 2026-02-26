@@ -267,3 +267,151 @@ function showTab(targetId) {
   var panel = document.getElementById(targetId);
   if (panel) panel.classList.add('active');
 }
+
+// ── Notification Bell System ──
+
+var _notifPollInterval = null;
+var _notifBellEl = null;
+var _notifBadgeEl = null;
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
+
+function initNotificationBell(bellSelector) {
+  _notifBellEl = document.querySelector(bellSelector);
+  if (!_notifBellEl) return;
+  _notifBadgeEl = _notifBellEl.querySelector('.notif-badge');
+  _notifBellEl.addEventListener('click', function(e) {
+    e.stopPropagation();
+    openNotificationDrawer();
+  });
+  pollNotificationCount();
+  _notifPollInterval = setInterval(pollNotificationCount, 30000);
+}
+
+function pollNotificationCount() {
+  fetch('/api/notifications?limit=1&unread_only=true')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (data) updateBellBadge(data.unreadCount);
+    })
+    .catch(function() {});
+}
+
+function updateBellBadge(count) {
+  if (!_notifBadgeEl) return;
+  if (count > 0) {
+    _notifBadgeEl.textContent = count > 99 ? '99+' : count;
+    _notifBadgeEl.classList.add('visible');
+  } else {
+    _notifBadgeEl.classList.remove('visible');
+  }
+}
+
+var _notifIconMap = {
+  new_ride_request: 'ti-car',
+  ride_approved: 'ti-circle-check',
+  ride_denied: 'ti-circle-x',
+  ride_scheduled: 'ti-user-check',
+  ride_driver_on_the_way: 'ti-road',
+  ride_driver_arrived: 'ti-map-pin',
+  ride_completed_rider: 'ti-flag-check',
+  ride_no_show_rider: 'ti-user-off',
+  ride_cancelled: 'ti-ban',
+  ride_unassigned: 'ti-user-minus',
+  driver_tardy: 'ti-clock-exclamation',
+  rider_no_show: 'ti-user-off',
+  rider_approaching_termination: 'ti-alert-triangle',
+  rider_terminated: 'ti-shield-off',
+  ride_pending_stale: 'ti-clock-pause'
+};
+
+function openNotificationDrawer() {
+  fetch('/api/notifications?limit=50')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (!data) return;
+      renderNotificationDrawer(data.notifications, data.unreadCount);
+    })
+    .catch(function() {});
+}
+
+function renderNotificationDrawer(notifications, unreadCount) {
+  closeDrawer();
+  var ov = document.createElement('div');
+  ov.className = 'ro-drawer-overlay open';
+  ov.id = 'ro-drawer-overlay';
+  var dw = document.createElement('div');
+  dw.className = 'ro-drawer open';
+  dw.id = 'ro-drawer';
+
+  var headerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+    '<span style="font-size:16px;font-weight:700">Notifications</span>' +
+    '<div style="display:flex;gap:8px;align-items:center">';
+  if (unreadCount > 0) {
+    headerHTML += '<button class="ro-btn ro-btn--outline ro-btn--sm" id="notif-mark-all-read">Mark All Read</button>';
+  }
+  headerHTML += '<button class="ro-btn ro-btn--outline ro-btn--sm" onclick="closeDrawer()">\u2715</button>';
+  headerHTML += '</div></div>';
+
+  var listHTML = '';
+  if (!notifications.length) {
+    listHTML = '<div class="notif-empty"><i class="ti ti-bell-off" style="font-size:24px;display:block;margin-bottom:8px"></i>No notifications yet</div>';
+  } else {
+    listHTML = '<ul class="notif-list">';
+    for (var i = 0; i < notifications.length; i++) {
+      var n = notifications[i];
+      var cls = n.read ? 'notif-item notif-item--read' : 'notif-item notif-item--unread';
+      var icon = _notifIconMap[n.event_type] || 'ti-bell';
+      listHTML +=
+        '<li class="' + cls + '" data-notif-id="' + escapeHtml(n.id) + '">' +
+        '<div class="notif-item__icon"><i class="ti ' + icon + '"></i></div>' +
+        '<div class="notif-item__content">' +
+        '<div class="notif-item__title">' + escapeHtml(n.title) + '</div>' +
+        '<div class="notif-item__body">' + escapeHtml(n.body) + '</div>' +
+        '<div class="notif-item__time">' + timeAgo(n.created_at) + '</div>' +
+        '</div></li>';
+    }
+    listHTML += '</ul>';
+  }
+
+  dw.innerHTML = headerHTML + '<div id="ro-drawer-content">' + listHTML + '</div>';
+  document.body.appendChild(ov);
+  document.body.appendChild(dw);
+  ov.onclick = closeDrawer;
+
+  // Mark all read button
+  var markAllBtn = dw.querySelector('#notif-mark-all-read');
+  if (markAllBtn) {
+    markAllBtn.addEventListener('click', function() {
+      fetch('/api/notifications/read-all', { method: 'PUT' })
+        .then(function() {
+          updateBellBadge(0);
+          dw.querySelectorAll('.notif-item--unread').forEach(function(el) {
+            el.classList.remove('notif-item--unread');
+            el.classList.add('notif-item--read');
+          });
+          markAllBtn.remove();
+        })
+        .catch(function() {});
+    });
+  }
+
+  // Click individual notification to mark as read
+  dw.querySelectorAll('.notif-item--unread').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var id = el.dataset.notifId;
+      fetch('/api/notifications/' + id + '/read', { method: 'PUT' })
+        .then(function() {
+          el.classList.remove('notif-item--unread');
+          el.classList.add('notif-item--read');
+          pollNotificationCount();
+        })
+        .catch(function() {});
+    });
+  });
+}

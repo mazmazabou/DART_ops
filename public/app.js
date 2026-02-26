@@ -3992,6 +3992,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  initNotificationBell('#notif-bell-btn');
+
   window._pollIntervals = [
     setInterval(loadRides, 5000),
     setInterval(loadVehicles, 15000),

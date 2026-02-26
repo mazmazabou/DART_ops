@@ -20,7 +20,7 @@ if (DEMO_MODE) {
   emailModule = require('./email');
 }
 const { isConfigured: emailConfigured, sendWelcomeEmail, sendPasswordResetEmail } = emailModule;
-const { initTransporter, dispatchNotification, sendRiderEmail } = require('./notification-service');
+const { initTransporter, dispatchNotification, sendRiderEmail, createRiderNotification } = require('./notification-service');
 initTransporter();
 
 // ----- Tenant configuration -----
@@ -251,7 +251,19 @@ async function runMigrations() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, event_type, channel)
-    );`
+    );`,
+    `CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      metadata JSONB DEFAULT '{}',
+      read BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_notifications_user_read
+      ON notifications(user_id, read, created_at DESC);`
   ];
   for (const stmt of statements) {
     await query(stmt);
@@ -412,7 +424,7 @@ async function isWithinServiceHours(requestedTime) {
   const endStr = await getSetting('service_hours_end', '19:00');
   const [startH, startM] = String(startStr).split(':').map(Number);
   const [endH, endM] = String(endStr).split(':').map(Number);
-  const totalMinutes = la.getHours() * 60 + la.getMinutes();
+  const totalMinutes = local.getHours() * 60 + local.getMinutes();
   return totalMinutes >= (startH * 60 + (startM || 0)) && totalMinutes <= (endH * 60 + (endM || 0));
 }
 
@@ -1556,6 +1568,14 @@ app.post('/api/rides/:id/approve', requireOffice, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'approved');
   res.json(mapRide(result.rows[0]));
+
+  if (ride.rider_id) {
+    createRiderNotification('ride_approved', {
+      riderId: ride.rider_id,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
@@ -1571,6 +1591,14 @@ app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'denied');
   res.json(mapRide(result.rows[0]));
+
+  if (ride.rider_id) {
+    createRiderNotification('ride_denied', {
+      riderId: ride.rider_id,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 app.get('/api/my-rides', requireRider, async (req, res) => {
@@ -1627,6 +1655,14 @@ app.post('/api/rides/:id/cancel', requireAuth, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, isOffice ? 'cancelled_by_office' : 'cancelled');
   res.json(mapRide(result.rows[0]));
+
+  if (isOffice && ride.rider_id) {
+    createRiderNotification('ride_cancelled', {
+      riderId: ride.rider_id,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 // ----- Office admin override endpoints -----
@@ -1650,6 +1686,14 @@ app.post('/api/rides/:id/unassign', requireOffice, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'unassigned');
   res.json(mapRide(result.rows[0]));
+
+  if (ride.rider_id) {
+    createRiderNotification('ride_unassigned', {
+      riderId: ride.rider_id,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 app.post('/api/rides/:id/reassign', requireOffice, async (req, res) => {
@@ -1845,6 +1889,17 @@ app.post('/api/rides/:id/claim', requireAuth, async (req, res) => {
   if (!updated.rowCount) return res.status(400).json({ error: 'Ride already assigned' });
   await addRideEvent(ride.id, req.session.userId, 'claimed');
   res.json(mapRide(updated.rows[0]));
+
+  if (ride.rider_id) {
+    const driverNameRes = await query('SELECT name FROM users WHERE id = $1', [driverId]);
+    const driverName = driverNameRes.rows[0]?.name || 'Your driver';
+    createRiderNotification('ride_scheduled', {
+      riderId: ride.rider_id,
+      driverName,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 // ----- Driver action endpoints -----
@@ -1873,6 +1928,17 @@ app.post('/api/rides/:id/on-the-way', requireAuth, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'driver_on_the_way');
   res.json(mapRide(result.rows[0]));
+
+  if (ride.rider_id) {
+    const driverNameRes = await query('SELECT name FROM users WHERE id = $1', [ride.assigned_driver_id]);
+    const driverName = driverNameRes.rows[0]?.name || 'Your driver';
+    createRiderNotification('ride_driver_on_the_way', {
+      riderId: ride.rider_id,
+      driverName,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 app.post('/api/rides/:id/here', requireAuth, async (req, res) => {
@@ -1890,6 +1956,17 @@ app.post('/api/rides/:id/here', requireAuth, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'driver_arrived_grace');
   res.json(mapRide(result.rows[0]));
+
+  if (ride.rider_id) {
+    const driverNameRes = await query('SELECT name FROM users WHERE id = $1', [ride.assigned_driver_id]);
+    const driverName = driverNameRes.rows[0]?.name || 'Your driver';
+    createRiderNotification('ride_driver_arrived', {
+      riderId: ride.rider_id,
+      driverName,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 app.post('/api/rides/:id/complete', requireAuth, async (req, res) => {
@@ -1916,6 +1993,14 @@ app.post('/api/rides/:id/complete', requireAuth, async (req, res) => {
   await setRiderMissCount(ride.rider_email, 0);
   await addRideEvent(ride.id, req.session.userId, 'completed');
   res.json(mapRide(result.rows[0]));
+
+  if (ride.rider_id) {
+    createRiderNotification('ride_completed_rider', {
+      riderId: ride.rider_id,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location
+    }, query).catch(() => {});
+  }
 });
 
 app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
@@ -2001,6 +2086,16 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
         sendRiderEmail('rider_terminated_notice', riderData);
       } else if (strikesEnabled && notifyStrikeWarn && newCount >= maxStrikes - 2) {
         sendRiderEmail('rider_strike_warning', riderData);
+      }
+
+      // Rider in-app notification
+      if (ride.rider_id) {
+        createRiderNotification('ride_no_show_rider', {
+          riderId: ride.rider_id,
+          pickup: ride.pickup_location,
+          dropoff: ride.dropoff_location,
+          consecutiveMisses: newCount
+        }, query);
       }
     } catch (err) {
       console.error('[Notifications] no-show dispatch error:', err.message);
@@ -2470,6 +2565,78 @@ app.put('/api/notification-preferences', requireOffice, async (req, res) => {
   } catch (err) {
     console.error('PUT notification-preferences error:', err);
     res.status(500).json({ error: 'Failed to save notification preferences' });
+  }
+});
+
+// ── In-App Notifications ──
+
+app.get('/api/notifications', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = parseInt(req.query.offset) || 0;
+    const unreadOnly = req.query.unread_only === 'true';
+
+    const countRes = await query(
+      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE',
+      [req.session.userId]
+    );
+    const unreadCount = parseInt(countRes.rows[0].count);
+
+    const whereClause = unreadOnly ? 'AND read = FALSE' : '';
+    const result = await query(
+      `SELECT id, event_type, title, body, metadata, read, created_at
+       FROM notifications
+       WHERE user_id = $1 ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [req.session.userId, limit, offset]
+    );
+
+    res.json({ notifications: result.rows, unreadCount });
+  } catch (err) {
+    console.error('GET /api/notifications error:', err);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+app.put('/api/notifications/read-all', requireAuth, async (req, res) => {
+  try {
+    const result = await query(
+      'UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE',
+      [req.session.userId]
+    );
+    res.json({ updated: result.rowCount });
+  } catch (err) {
+    console.error('PUT /api/notifications/read-all error:', err);
+    res.status(500).json({ error: 'Failed to mark notifications as read' });
+  }
+});
+
+app.put('/api/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const result = await query(
+      'UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.session.userId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Notification not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('PUT /api/notifications/:id/read error:', err);
+    res.status(500).json({ error: 'Failed to mark notification as read' });
+  }
+});
+
+app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
+  try {
+    const result = await query(
+      'DELETE FROM notifications WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.session.userId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Notification not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/notifications/:id error:', err);
+    res.status(500).json({ error: 'Failed to delete notification' });
   }
 });
 

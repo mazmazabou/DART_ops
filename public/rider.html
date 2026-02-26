@@ -73,7 +73,13 @@
       <span id="org-short-name">RideOps</span>
       <span style="color:var(--color-text-muted); font-weight:400;">Rider</span>
     </div>
-    <button class="ro-btn ro-btn--outline ro-btn--sm" id="gear-btn"><i class="ti ti-settings"></i></button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="notif-bell" id="notif-bell-btn" title="Notifications">
+        <i class="ti ti-bell"></i>
+        <span class="notif-badge" id="notif-badge"></span>
+      </button>
+      <button class="ro-btn ro-btn--outline ro-btn--sm" id="gear-btn"><i class="ti ti-settings"></i></button>
+    </div>
   </header>
 
   <main class="rider-main">
@@ -204,6 +210,7 @@
       buildDateChips();
       setDefaultTime();
       document.getElementById('gear-btn').onclick = openAccountDrawer;
+      initNotificationBell('#notif-bell-btn');
       await loadAllRides();
       autoSwitchToActiveRide();
       window._pollIntervals = [setInterval(loadAllRides, 5000)];

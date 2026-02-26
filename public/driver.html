@@ -26,6 +26,10 @@
       <span style="color:var(--color-text-muted); font-weight:400;">Driver</span>
     </div>
     <div class="driver-header__right">
+      <button class="notif-bell" id="notif-bell-btn" title="Notifications">
+        <i class="ti ti-bell"></i>
+        <span class="notif-badge" id="notif-badge"></span>
+      </button>
       <span id="driver-name"></span>
       <button class="ro-btn ro-btn--outline ro-btn--sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>
@@ -382,6 +386,7 @@
         document.getElementById('driver-name').textContent = currentUser.name;
         applyTenantTheme();
         initBottomTabs();
+        initNotificationBell('#notif-bell-btn');
         try {
           const cfg = await getOpsConfig();
           gracePeriodSeconds = Number(cfg.grace_period_minutes || 5) * 60;

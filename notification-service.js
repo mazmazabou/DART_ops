@@ -221,6 +221,94 @@ const TEMPLATES = {
   })
 };
 
+// ── In-App notification templates (plain text) ──
+
+const IN_APP_TEMPLATES = {
+  driver_tardy: (data) => ({
+    title: 'Driver Tardy',
+    body: `${data.driverName} clocked in ${data.tardyMinutes}m late`
+  }),
+  rider_no_show: (data) => ({
+    title: 'Rider No-Show',
+    body: `${data.riderName} no-show at ${data.pickup}. Misses: ${data.consecutiveMisses}`
+  }),
+  rider_approaching_termination: (data) => ({
+    title: 'Strike Warning',
+    body: `${data.riderName} has ${data.consecutiveMisses} misses. ${data.missesRemaining} left`
+  }),
+  rider_terminated: (data) => ({
+    title: 'Rider Terminated',
+    body: `${data.riderName} hit ${data.maxStrikes} misses. Service suspended`
+  }),
+  ride_pending_stale: (data) => ({
+    title: 'Stale Ride Request',
+    body: `${data.riderName}'s ride pending ${data.minutesPending} minutes`
+  }),
+  new_ride_request: (data) => ({
+    title: 'New Ride Request',
+    body: `${data.riderName}: ${data.pickup} → ${data.dropoff} at ${data.requestedTime}`
+  })
+};
+
+// Rider-facing in-app templates
+const RIDER_IN_APP_TEMPLATES = {
+  ride_approved: (data) => ({
+    title: 'Ride Approved',
+    body: `Your ride from ${data.pickup} to ${data.dropoff} approved`
+  }),
+  ride_denied: (data) => ({
+    title: 'Ride Denied',
+    body: `Your ride from ${data.pickup} to ${data.dropoff} was denied`
+  }),
+  ride_scheduled: (data) => ({
+    title: 'Driver Assigned',
+    body: `${data.driverName} assigned to your ride to ${data.dropoff}`
+  }),
+  ride_driver_on_the_way: (data) => ({
+    title: 'Driver On The Way',
+    body: `${data.driverName} heading to ${data.pickup}`
+  }),
+  ride_driver_arrived: (data) => ({
+    title: 'Driver Arrived',
+    body: `${data.driverName} arrived at ${data.pickup}`
+  }),
+  ride_completed_rider: (data) => ({
+    title: 'Ride Completed',
+    body: `Your ride to ${data.dropoff} is complete`
+  }),
+  ride_no_show_rider: (data) => ({
+    title: 'Missed Ride',
+    body: `No-show for your ride at ${data.pickup}`
+  }),
+  ride_cancelled: (data) => ({
+    title: 'Ride Cancelled',
+    body: `Your ride from ${data.pickup} to ${data.dropoff} cancelled`
+  }),
+  ride_unassigned: (data) => ({
+    title: 'Driver Removed',
+    body: `Driver removed from your ride`
+  })
+};
+
+function generateId(prefix) {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// ── In-App notification writer ──
+
+async function createInAppNotification(userId, eventType, title, body, metadata, queryFn) {
+  try {
+    const id = generateId('notif');
+    await queryFn(
+      `INSERT INTO notifications (id, user_id, event_type, title, body, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, userId, eventType, title, body, JSON.stringify(metadata || {})]
+    );
+  } catch (err) {
+    console.error('[Notifications] In-app write error:', err.message);
+  }
+}
+
 // ── Dispatch engine ──
 
 async function dispatchNotification(eventType, data, queryFn) {
@@ -229,24 +317,33 @@ async function dispatchNotification(eventType, data, queryFn) {
       SELECT np.*, u.email, u.name as user_name
       FROM notification_preferences np
       JOIN users u ON u.id = np.user_id
-      WHERE np.event_type = $1 AND np.enabled = true AND np.channel = 'email'
+      WHERE np.event_type = $1 AND np.enabled = true
     `, [eventType]);
 
     if (!result.rowCount) return;
-
-    const template = TEMPLATES[eventType];
-    if (!template) {
-      console.warn('[Notifications] No template for event:', eventType);
-      return;
-    }
 
     for (const pref of result.rows) {
       if (pref.threshold_value && data.thresholdCheck !== undefined) {
         if (data.thresholdCheck < pref.threshold_value) continue;
       }
 
-      const { subject, html } = template(data);
-      await sendEmail(pref.email, subject, html);
+      if (pref.channel === 'email') {
+        const template = TEMPLATES[eventType];
+        if (!template) {
+          console.warn('[Notifications] No email template for event:', eventType);
+          continue;
+        }
+        const { subject, html } = template(data);
+        await sendEmail(pref.email, subject, html);
+      } else if (pref.channel === 'in_app') {
+        const template = IN_APP_TEMPLATES[eventType];
+        if (!template) {
+          console.warn('[Notifications] No in-app template for event:', eventType);
+          continue;
+        }
+        const { title, body } = template(data);
+        await createInAppNotification(pref.user_id, eventType, title, body, data, queryFn);
+      }
     }
   } catch (err) {
     console.error('[Notifications] Dispatch error for', eventType, ':', err.message);
@@ -273,4 +370,23 @@ async function sendRiderEmail(eventType, data) {
   }
 }
 
-module.exports = { initTransporter, sendEmail, dispatchNotification, sendRiderEmail, TEMPLATES };
+// ── Direct rider in-app notification ──
+
+async function createRiderNotification(eventType, data, queryFn) {
+  if (!data.riderId) {
+    return; // No rider user to notify
+  }
+  const template = RIDER_IN_APP_TEMPLATES[eventType];
+  if (!template) {
+    console.warn('[Notifications] No rider in-app template for:', eventType);
+    return;
+  }
+  try {
+    const { title, body } = template(data);
+    await createInAppNotification(data.riderId, eventType, title, body, data, queryFn);
+  } catch (err) {
+    console.error('[Notifications] Rider in-app error for', eventType, ':', err.message);
+  }
+}
+
+module.exports = { initTransporter, sendEmail, dispatchNotification, sendRiderEmail, createRiderNotification, TEMPLATES };
