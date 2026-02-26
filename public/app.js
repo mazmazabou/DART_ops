@@ -872,6 +872,7 @@ async function initShiftCalendar() {
     allDaySlot: false,
     hiddenDays: hiddenDays,
     height: 'auto',
+    nowIndicator: true,
     events: async function(fetchInfo, successCallback) {
       try {
         const weekStart = formatDateInputLocal(getMondayOfWeek(fetchInfo.start));
@@ -2349,6 +2350,19 @@ async function renderDispatchGrid() {
   }
 
   grid.innerHTML = html;
+
+  // Now-line: only show if viewing today
+  if (dateStr === getTodayLocalDate()) {
+    const now = toLADate(new Date());
+    const nowHours = now.getHours() + now.getMinutes() / 60;
+    if (nowHours >= startHour && nowHours < startHour + cols) {
+      const fraction = (nowHours - startHour) / cols;
+      const line = document.createElement('div');
+      line.className = 'time-grid__now-line';
+      line.style.left = `calc(100px + (100% - 100px) * ${fraction})`;
+      grid.appendChild(line);
+    }
+  }
 
 }
 
