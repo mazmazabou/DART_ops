@@ -171,15 +171,15 @@ function initBottomTabs() {
 // Format helpers
 function formatTime(iso) {
   if (!iso) return '\u2014';
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 function formatDate(iso) {
   if (!iso) return '\u2014';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 function formatDateTime(iso) {
   if (!iso) return '\u2014';
-  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 function timeAgo(iso) {
   var diff = Date.now() - new Date(iso).getTime();

@@ -12,6 +12,7 @@
   "idFieldPattern": "^\\d{10}$",
   "idFieldPlaceholder": "1234567890",
   "serviceScopeText": "USC campus only",
+  "timezone": "America/Los_Angeles",
   "locationsFile": "usc-buildings.js",
   "rules": [
     "DART is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am–7:00pm, Monday–Friday.",

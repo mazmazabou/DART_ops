@@ -185,16 +185,6 @@
     var graceInterval = null;
     var lastHistoryHash = '';
 
-    // Convert a naive "YYYY-MM-DDTHH:mm:ss" string (intended as LA time) to a
-    // Date object with the correct UTC moment, regardless of browser timezone.
-    function toLADate(naiveStr) {
-      var local = new Date(naiveStr);
-      var laStr = local.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
-      var laLocal = new Date(laStr);
-      var diff = local.getTime() - laLocal.getTime();
-      return new Date(local.getTime() + diff);
-    }
-
     // ── Init ──
     var opsConfig = null;
     async function init() {
@@ -323,8 +313,8 @@
         // Populate confirm
         document.getElementById('confirm-from').textContent = pickupSel.value;
         document.getElementById('confirm-to').textContent = dropoffSel.value;
-        var dt = toLADate(selectedDate + 'T' + rideTime.value + ':00');
-        document.getElementById('confirm-when').textContent = dt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+        var dt = new Date(selectedDate + 'T' + rideTime.value + ':00');
+        document.getElementById('confirm-when').textContent = dt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
         // Reset recurring toggle and pre-check matching day
         document.getElementById('recurring-toggle').checked = false;
@@ -493,7 +483,7 @@
           var data = await res.json();
           showToastNew(data.createdRides + ' recurring ride' + (data.createdRides !== 1 ? 's' : '') + ' created!', 'success');
         } else {
-          var requestedTime = toLADate(selectedDate + 'T' + time + ':00').toISOString();
+          var requestedTime = new Date(selectedDate + 'T' + time + ':00').toISOString();
           res = await fetch('/api/rides', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -963,7 +953,7 @@
       var str = String(d);
       if (str.indexOf('T') >= 0) str = str.split('T')[0];
       var dt = new Date(str + 'T00:00:00');
-      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' });
+      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
     async function logout() {

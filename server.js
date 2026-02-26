@@ -29,6 +29,7 @@ const DEFAULT_TENANT = {
   orgShortName: 'RideOps',
   orgTagline: 'Accessible Campus Transportation',
   orgInitials: 'RO',
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   primaryColor: '#4682B4',
   secondaryColor: '#D2B48C',
   mapUrl: null,
@@ -93,7 +94,7 @@ const pool = new Pool({
 });
 
 pool.on('connect', (client) => {
-  client.query("SET timezone = 'America/Los_Angeles'");
+  client.query(`SET timezone = '${TENANT.timezone}'`);
 });
 
 app.use(express.json());
@@ -344,20 +345,20 @@ function generateId(prefix) {
 }
 
 function formatLocalDate(date) {
-  const la = new Date(date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const y = la.getFullYear();
-  const m = String(la.getMonth() + 1).padStart(2, '0');
-  const d = String(la.getDate()).padStart(2, '0');
+  const local = new Date(date.toLocaleString('en-US', { timeZone: TENANT.timezone }));
+  const y = local.getFullYear();
+  const m = String(local.getMonth() + 1).padStart(2, '0');
+  const d = String(local.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
 async function findTodayShift(employeeId) {
   const now = new Date();
-  const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const todayDow = (la.getDay() + 6) % 7; // Mon=0..Fri=4, matches shifts.day_of_week
+  const local = new Date(now.toLocaleString('en-US', { timeZone: TENANT.timezone }));
+  const todayDow = (local.getDay() + 6) % 7; // Mon=0..Fri=4, matches shifts.day_of_week
 
-  const monday = new Date(la);
-  monday.setDate(la.getDate() - todayDow);
+  const monday = new Date(local);
+  monday.setDate(local.getDate() - todayDow);
   const weekStart = formatLocalDate(monday);
 
   const result = await query(
@@ -401,8 +402,8 @@ function isValidPhone(value) {
 async function isWithinServiceHours(requestedTime) {
   const date = new Date(requestedTime);
   if (isNaN(date.getTime())) return false;
-  const la = new Date(date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const day = la.getDay();
+  const local = new Date(date.toLocaleString('en-US', { timeZone: TENANT.timezone }));
+  const day = local.getDay();
   const ourDay = jsDateToOurDay(day);
   const opDaysStr = await getSetting('operating_days', '0,1,2,3,4');
   const opDays = String(opDaysStr).split(',').map(Number);
@@ -570,8 +571,8 @@ function generateRecurringDates(startDate, endDate, days) {
   const current = new Date(startDate);
   const end = new Date(endDate);
   while (current <= end) {
-    const la = new Date(current.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-    const ourDay = jsDateToOurDay(la.getDay());
+    const local = new Date(current.toLocaleString('en-US', { timeZone: TENANT.timezone }));
+    const ourDay = jsDateToOurDay(local.getDay());
     if (days.includes(ourDay)) {
       result.push(new Date(current));
     }
@@ -1204,9 +1205,9 @@ app.post('/api/employees/clock-in', requireStaff, async (req, res) => {
   let clockEvent = null;
   try {
     const now = new Date();
-    const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const local = new Date(now.toLocaleString('en-US', { timeZone: TENANT.timezone }));
     const eventDate = formatLocalDate(now);
-    const nowMinutes = la.getHours() * 60 + la.getMinutes();
+    const nowMinutes = local.getHours() * 60 + local.getMinutes();
 
     const shift = await findTodayShift(employeeId);
     let tardinessMinutes = 0;
@@ -1241,7 +1242,7 @@ app.post('/api/employees/clock-in', requireStaff, async (req, res) => {
       driverName: result.rows[0].name,
       tardyMinutes: clockEvent.tardiness_minutes,
       scheduledStart: clockEvent.scheduled_start || 'N/A',
-      clockInTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' }),
+      clockInTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TENANT.timezone }),
       thresholdCheck: clockEvent.tardiness_minutes
     }, query).catch(() => {});
   }
@@ -1275,11 +1276,11 @@ app.post('/api/employees/clock-out', requireStaff, async (req, res) => {
 app.get('/api/employees/today-status', requireStaff, async (req, res) => {
   try {
     const now = new Date();
-    const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const local = new Date(now.toLocaleString('en-US', { timeZone: TENANT.timezone }));
     const todayDate = formatLocalDate(now);
-    const todayDow = (la.getDay() + 6) % 7;
-    const monday = new Date(la);
-    monday.setDate(la.getDate() - todayDow);
+    const todayDow = (local.getDay() + 6) % 7;
+    const monday = new Date(local);
+    monday.setDate(local.getDate() - todayDow);
     const weekStart = formatLocalDate(monday);
 
     const [driversRes, clockRes, shiftsRes] = await Promise.all([
@@ -1528,7 +1529,7 @@ app.post('/api/rides', requireAuth, async (req, res) => {
     riderName: name,
     pickup: pickupLocation,
     dropoff: dropoffLocation,
-    requestedTime: new Date(requestedTime).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
+    requestedTime: new Date(requestedTime).toLocaleString('en-US', { timeZone: TENANT.timezone })
   }, query).catch(() => {});
 });
 
@@ -1954,7 +1955,7 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
         riderName: ride.rider_name,
         pickup: ride.pickup_location,
         dropoff: ride.dropoff_location,
-        requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+        requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: TENANT.timezone }),
         driverName,
         consecutiveMisses: newCount
       }, query);
@@ -1983,7 +1984,7 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
         riderEmail: ride.rider_email,
         pickup: ride.pickup_location,
         dropoff: ride.dropoff_location,
-        requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+        requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: TENANT.timezone }),
         consecutiveMisses: newCount,
         maxStrikes: maxStrikes,
         missesRemaining: maxStrikes - newCount
@@ -2540,7 +2541,7 @@ initDb()
             riderName: ride.rider_display_name || ride.rider_name || 'Unknown',
             pickup: ride.pickup_location,
             dropoff: ride.dropoff_location,
-            requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+            requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: TENANT.timezone }),
             minutesPending,
             thresholdCheck: minutesPending
           }, query).catch(() => {});

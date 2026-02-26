@@ -760,7 +760,7 @@ function renderEmployees() {
     const statusData = todayDriverStatus.find(d => d.id === emp.id);
     const hasClockedInToday = statusData?.todayClockEvents?.length > 0;
     if (!emp.active && !hasClockedInToday && statusData?.todayShifts?.length) {
-      const now = toLADate(new Date());
+      const now = new Date();
       const nowMins = now.getHours() * 60 + now.getMinutes();
       const activeShift = statusData.todayShifts.find(s => {
         const [sh, sm] = s.start_time.split(':').map(Number);
@@ -1344,15 +1344,14 @@ async function renderRideScheduleGrid() {
     const date = new Date(ride.requestedTime);
     if (isNaN(date.getTime())) return;
     if (date < weekStart || date > weekEnd) return;
-    const la = toLADate(date);
     // Convert JS day (0=Sun) to our day index (0=Mon...6=Sun)
-    const jsDay = la.getDay();
+    const jsDay = date.getDay();
     const ourDay = (jsDay + 6) % 7;
     const colIdx = opDays.indexOf(ourDay);
     if (colIdx < 0) return; // ride falls on a non-operating day
 
-    const hour = la.getHours();
-    const minute = la.getMinutes();
+    const hour = date.getHours();
+    const minute = date.getMinutes();
     if (hour < startHour || hour > endHour || (hour === endHour && minute > 0)) return;
     const { slot, offset } = getSlotInfo(date);
     const key = `${slot}-${colIdx}`;
@@ -1989,11 +1988,11 @@ function historyGroupKey(ride) {
 }
 function formatHistoryDateHeader(dateStr) {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' });
+  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 function getDateKey(dateStr) {
   if (!dateStr) return 'unknown';
-  const d = toLADate(dateStr);
+  const d = new Date(dateStr);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function buildHistoryItem(ride) {
@@ -2209,7 +2208,7 @@ function renderDispatchSummary() {
   el('dispatch-tardy-today', tardyToday);
 
   // Missing: drivers not clocked in but currently within a shift window
-  const now = toLADate(new Date());
+  const now = new Date();
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const todayDow = (now.getDay() + 6) % 7; // Mon=0
   const currentWeekStart = formatDateInputLocal(getMondayOfWeek(now));
@@ -2321,10 +2320,10 @@ async function renderDispatchGrid() {
     for (let h = startHour; h < startHour + cols; h++) {
       html += `<div style="position:relative;border-right:1px solid var(--color-border-light);">`;
       unassignedRides.forEach(r => {
-        const laTime = toLADate(r.requestedTime);
-        const rideHour = laTime.getHours();
+        const rideDate = new Date(r.requestedTime);
+        const rideHour = rideDate.getHours();
         if (rideHour === h) {
-          const mins = laTime.getMinutes();
+          const mins = rideDate.getMinutes();
           const left = (mins / 60 * 100) + '%';
           const lastName = (r.riderName || '').split(' ').pop();
           const abbrev = abbreviateLocation(r.pickupLocation);
@@ -2353,7 +2352,7 @@ async function renderDispatchGrid() {
 
   // Now-line: only show if viewing today
   if (dateStr === getTodayLocalDate()) {
-    const now = toLADate(new Date());
+    const now = new Date();
     const nowHours = now.getHours() + now.getMinutes() / 60;
     if (nowHours >= startHour && nowHours < startHour + cols) {
       const fraction = (nowHours - startHour) / cols;
@@ -2385,7 +2384,7 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
   const isTardy = !isActive && !hasClockedInToday && isToday && driverShifts.some(s => {
     const [sh, sm] = s.startTime.split(':').map(Number);
     const [eh, em] = s.endTime.split(':').map(Number);
-    const now = toLADate(new Date());
+    const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
     return nowMins >= (sh * 60 + sm) && nowMins < (eh * 60 + em);
   });
@@ -2396,7 +2395,7 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
   let html = `<div class="time-grid__row${tardyClass}" style="${gridColStyle}${rowOpacity}">`;
   let tardyBadgeHtml = '';
   if (isTardy) {
-    const now = toLADate(new Date());
+    const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
     const activeShift = driverShifts.find(s => {
       const [sh, sm] = s.startTime.split(':').map(Number);
@@ -2434,10 +2433,9 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
     // Render rides at this hour
     driverRides.forEach(r => {
       const rideTime = new Date(r.requestedTime);
-      const laRideTime = toLADate(rideTime);
-      const rideHour = laRideTime.getHours();
+      const rideHour = rideTime.getHours();
       if (rideHour === h) {
-        const mins = laRideTime.getMinutes();
+        const mins = rideTime.getMinutes();
         const left = (mins / 60 * 100) + '%';
         const statusColors = {
           approved: 'var(--status-approved)', scheduled: 'var(--status-scheduled)',
@@ -2624,18 +2622,13 @@ function buildGraceInfo(ride) {
 }
 
 // ----- Helpers -----
-function toLADate(input) {
-  var d = input instanceof Date ? input : new Date(input);
-  return new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-}
-
 function formatDate(dateStr) {
   if (typeof window.formatDateTime === 'function') {
     return window.formatDateTime(dateStr);
   }
   if (!dateStr) return 'N/A';
   const date = new Date(dateStr);
-  return `${date.toLocaleDateString(undefined, { timeZone: 'America/Los_Angeles' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Los_Angeles' })}`;
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function getTodayLocalDate() {
@@ -2683,7 +2676,7 @@ function formatTimeOnly(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatLocationLabel(location) {
@@ -2692,9 +2685,8 @@ function formatLocationLabel(location) {
 }
 
 function getSlotInfo(date) {
-  const la = toLADate(date);
-  const hour = la.getHours();
-  const minute = la.getMinutes();
+  const hour = date.getHours();
+  const minute = date.getMinutes();
   let slotMinute = '00';
   let offset = 'start';
   if (minute < 15) {
