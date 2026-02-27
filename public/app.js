@@ -2919,7 +2919,7 @@ function renderLineChart(containerId, data, options = {}) {
   }
 
   const W = 700, H = 260;
-  const pad = { top: 16, right: 16, bottom: 32, left: 36 };
+  const pad = { top: 16, right: 32, bottom: 32, left: 36 };
   const cw = W - pad.left - pad.right;
   const ch = H - pad.top - pad.bottom;
   const maxY = Math.max(...data.map(d => d.value), 1);
@@ -2946,7 +2946,7 @@ function renderLineChart(containerId, data, options = {}) {
 
   // SVG gradient definition
   const gradient = `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/>
+    <stop offset="0%" stop-color="${lineColor}" stop-opacity="${options.fillOpacity || 0.15}"/>
     <stop offset="100%" stop-color="${lineColor}" stop-opacity="0.02"/>
   </linearGradient></defs>`;
 
@@ -2960,14 +2960,38 @@ function renderLineChart(containerId, data, options = {}) {
     gridLines += `<text x="${pad.left - 6}" y="${yPos + 3}" class="axis-label" text-anchor="end">${yVal}</text>`;
   }
 
-  // X-axis labels
+  // X-axis labels — pixel-based collision avoidance
   let xLabels = '';
-  const labelEvery = Math.max(1, Math.floor(data.length / 8));
+  const MIN_LABEL_GAP = 65; // minimum pixels between label centers
+  let lastLabelX = -Infinity;
+
+  // Pass 1: decide which indices get labels
+  const labelIndices = [];
   data.forEach((d, i) => {
-    if (i % labelEvery === 0 || i === data.length - 1) {
-      const x = pad.left + (data.length > 1 ? i * stepX : cw / 2);
-      xLabels += `<text x="${x}" y="${H - 4}" class="axis-label" text-anchor="middle">${d.label}</text>`;
+    const x = pad.left + (data.length > 1 ? i * stepX : cw / 2);
+    if (i === 0 || x - lastLabelX >= MIN_LABEL_GAP) {
+      labelIndices.push(i);
+      lastLabelX = x;
     }
+  });
+
+  // Pass 2: if the last data point isn't labeled, force it —
+  // but remove the previous label if it's too close
+  const lastIdx = data.length - 1;
+  if (labelIndices[labelIndices.length - 1] !== lastIdx) {
+    const lastX = pad.left + (data.length > 1 ? lastIdx * stepX : cw / 2);
+    const prevIdx = labelIndices[labelIndices.length - 1];
+    const prevX = pad.left + (data.length > 1 ? prevIdx * stepX : cw / 2);
+    if (lastX - prevX < MIN_LABEL_GAP) {
+      labelIndices.pop(); // drop the second-to-last to make room
+    }
+    labelIndices.push(lastIdx);
+  }
+
+  // Pass 3: render
+  labelIndices.forEach(i => {
+    const x = pad.left + (data.length > 1 ? i * stepX : cw / 2);
+    xLabels += `<text x="${x}" y="${H - 4}" class="axis-label" text-anchor="middle">${data[i].label}</text>`;
   });
 
   // Dots hidden by default (r=0), shown on hover
@@ -2978,7 +3002,7 @@ function renderLineChart(containerId, data, options = {}) {
     ${gradient}
     ${gridLines}
     <path d="${areaPath}" class="area-fill" fill="url(#${gradientId})"/>
-    <path d="${linePath}" class="area-line" stroke="${lineColor}" style="stroke-width:2.5"/>
+    <path d="${linePath}" class="area-line" fill="none" stroke="${lineColor}" style="stroke-width:2.5"/>
     ${dots}
     ${crosshair}
     ${xLabels}
