@@ -36,6 +36,7 @@ async function initEmail() {
     console.error(`[email] SMTP verification failed: ${err.message}`);
     console.log('[email] Emails will be logged to console until SMTP is fixed.');
   }
+  console.log(`[email] Status: ${emailConfigured ? 'ACTIVE' : 'CONSOLE-ONLY'} | From: ${getFrom()}`);
 }
 
 function isConfigured() {

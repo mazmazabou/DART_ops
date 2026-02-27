@@ -280,7 +280,10 @@ async function dispatchNotification(eventType, data, queryFn) {
           continue;
         }
         const { subject, html } = template(data);
-        await sendEmail(pref.email, subject, html);
+        const sent = await sendEmail(pref.email, subject, html);
+        if (!sent) {
+          console.warn('[Notifications] Email NOT sent for', eventType, 'to', pref.email);
+        }
       } else if (pref.channel === 'in_app') {
         const template = IN_APP_TEMPLATES[eventType];
         if (!template) {
@@ -310,7 +313,10 @@ async function sendRiderEmail(eventType, data) {
   }
   try {
     const { subject, html } = template(data);
-    await sendEmail(data.riderEmail, subject, html);
+    const sent = await sendEmail(data.riderEmail, subject, html);
+    if (!sent) {
+      console.warn('[Notifications] Rider email NOT sent for', eventType, 'to', data.riderEmail);
+    }
   } catch (err) {
     console.error('[Notifications] Rider email error for', eventType, ':', err.message);
   }
