@@ -415,3 +415,106 @@ function renderNotificationDrawer(notifications, unreadCount) {
     });
   });
 }
+
+// ── Profile Cards & DiceBear Avatars ──
+
+var DICEBEAR_BASE = 'https://api.dicebear.com/9.x';
+var DICEBEAR_STYLES = [
+  { id: 'thumbs', label: 'Thumbs' },
+  { id: 'fun-emoji', label: 'Emoji' },
+  { id: 'avataaars', label: 'People' },
+  { id: 'bottts', label: 'Robots' },
+  { id: 'shapes', label: 'Shapes' },
+  { id: 'initials', label: 'Initials' }
+];
+
+function dicebearUrl(style, seed) {
+  return DICEBEAR_BASE + '/' + style + '/svg?seed=' + encodeURIComponent(seed);
+}
+
+function defaultAvatarUrl(name) {
+  return dicebearUrl('initials', name || 'User');
+}
+
+function profileAvatarHTML(avatarUrl, name, size) {
+  size = size || '';
+  var sizeClass = size === 'lg' ? ' profile-avatar--lg' : '';
+  var src = avatarUrl || defaultAvatarUrl(name);
+  return '<div class="profile-avatar' + sizeClass + '"><img src="' + escapeHtml(src) + '" alt="' + escapeHtml(name || '') + '"></div>';
+}
+
+function profileCardHTML(user, opts) {
+  opts = opts || {};
+  var variant = opts.variant || '';
+  var variantClass = variant ? ' profile-card--' + variant : '';
+  var displayName = user.preferredName || user.preferred_name || user.name || 'Unknown';
+  var avatarSize = variant === 'hero' ? 'lg' : '';
+
+  var html = '<div class="profile-card' + variantClass + '">';
+  html += profileAvatarHTML(user.avatarUrl || user.avatar_url, user.name, avatarSize);
+  html += '<div class="profile-info">';
+  html += '<div class="profile-name">' + escapeHtml(displayName) + '</div>';
+
+  var details = [];
+  if (user.major) details.push(escapeHtml(user.major));
+  if (user.graduationYear || user.graduation_year) details.push("'" + String(user.graduationYear || user.graduation_year).slice(-2));
+  if (details.length) {
+    html += '<div class="profile-detail">' + details.join(' &middot; ') + '</div>';
+  }
+  if (user.bio) {
+    html += '<div class="profile-bio">&ldquo;' + escapeHtml(user.bio) + '&rdquo;</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function avatarPickerHTML(currentAvatarUrl, userId) {
+  var html = '<div class="avatar-picker" id="avatar-picker">';
+  DICEBEAR_STYLES.forEach(function(style) {
+    var url = dicebearUrl(style.id, userId || 'preview');
+    var selected = (currentAvatarUrl === url) ? ' selected' : '';
+    html += '<div class="avatar-option' + selected + '" data-avatar-url="' + escapeHtml(url) + '" data-style="' + style.id + '" title="' + style.label + '">';
+    html += '<img src="' + escapeHtml(url) + '" alt="' + style.label + '">';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '<label class="avatar-upload-btn" for="avatar-upload-input">';
+  html += '<i class="ti ti-upload"></i> Upload Photo Instead';
+  html += '</label>';
+  html += '<input type="file" id="avatar-upload-input" accept="image/png,image/jpeg,image/webp" style="display:none">';
+  return html;
+}
+
+function initAvatarPicker(containerId, userId, onSelect) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.querySelectorAll('.avatar-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      container.querySelectorAll('.avatar-option').forEach(function(o) { o.classList.remove('selected'); });
+      opt.classList.add('selected');
+      var style = opt.dataset.style;
+      var url = dicebearUrl(style, userId || 'preview');
+      if (onSelect) onSelect(url);
+    });
+  });
+
+  var fileInput = container.querySelector('#avatar-upload-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 500 * 1024) {
+        showToastNew('Image must be under 500KB', 'error');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        container.querySelectorAll('.avatar-option').forEach(function(o) { o.classList.remove('selected'); });
+        if (onSelect) onSelect(ev.target.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+}
+

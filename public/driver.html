@@ -53,6 +53,35 @@
           <label class="ro-label" for="profile-phone">Phone</label>
           <input type="tel" id="profile-phone" class="ro-input">
         </div>
+        <div style="margin-bottom:12px;">
+          <label class="ro-label" for="profile-preferred-name">Preferred Name</label>
+          <input type="text" id="profile-preferred-name" class="ro-input" placeholder="What should riders call you?" maxlength="50">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="ro-label" for="profile-major">Major</label>
+          <input type="text" id="profile-major" class="ro-input" placeholder="e.g. Computer Science" maxlength="100">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="ro-label" for="profile-grad-year">Graduation Year</label>
+          <select id="profile-grad-year" class="ro-input">
+            <option value="">—</option>
+            <option value="2024">2024</option>
+            <option value="2025">2025</option>
+            <option value="2026">2026</option>
+            <option value="2027">2027</option>
+            <option value="2028">2028</option>
+            <option value="2029">2029</option>
+            <option value="2030">2030</option>
+          </select>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="ro-label" for="profile-bio">Bio</label>
+          <input type="text" id="profile-bio" class="ro-input" placeholder="Quick note for your riders (120 chars)" maxlength="120">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="ro-label">Avatar</label>
+          <div id="driver-avatar-picker-wrap"></div>
+        </div>
         <button class="ro-btn ro-btn--primary ro-btn--full" onclick="saveProfile()" style="margin-bottom:16px;">Save Changes</button>
         <div id="profile-message" style="font-size:13px; margin-bottom:16px;"></div>
         <div style="margin-bottom:12px;">
@@ -199,8 +228,15 @@
           ${ride.status === 'driver_arrived_grace' ? '<span class="status-badge status-badge--driver_arrived_grace">' + Math.round(gracePeriodSeconds / 60) + '-min grace period</span>' : statusBadge(ride.status)}
           <span class="text-xs text-muted">${formatTime(ride.requestedTime)}</span>
         </div>
-        <div class="fw-700" style="font-size:16px; margin-bottom:4px;">${ride.riderName}</div>
-        <div class="text-sm" style="margin-bottom:8px; color:var(--color-text-secondary);">
+        ${profileCardHTML({
+          name: ride.riderName,
+          preferredName: ride.riderPreferredName,
+          avatarUrl: ride.riderAvatar,
+          major: ride.riderMajor,
+          graduationYear: ride.riderGraduationYear,
+          bio: ride.riderBio
+        }, { variant: 'compact' })}
+        <div class="text-sm" style="margin: 8px 0; color:var(--color-text-secondary);">
           <i class="ti ti-map-pin" style="font-size:14px; vertical-align:middle;"></i>
           ${ride.pickupLocation} → ${ride.dropoffLocation}
         </div>
@@ -420,6 +456,8 @@
       }
     }
 
+    let _driverSelectedAvatarUrl = undefined;
+
     async function loadProfile() {
       try {
         const res = await fetch('/api/me');
@@ -429,6 +467,16 @@
         document.getElementById('profile-username').value = me.username || '';
         document.getElementById('profile-name').value = me.name || '';
         document.getElementById('profile-phone').value = me.phone || '';
+        document.getElementById('profile-preferred-name').value = me.preferred_name || '';
+        document.getElementById('profile-major').value = me.major || '';
+        document.getElementById('profile-grad-year').value = me.graduation_year || '';
+        document.getElementById('profile-bio').value = me.bio || '';
+        _driverSelectedAvatarUrl = me.avatar_url || null;
+        const wrap = document.getElementById('driver-avatar-picker-wrap');
+        if (wrap) {
+          wrap.innerHTML = avatarPickerHTML(me.avatar_url, me.id);
+          initAvatarPicker('driver-avatar-picker-wrap', me.id, function(url) { _driverSelectedAvatarUrl = url; });
+        }
       } catch (e) {
         console.warn('Failed to load profile:', e);
       }
@@ -444,10 +492,16 @@
       try {
         const name = document.getElementById('profile-name').value.trim();
         const phone = document.getElementById('profile-phone').value.trim();
+        const preferredName = document.getElementById('profile-preferred-name').value.trim();
+        const major = document.getElementById('profile-major').value.trim();
+        const gradYear = document.getElementById('profile-grad-year').value;
+        const bio = document.getElementById('profile-bio').value.trim();
+        const body = { name, phone, preferredName: preferredName || null, major: major || null, graduationYear: gradYear ? parseInt(gradYear, 10) : null, bio: bio || null };
+        if (_driverSelectedAvatarUrl !== undefined) body.avatarUrl = _driverSelectedAvatarUrl;
         const res = await fetch('/api/me', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone })
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         if (!res.ok) {
@@ -457,7 +511,7 @@
         }
         msg.textContent = 'Saved!';
         msg.style.color = 'var(--status-completed)';
-        document.getElementById('driver-name').textContent = data.name;
+        document.getElementById('driver-name').textContent = data.preferred_name || data.name;
         showToastNew('Profile updated', 'success');
       } finally {
         btn.disabled = false;

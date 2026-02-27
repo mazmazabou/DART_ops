@@ -124,7 +124,7 @@ Default login credentials (password: `demo123`):
 - **users** — All users (office, drivers, riders)
   - `role`: 'office', 'driver', or 'rider'
   - `active`: TRUE when driver is clocked in (only for drivers)
-  - Fields: id, username, password_hash, name, email, phone, member_id, role, active
+  - Fields: id, username, password_hash, name, email, phone, member_id, role, active, avatar_url, preferred_name, major, graduation_year, bio
 - **shifts** — Weekly schedule for drivers
   - Fields: id, employee_id, day_of_week (0-4 for Mon-Fri), start_time, end_time, week_start (DATE, nullable), notes
   - When `week_start` is set, the shift only appears on that specific week. When NULL, it acts as a recurring template.
@@ -266,6 +266,7 @@ The frontend uses a Tabler-based design system.
 - Tabler CSS: `https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css`
 - Tabler Icons: `https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css`
 - FullCalendar: `https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js` (office view only)
+- DiceBear API: `https://api.dicebear.com/9.x` — client-side avatar generation, no API key needed
 
 ### Color System (Two-Layer Theming)
 - **Layer 1 — Platform defaults** (in rideops-theme.css :root): SteelBlue #4682B4 primary, Tan #D2B48C accent
@@ -283,6 +284,12 @@ rideops-theme.css contains these rules that make navigation work:
 
 ### Icon System
 Use Tabler Icons (`ti ti-{name}`), NOT Material Symbols.
+
+### Profile Cards & Avatars
+- Profile cards use `.profile-card`, `.profile-avatar` classes from rideops-theme.css (Section 26)
+- Avatar picker (`.avatar-picker`, `.avatar-option`) and helper functions in rideops-utils.js
+- Helpers: `profileCardHTML(user, opts)`, `profileAvatarHTML(avatarUrl, name, size)`, `avatarPickerHTML(url, userId)`, `initAvatarPicker(containerId, userId, onSelect)`
+- Default avatar: DiceBear `initials` style (`defaultAvatarUrl(name)`) when no `avatar_url` is set
 
 ### Status Names (immutable — referenced across entire codebase)
 pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed, no_show, denied, cancelled

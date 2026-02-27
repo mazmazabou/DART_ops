@@ -68,6 +68,7 @@ let emailConfigured = false;
 let tenantConfig = null;
 let historyExpandedGroups = new Set();
 let todayDriverStatus = [];
+let isDragging = false;
 
 async function loadTenantConfig() {
   try {
@@ -1060,7 +1061,7 @@ async function onShiftEventResize(info) {
 function onShiftEventMount(info) {
   info.el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    showShiftContextMenu(e, info.event);
+    showShiftContextMenu(e, info.event, info.el);
   });
 }
 
@@ -1186,7 +1187,7 @@ function _shiftCtxOutside(e) {
   if (menu && !menu.contains(e.target)) closeShiftContextMenu();
 }
 
-function showShiftContextMenu(e, calEvent) {
+function showShiftContextMenu(e, calEvent, eventEl) {
   closeShiftContextMenu();
   closeShiftPopover();
 
@@ -1243,28 +1244,10 @@ function showShiftContextMenu(e, calEvent) {
     } catch { showToast('Failed to duplicate shift', 'error'); }
   };
 
-  // Edit Details — open the popover
+  // Edit Details — open the popover anchored to the original calendar event element
   menu.querySelector('[data-action="edit"]').onclick = () => {
     closeShiftContextMenu();
-    // Find the DOM element for this event and trigger the popover
-    const fcEvents = shiftCalendar.getEvents();
-    const matchEv = fcEvents.find(ev => ev.extendedProps.shiftId === shiftId);
-    if (matchEv) {
-      // Synthesize an info-like object for onShiftEventClick
-      const els = document.querySelectorAll('.fc-event');
-      let targetEl = null;
-      els.forEach(el => {
-        const evObj = el.__fcEvent || null;
-        // Match by position in DOM — find the el that renders this event
-        if (el.textContent.includes(empName)) targetEl = el;
-      });
-      // Use the event's element if possible
-      if (!targetEl) {
-        // Fallback: use all fc-timegrid-event elements
-        targetEl = document.querySelector('.fc-timegrid-event');
-      }
-      onShiftEventClick({ event: matchEv, el: targetEl || document.querySelector('.fc-event') });
-    }
+    onShiftEventClick({ event: calEvent, el: eventEl });
   };
 
   // Delete
@@ -2272,6 +2255,7 @@ function renderPendingQueue() {
 }
 
 async function renderDispatchGrid() {
+  if (isDragging) return;
   const grid = document.getElementById('dispatch-grid');
   if (!grid) return;
   const dateInput = document.getElementById('dispatch-date');
@@ -2312,28 +2296,27 @@ async function renderDispatchGrid() {
     html += buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, true);
   });
 
-  // Unassigned separator
-  if (unassignedRides.length) {
-    html += `<div class="time-grid__separator">Unassigned (${unassignedRides.length})</div>`;
-    html += `<div class="time-grid__row" style="${gridColStyle}">`;
-    html += `<div class="time-grid__driver"><span class="time-grid__driver-dot time-grid__driver-dot--offline"></span>Unassigned</div>`;
-    for (let h = startHour; h < startHour + cols; h++) {
-      html += `<div style="position:relative;border-right:1px solid var(--color-border-light);">`;
-      unassignedRides.forEach(r => {
-        const rideDate = new Date(r.requestedTime);
-        const rideHour = rideDate.getHours();
-        if (rideHour === h) {
-          const mins = rideDate.getMinutes();
-          const left = (mins / 60 * 100) + '%';
-          const lastName = (r.riderName || '').split(' ').pop();
-          const abbrev = abbreviateLocation(r.pickupLocation);
-          html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" style="left:${left};width:50%;background:var(--status-approved);" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
-        }
-      });
-      html += '</div>';
-    }
+  // Unassigned row (always rendered as drop target)
+  const unassignedLabel = unassignedRides.length ? `Unassigned (${unassignedRides.length})` : 'Unassigned';
+  html += `<div class="time-grid__separator">${unassignedLabel}</div>`;
+  html += `<div class="time-grid__row" data-row-type="unassigned" style="${gridColStyle}">`;
+  html += `<div class="time-grid__driver"><span class="time-grid__driver-dot time-grid__driver-dot--offline"></span>Unassigned</div>`;
+  for (let h = startHour; h < startHour + cols; h++) {
+    html += `<div style="position:relative;border-right:1px solid var(--color-border-light);">`;
+    unassignedRides.forEach(r => {
+      const rideDate = new Date(r.requestedTime);
+      const rideHour = rideDate.getHours();
+      if (rideHour === h) {
+        const mins = rideDate.getMinutes();
+        const left = (mins / 60 * 100) + '%';
+        const lastName = (r.riderName || '').split(' ').pop();
+        const abbrev = abbreviateLocation(r.pickupLocation);
+        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}" draggable="true" style="left:${left};width:50%;background:var(--status-approved);" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
+      }
+    });
     html += '</div>';
   }
+  html += '</div>';
 
   // Off-shift separator
   if (inactiveDrivers.length) {
@@ -2392,7 +2375,7 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
   const dotClass = isActive ? 'time-grid__driver-dot--online' : 'time-grid__driver-dot--offline';
   const tardyClass = isTardy ? ' time-grid__row--tardy' : '';
   const rowOpacity = (!isActive && !isTardy) ? ';opacity:0.5;' : '';
-  let html = `<div class="time-grid__row${tardyClass}" style="${gridColStyle}${rowOpacity}">`;
+  let html = `<div class="time-grid__row${tardyClass}" data-driver-id="${driver.id}" data-active="${isActive}" style="${gridColStyle}${rowOpacity}">`;
   let tardyBadgeHtml = '';
   if (isTardy) {
     const now = new Date();
@@ -2445,7 +2428,8 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
         const bg = statusColors[r.status] || 'var(--status-pending)';
         const lastName = (r.riderName || '').split(' ').pop();
         const abbrev = abbreviateLocation(r.pickupLocation);
-        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" style="left:${left};width:50%;background:${bg};" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
+        const isDraggable = r.status === 'scheduled';
+        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}"${isDraggable ? ' draggable="true"' : ''} style="left:${left};width:50%;background:${bg};" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
       }
     });
 
@@ -2473,8 +2457,24 @@ function openRideDrawer(ride) {
   let html = '';
   html += `<div style="margin-bottom:16px;">`;
   html += `<div style="margin-bottom:8px;">${statusBadge(ride.status)}</div>`;
-  html += `<div style="font-size:15px;font-weight:700;margin-bottom:4px;"><span class="clickable-name" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}">${ride.riderName}</span></div>`;
-  html += `<div class="text-sm text-muted">${ride.riderEmail || ''}</div>`;
+  html += `<div class="ro-label" style="margin-top:8px;">Rider</div>`;
+  html += profileCardHTML({
+    name: ride.riderName,
+    preferredName: ride.riderPreferredName,
+    avatarUrl: ride.riderAvatar,
+    major: ride.riderMajor,
+    graduationYear: ride.riderGraduationYear,
+    bio: ride.riderBio
+  }, { variant: 'compact' });
+  if (ride.assignedDriverId) {
+    html += `<div class="ro-label" style="margin-top:12px;">Driver</div>`;
+    html += profileCardHTML({
+      name: driverName,
+      preferredName: ride.driverPreferredName,
+      avatarUrl: ride.driverAvatar,
+      bio: ride.driverBio
+    }, { variant: 'compact' });
+  }
   html += `</div>`;
 
   // Route
@@ -3539,26 +3539,30 @@ async function renderTardinessSection(container, data) {
   </div>`;
   html += `<div class="kpi-card ${tardyClass}"><div class="kpi-card__value">${summary.tardyCount}</div><div class="kpi-card__label">Tardy Count</div></div>`;
   html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${avgTardy}m</div><div class="kpi-card__label">Avg Tardiness</div></div>`;
+  const missedClass = (summary.totalMissedShifts || 0) === 0 ? 'kpi-card--good' : (summary.totalMissedShifts || 0) <= 3 ? 'kpi-card--warning' : 'kpi-card--danger';
+  html += `<div class="kpi-card ${missedClass}"><div class="kpi-card__value">${summary.totalMissedShifts || 0}</div><div class="kpi-card__label">Missed Shifts</div></div>`;
   html += '</div></div>';
 
   // ── 2. Card grid: SVG Donut + Day of Week Column Chart ──
   html += '<div class="analytics-card-grid">';
 
   // 2a. SVG Donut
-  html += '<div class="analytics-card"><div class="analytics-card__header"><h4 class="analytics-card__title">Tardiness Distribution</h4></div><div class="analytics-card__body">';
+  html += '<div class="analytics-card"><div class="analytics-card__header"><h4 class="analytics-card__title">Attendance Distribution</h4></div><div class="analytics-card__body">';
   if (distribution && distribution.some(d => d.count > 0)) {
     const donutColors = ['var(--status-completed)', '#FBBF24', 'var(--status-on-the-way)', '#F97316', 'var(--status-no-show)'];
     const total = distribution.reduce((s, d) => s + d.count, 0);
     const R = 60, CX = 80, CY = 80, SW = 24;
     const circumference = 2 * Math.PI * R;
-    let offset = 0;
+    // Start from top (12 o'clock): initial offset = circumference/4 (quarter turn back)
+    let offset = circumference / 4;
 
     let circles = '';
     distribution.forEach((d, i) => {
       if (d.count === 0) return;
       const segLen = (d.count / total) * circumference;
-      circles += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${donutColors[i]}" stroke-width="${SW}" stroke-dasharray="${segLen} ${circumference - segLen}" stroke-dashoffset="${-offset}" class="donut-seg" data-idx="${i}"/>`;
-      offset += segLen;
+      // Positive dashoffset shifts start clockwise; we negate to go counter-clockwise from top
+      circles += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${donutColors[i]}" stroke-width="${SW}" stroke-dasharray="${segLen} ${circumference - segLen}" stroke-dashoffset="${offset}" class="donut-seg" data-idx="${i}"/>`;
+      offset -= segLen;
     });
 
     html += `<div class="donut-wrap">
@@ -3596,7 +3600,7 @@ async function renderTardinessSection(container, data) {
   // ── 4. Punctuality by Driver Table ──
   html += '<div class="analytics-card analytics-card--wide"><div class="analytics-card__header"><h4 class="analytics-card__title">Punctuality by Driver</h4></div><div class="analytics-card__body">';
   if (byDriver && byDriver.length) {
-    html += '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th><th>Max Late</th></tr></thead><tbody>';
+    html += '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th><th>Max Late</th><th>Missed Shifts</th></tr></thead><tbody>';
     byDriver.forEach(d => {
       const driverOnTime = d.totalClockIns > 0 ? Math.round(((d.totalClockIns - d.tardyCount) / d.totalClockIns) * 100) : 100;
       const tardyPct = d.totalClockIns > 0 ? (d.tardyCount / d.totalClockIns * 100) : 0;
@@ -3604,6 +3608,10 @@ async function renderTardinessSection(container, data) {
       const avg = d.avgTardinessMinutes ? parseFloat(d.avgTardinessMinutes).toFixed(1) + 'm' : '—';
       const maxL = d.maxTardinessMinutes ? d.maxTardinessMinutes + 'm' : '—';
       const barColor = driverOnTime >= 90 ? 'var(--status-completed)' : driverOnTime >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
+      const missedShifts = d.missedShifts || 0;
+      const missedBadge = missedShifts > 0
+        ? `<span class="tardy-badge" style="background:var(--status-no-show)">${missedShifts}</span>`
+        : '<span style="color:var(--color-text-muted)">0</span>';
       html += `<tr>
         <td><span class="punctuality-dot ${dotClass}"></span>${d.name}</td>
         <td>${d.totalClockIns}</td>
@@ -3611,6 +3619,7 @@ async function renderTardinessSection(container, data) {
         <td><div class="ontime-bar-cell"><div class="ontime-bar-track"><div class="ontime-bar-fill" style="width:${driverOnTime}%; background:${barColor};"></div></div><span class="ontime-bar-label">${driverOnTime}%</span></div></td>
         <td>${avg}</td>
         <td>${maxL}</td>
+        <td>${missedBadge}</td>
       </tr>`;
     });
     html += '</tbody></table></div>';
@@ -4389,6 +4398,103 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.stopPropagation();
       const ride = rides.find(r => r.id === strip.dataset.rideId);
       if (ride) openRideDrawer(ride);
+    });
+
+    // ── Drag-and-drop: assign, unassign, reassign ──
+    dispatchGrid.addEventListener('dragstart', (e) => {
+      const strip = e.target.closest('.time-grid__ride-strip[draggable="true"]');
+      if (!strip) return;
+      isDragging = true;
+      const rideId = strip.dataset.rideId;
+      const rideStatus = strip.dataset.rideStatus;
+      const sourceDriverRow = strip.closest('.time-grid__row[data-driver-id]');
+      const sourceDriverId = sourceDriverRow ? sourceDriverRow.dataset.driverId : '';
+      const sourceRowType = sourceDriverRow ? 'driver' : 'unassigned';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('application/x-ride', JSON.stringify({ rideId, rideStatus, sourceDriverId, sourceRowType }));
+      strip.classList.add('time-grid__ride-strip--dragging');
+      // Highlight active driver rows (except source) as drop targets
+      dispatchGrid.querySelectorAll('.time-grid__row[data-driver-id][data-active="true"]').forEach(row => {
+        if (row.dataset.driverId !== sourceDriverId) row.classList.add('time-grid__row--drop-ready');
+      });
+      // Highlight unassigned row when dragging from a driver (for unassign)
+      if (sourceRowType === 'driver') {
+        const unassignedRow = dispatchGrid.querySelector('.time-grid__row[data-row-type="unassigned"]');
+        if (unassignedRow) unassignedRow.classList.add('time-grid__row--drop-ready');
+      }
+    });
+
+    dispatchGrid.addEventListener('dragend', () => {
+      isDragging = false;
+      dispatchGrid.querySelectorAll('.time-grid__ride-strip--dragging').forEach(el => el.classList.remove('time-grid__ride-strip--dragging'));
+      dispatchGrid.querySelectorAll('.time-grid__row--drop-ready, .time-grid__row--drop-hover').forEach(el => {
+        el.classList.remove('time-grid__row--drop-ready', 'time-grid__row--drop-hover');
+      });
+    });
+
+    dispatchGrid.addEventListener('dragover', (e) => {
+      const row = e.target.closest('.time-grid__row');
+      if (!row) return;
+      const isActiveDriver = row.dataset.driverId && row.dataset.active === 'true';
+      const isUnassigned = row.dataset.rowType === 'unassigned';
+      if (isActiveDriver || isUnassigned) e.preventDefault();
+    });
+
+    dispatchGrid.addEventListener('dragenter', (e) => {
+      const row = e.target.closest('.time-grid__row');
+      if (!row) return;
+      const isActiveDriver = row.dataset.driverId && row.dataset.active === 'true';
+      const isUnassigned = row.dataset.rowType === 'unassigned';
+      if (isActiveDriver || isUnassigned) row.classList.add('time-grid__row--drop-hover');
+    });
+
+    dispatchGrid.addEventListener('dragleave', (e) => {
+      const row = e.target.closest('.time-grid__row');
+      if (!row) return;
+      if (!row.contains(e.relatedTarget)) row.classList.remove('time-grid__row--drop-hover');
+    });
+
+    dispatchGrid.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const row = e.target.closest('.time-grid__row');
+      if (!row) return;
+      const isActiveDriver = row.dataset.driverId && row.dataset.active === 'true';
+      const isUnassigned = row.dataset.rowType === 'unassigned';
+      if (!isActiveDriver && !isUnassigned) return;
+
+      let data;
+      try { data = JSON.parse(e.dataTransfer.getData('application/x-ride')); } catch { return; }
+      const { rideId, rideStatus, sourceDriverId, sourceRowType } = data;
+      const targetDriverId = row.dataset.driverId || '';
+
+      try {
+        // Drop on unassigned row from a driver row → unassign
+        if (isUnassigned && sourceRowType === 'driver') {
+          const res = await fetch(`/api/rides/${rideId}/unassign`, { method: 'POST' });
+          const result = await res.json();
+          if (!res.ok) { showToast(result.error || 'Unassign failed', 'error'); return; }
+          showToast('Ride moved to unassigned', 'success');
+          await loadRides();
+          return;
+        }
+
+        // Same row or unassigned→unassigned — no-op (use ride drawer to edit time)
+        if (isUnassigned && sourceRowType === 'unassigned') return;
+        if (isActiveDriver && targetDriverId === sourceDriverId) return;
+
+        // Drop on different active driver → assign or reassign
+        let res;
+        if (rideStatus === 'approved') {
+          res = await fetch(`/api/rides/${rideId}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driverId: targetDriverId }) });
+        } else if (rideStatus === 'scheduled') {
+          res = await fetch(`/api/rides/${rideId}/reassign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driverId: targetDriverId }) });
+        } else { return; }
+        const result = await res.json();
+        if (!res.ok) { showToast(result.error || 'Assignment failed', 'error'); return; }
+        const driverName = employees.find(emp => emp.id === targetDriverId)?.name || 'driver';
+        showToast(`Ride assigned to ${driverName}`, 'success');
+        await loadRides();
+      } catch { showToast('Network error', 'error'); }
     });
   }
 

@@ -210,6 +210,11 @@ async function runMigrations() {
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS vehicle_id TEXT REFERENCES vehicles(id);`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_name VARCHAR(50);`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS major VARCHAR(100);`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year INTEGER;`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS bio VARCHAR(120);`,
     `ALTER TABLE ride_events ADD COLUMN IF NOT EXISTS notes TEXT;`,
     `ALTER TABLE ride_events ADD COLUMN IF NOT EXISTS initials TEXT;`,
     `CREATE TABLE IF NOT EXISTS recurring_rides (
@@ -272,19 +277,19 @@ async function runMigrations() {
 
 async function seedDefaultUsers() {
   const defaults = [
-    { id: 'emp1', username: 'alex', name: 'Alex', email: 'hello+alex@ride-ops.com', member_id: '1000000001', phone: '213-555-0101', role: 'driver', active: false },
-    { id: 'emp2', username: 'jordan', name: 'Jordan', email: 'hello+jordan@ride-ops.com', member_id: '1000000002', phone: '213-555-0102', role: 'driver', active: false },
-    { id: 'emp3', username: 'taylor', name: 'Taylor', email: 'hello+taylor@ride-ops.com', member_id: '1000000003', phone: '213-555-0103', role: 'driver', active: false },
-    { id: 'emp4', username: 'morgan', name: 'Morgan', email: 'hello+morgan@ride-ops.com', member_id: '1000000004', phone: '213-555-0104', role: 'driver', active: false },
+    { id: 'emp1', username: 'alex', name: 'Alex', email: 'hello+alex@ride-ops.com', member_id: '1000000001', phone: '213-555-0101', role: 'driver', active: false, preferred_name: 'Alex' },
+    { id: 'emp2', username: 'jordan', name: 'Jordan', email: 'hello+jordan@ride-ops.com', member_id: '1000000002', phone: '213-555-0102', role: 'driver', active: false, preferred_name: 'Jordan' },
+    { id: 'emp3', username: 'taylor', name: 'Taylor', email: 'hello+taylor@ride-ops.com', member_id: '1000000003', phone: '213-555-0103', role: 'driver', active: false, preferred_name: 'Taylor' },
+    { id: 'emp4', username: 'morgan', name: 'Morgan', email: 'hello+morgan@ride-ops.com', member_id: '1000000004', phone: '213-555-0104', role: 'driver', active: false, preferred_name: 'Morgan' },
     { id: 'office', username: 'office', name: 'Office', email: 'hello+office@ride-ops.com', member_id: '1000009999', phone: '213-555-0199', role: 'office', active: true },
-    { id: 'rider1', username: 'casey', name: 'Casey Rivera', email: 'hello+casey@ride-ops.com', member_id: '1000000011', phone: '213-555-0111', role: 'rider', active: false },
-    { id: 'rider2', username: 'riley', name: 'Riley Chen', email: 'hello+riley@ride-ops.com', member_id: '1000000012', phone: '213-555-0112', role: 'rider', active: false }
+    { id: 'rider1', username: 'casey', name: 'Casey Rivera', email: 'hello+casey@ride-ops.com', member_id: '1000000011', phone: '213-555-0111', role: 'rider', active: false, preferred_name: 'Casey', major: 'Occupational Therapy', graduation_year: 2027 },
+    { id: 'rider2', username: 'riley', name: 'Riley Chen', email: 'hello+riley@ride-ops.com', member_id: '1000000012', phone: '213-555-0112', role: 'rider', active: false, preferred_name: 'Riley', major: 'Computer Science', graduation_year: 2026 }
   ];
 
   for (const user of defaults) {
     await query(
-      `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active, preferred_name, major, graduation_year)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (id) DO UPDATE SET
          username = EXCLUDED.username,
          name = EXCLUDED.name,
@@ -292,8 +297,11 @@ async function seedDefaultUsers() {
          member_id = EXCLUDED.member_id,
          phone = EXCLUDED.phone,
          role = EXCLUDED.role,
-         active = EXCLUDED.active`,
-      [user.id, user.username, defaultPasswordHash, user.name, user.email, user.member_id || null, user.phone || null, user.role, user.active]
+         active = EXCLUDED.active,
+         preferred_name = COALESCE(EXCLUDED.preferred_name, users.preferred_name),
+         major = COALESCE(EXCLUDED.major, users.major),
+         graduation_year = COALESCE(EXCLUDED.graduation_year, users.graduation_year)`,
+      [user.id, user.username, defaultPasswordHash, user.name, user.email, user.member_id || null, user.phone || null, user.role, user.active, user.preferred_name || null, user.major || null, user.graduation_year || null]
     );
   }
 }
@@ -566,7 +574,15 @@ function mapRide(row) {
     cancelledBy: row.cancelled_by || null,
     vehicleId: row.vehicle_id || null,
     driverName: row.driver_name || null,
-    driverPhone: row.driver_phone || null
+    driverPhone: row.driver_phone || null,
+    riderPreferredName: row.rider_preferred_name || null,
+    riderAvatar: row.rider_avatar_url || null,
+    riderMajor: row.rider_major || null,
+    riderGraduationYear: row.rider_graduation_year || null,
+    riderBio: row.rider_bio || null,
+    driverPreferredName: row.driver_preferred_name || null,
+    driverAvatar: row.driver_avatar_url || null,
+    driverBio: row.driver_bio || null
   };
 }
 
@@ -822,7 +838,7 @@ app.get('/api/settings/:key', requireAuth, async (req, res) => {
 // Self-service profile
 app.get('/api/me', requireAuth, async (req, res) => {
   const result = await query(
-    `SELECT id, username, name, email, member_id, phone, role FROM users WHERE id = $1`,
+    `SELECT id, username, name, email, member_id, phone, role, avatar_url, preferred_name, major, graduation_year, bio FROM users WHERE id = $1`,
     [req.session.userId]
   );
   const user = result.rows[0];
@@ -831,14 +847,64 @@ app.get('/api/me', requireAuth, async (req, res) => {
 });
 
 app.put('/api/me', requireAuth, async (req, res) => {
-  const { name, phone } = req.body;
+  const { name, phone, preferredName, major, graduationYear, bio, avatarUrl } = req.body;
   if (name && name.length > 120) return res.status(400).json({ error: 'Name too long' });
-  if (!isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
+  if (phone !== undefined && !isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
+  // Validate new profile fields
+  const stripTags = (s) => typeof s === 'string' ? s.replace(/<[^>]*>/g, '') : s;
+  if (preferredName !== undefined && preferredName !== null) {
+    if (stripTags(preferredName).length > 50) return res.status(400).json({ error: 'Preferred name too long (max 50)' });
+    if (preferredName !== stripTags(preferredName)) return res.status(400).json({ error: 'HTML not allowed in preferred name' });
+  }
+  if (major !== undefined && major !== null) {
+    if (stripTags(major).length > 100) return res.status(400).json({ error: 'Major too long (max 100)' });
+    if (major !== stripTags(major)) return res.status(400).json({ error: 'HTML not allowed in major' });
+  }
+  if (graduationYear !== undefined && graduationYear !== null) {
+    const yr = parseInt(graduationYear, 10);
+    if (isNaN(yr) || yr < 2020 || yr > 2035) return res.status(400).json({ error: 'Graduation year must be between 2020 and 2035' });
+  }
+  if (bio !== undefined && bio !== null) {
+    if (stripTags(bio).length > 120) return res.status(400).json({ error: 'Bio too long (max 120)' });
+    if (bio !== stripTags(bio)) return res.status(400).json({ error: 'HTML not allowed in bio' });
+  }
+  if (avatarUrl !== undefined && avatarUrl !== null && avatarUrl !== '') {
+    const isDiceBear = avatarUrl.startsWith('https://api.dicebear.com/');
+    const isDataUri = avatarUrl.startsWith('data:image/');
+    if (!isDiceBear && !isDataUri) return res.status(400).json({ error: 'Avatar must be a DiceBear URL or image data URI' });
+    if (isDataUri) {
+      const base64Part = avatarUrl.split(',')[1] || '';
+      const sizeBytes = Math.ceil(base64Part.length * 3 / 4);
+      if (sizeBytes > 500 * 1024) return res.status(400).json({ error: 'Avatar image must be under 500KB' });
+    }
+  }
+  // For profile fields: undefined = not sent (keep old), empty string = clear, value = update
+  const profileVal = (v) => v === undefined ? undefined : (v || null);
+  const sets = ['name = COALESCE($1, name)', 'phone = COALESCE($2, phone)'];
+  const params = [name || null, phone || null];
+  let pIdx = 3;
+  // Only include profile fields in SET clause when explicitly provided
+  const profileFields = [
+    { key: 'preferred_name', val: preferredName },
+    { key: 'major', val: major },
+    { key: 'graduation_year', val: graduationYear !== undefined ? (graduationYear ? parseInt(graduationYear, 10) : null) : undefined },
+    { key: 'bio', val: bio },
+    { key: 'avatar_url', val: avatarUrl }
+  ];
+  for (const f of profileFields) {
+    if (f.val !== undefined) {
+      sets.push(`${f.key} = $${pIdx}`);
+      params.push(f.val || null);
+      pIdx++;
+    }
+  }
+  sets.push('updated_at = NOW()');
+  params.push(req.session.userId);
   const result = await query(
-    `UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), updated_at = NOW()
-     WHERE id = $3
-     RETURNING id, username, name, email, member_id, phone, role`,
-    [name || null, phone || null, req.session.userId]
+    `UPDATE users SET ${sets.join(', ')}
+     WHERE id = $${pIdx}
+     RETURNING id, username, name, email, member_id, phone, role, avatar_url, preferred_name, major, graduation_year, bio`,
+    params
   );
   if (!result.rowCount) return res.status(404).json({ error: 'User not found' });
   const user = result.rows[0];
@@ -1489,13 +1555,18 @@ app.put('/api/shifts/:id', requireOffice, async (req, res) => {
 app.get('/api/rides', requireStaff, async (req, res) => {
   const { status } = req.query;
   const baseSql = `
-    SELECT id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-           requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by, vehicle_id
-    FROM rides
+    SELECT r.id, r.rider_id, r.rider_name, r.rider_email, r.rider_phone, r.pickup_location, r.dropoff_location, r.notes,
+           r.requested_time, r.status, r.assigned_driver_id, r.grace_start_time, r.consecutive_misses, r.recurring_id, r.cancelled_by, r.vehicle_id,
+           d.name AS driver_name, d.phone AS driver_phone,
+           ru.preferred_name AS rider_preferred_name, ru.avatar_url AS rider_avatar_url, ru.major AS rider_major, ru.graduation_year AS rider_graduation_year, ru.bio AS rider_bio,
+           d.preferred_name AS driver_preferred_name, d.avatar_url AS driver_avatar_url, d.bio AS driver_bio
+    FROM rides r
+    LEFT JOIN users d ON r.assigned_driver_id = d.id
+    LEFT JOIN users ru ON r.rider_id = ru.id
   `;
   const result = status
-    ? await query(`${baseSql} WHERE status = $1 ORDER BY requested_time`, [status])
-    : await query(`${baseSql} ORDER BY requested_time`);
+    ? await query(`${baseSql} WHERE r.status = $1 ORDER BY r.requested_time`, [status])
+    : await query(`${baseSql} ORDER BY r.requested_time`);
   res.json(result.rows.map(mapRide));
 });
 
@@ -1606,7 +1677,8 @@ app.get('/api/my-rides', requireRider, async (req, res) => {
   const result = await query(
     `SELECT r.id, r.rider_name, r.rider_email, r.rider_phone, r.pickup_location, r.dropoff_location, r.notes,
             r.requested_time, r.status, r.assigned_driver_id, r.grace_start_time, r.consecutive_misses, r.recurring_id, r.rider_id, r.vehicle_id,
-            u.name AS driver_name, u.phone AS driver_phone
+            u.name AS driver_name, u.phone AS driver_phone,
+            u.preferred_name AS driver_preferred_name, u.avatar_url AS driver_avatar_url, u.bio AS driver_bio
      FROM rides r
      LEFT JOIN users u ON r.assigned_driver_id = u.id
      WHERE r.rider_email = $1 ORDER BY r.requested_time DESC`,
@@ -2430,7 +2502,7 @@ app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
     if (from) { params.push(from); dateFilter += ` AND event_date >= $${params.length}`; }
     if (to) { params.push(to); dateFilter += ` AND event_date <= $${params.length}`; }
 
-    const [summaryRes, byDriverRes, byDowRes, trendRes, distRes] = await Promise.all([
+    const [summaryRes, byDriverRes, byDowRes, trendRes, distRes, missedRes] = await Promise.all([
       query(
         `SELECT COUNT(*) AS total_clock_ins,
                 COUNT(*) FILTER (WHERE tardiness_minutes > 0) AS tardy_count,
@@ -2473,12 +2545,41 @@ app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
                 COUNT(*) FILTER (WHERE tardiness_minutes BETWEEN 16 AND 30) AS late_16_30,
                 COUNT(*) FILTER (WHERE tardiness_minutes > 30) AS late_31_plus
          FROM clock_events WHERE 1=1${dateFilter}`, params
+      ),
+      // Missed shifts: scheduled shift days in the date range with no clock_event
+      query(
+        `WITH date_range AS (
+           SELECT generate_series(
+             COALESCE($1::date, CURRENT_DATE - INTERVAL '90 days'),
+             COALESCE($2::date, CURRENT_DATE),
+             '1 day'::interval
+           )::date AS d
+         ),
+         scheduled AS (
+           SELECT s.employee_id, dr.d AS shift_date
+           FROM shifts s
+           JOIN date_range dr ON (EXTRACT(ISODOW FROM dr.d)::int - 1) = s.day_of_week
+         ),
+         clocked AS (
+           SELECT employee_id, event_date FROM clock_events
+         )
+         SELECT s.employee_id, u.name,
+                COUNT(*) AS missed_shifts
+         FROM scheduled s
+         JOIN users u ON s.employee_id = u.id
+         LEFT JOIN clocked c ON c.employee_id = s.employee_id AND c.event_date = s.shift_date
+         WHERE c.employee_id IS NULL
+         GROUP BY s.employee_id, u.name`,
+        [from || null, to || null]
       )
     ]);
 
     const s = summaryRes.rows[0];
     const totalClockIns = parseInt(s.total_clock_ins);
     const tardyCount = parseInt(s.tardy_count);
+    const missedByDriver = {};
+    (missedRes.rows || []).forEach(r => { missedByDriver[r.employee_id] = parseInt(r.missed_shifts) || 0; });
+    const totalMissedShifts = Object.values(missedByDriver).reduce((a, b) => a + b, 0);
 
     res.json({
       summary: {
@@ -2487,7 +2588,8 @@ app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
         onTimeCount: totalClockIns - tardyCount,
         tardyRate: totalClockIns > 0 ? Math.round((tardyCount / totalClockIns) * 100) : 0,
         avgTardinessMinutes: parseInt(s.avg_tardiness),
-        maxTardinessMinutes: parseInt(s.max_tardiness)
+        maxTardinessMinutes: parseInt(s.max_tardiness),
+        totalMissedShifts
       },
       byDriver: byDriverRes.rows.map(r => ({
         employeeId: r.employee_id,
@@ -2495,7 +2597,8 @@ app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
         totalClockIns: parseInt(r.total_clock_ins),
         tardyCount: parseInt(r.tardy_count),
         avgTardinessMinutes: parseInt(r.avg_tardiness),
-        maxTardinessMinutes: parseInt(r.max_tardiness)
+        maxTardinessMinutes: parseInt(r.max_tardiness),
+        missedShifts: missedByDriver[r.employee_id] || 0
       })),
       byDayOfWeek: byDowRes.rows.map(r => ({
         dayOfWeek: parseInt(r.dow),
