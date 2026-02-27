@@ -3430,11 +3430,16 @@ async function loadAnalyticsFrequency() {
     if (!res.ok) return;
     const data = await res.json();
 
-    // Day of week — column chart
-    const dowData = DOW_NAMES.map((name, i) => {
-      const row = data.byDayOfWeek.find(r => parseInt(r.dow) === i);
-      return { label: name, count: row ? row.count : 0 };
-    }).filter((_, i) => i >= 1 && i <= 5);
+    // Day of week — column chart (respect operating_days setting)
+    const opsConfig = typeof getOpsConfig === 'function' ? await getOpsConfig() : null;
+    const opDays = opsConfig && opsConfig.operating_days
+      ? String(opsConfig.operating_days).split(',').map(Number)
+      : [0, 1, 2, 3, 4]; // fallback Mon-Fri (our format)
+    const dowData = opDays.map(d => {
+      const pgDow = (d + 1) % 7; // our 0=Mon → PG DOW 1=Mon
+      const row = data.byDayOfWeek.find(r => parseInt(r.dow) === pgDow);
+      return { label: DOW_NAMES[pgDow], count: row ? row.count : 0 };
+    });
     renderColumnChart('chart-dow', dowData, { unit: 'rides' });
 
     // Hourly — column chart
@@ -3506,11 +3511,11 @@ async function loadTardinessAnalytics() {
     const res = await fetch('/api/analytics/tardiness' + getAnalyticsDateParams());
     if (!res.ok) return;
     const data = await res.json();
-    renderTardinessSection(container, data);
+    await renderTardinessSection(container, data);
   } catch (e) { console.error('Tardiness analytics error:', e); }
 }
 
-function renderTardinessSection(container, data) {
+async function renderTardinessSection(container, data) {
   const { summary, byDriver, byDayOfWeek, dailyTrend, distribution } = data;
   const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   let html = '';
@@ -3656,9 +3661,14 @@ function renderTardinessSection(container, data) {
 
   // Day of Week — column chart
   if (byDayOfWeek && byDayOfWeek.length) {
-    const tardyDowData = [1, 2, 3, 4, 5].map(dow => {
-      const found = byDayOfWeek.find(d => d.dayOfWeek === dow);
-      return { label: dayLabels[dow], count: found ? found.tardyCount : 0 };
+    const opsConfig2 = typeof getOpsConfig === 'function' ? await getOpsConfig() : null;
+    const opDays2 = opsConfig2 && opsConfig2.operating_days
+      ? String(opsConfig2.operating_days).split(',').map(Number)
+      : [0, 1, 2, 3, 4];
+    const tardyDowData = opDays2.map(d => {
+      const pgDow = (d + 1) % 7;
+      const found = byDayOfWeek.find(r => r.dayOfWeek === pgDow);
+      return { label: dayLabels[pgDow], count: found ? found.tardyCount : 0 };
     });
     renderColumnChart('tardiness-dow-col', tardyDowData, { color: 'var(--status-on-the-way)', unit: 'tardy clock-ins' });
   }
