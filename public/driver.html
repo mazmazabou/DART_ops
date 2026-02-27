@@ -157,13 +157,6 @@
       return '';
     }
 
-    function renderVehicleSelector() {
-      const opts = vehicles.filter(v => v.status === 'available').map(v =>
-        `<option value="${v.id}">${v.name}</option>`
-      ).join('');
-      return `<select id="active-vehicle" class="ro-select" style="margin-bottom:12px;"><option value="">Select cart...</option>${opts}</select>`;
-    }
-
     function renderAvailableRide(ride) {
       const time = formatTime(ride.requestedTime);
       const urgency = getUrgencyInfo(ride);
@@ -189,14 +182,7 @@
 
       let cta = '';
       if (ride.status === 'scheduled') {
-        const vehOpts = vehicles.filter(v => v.status === 'available').map(v =>
-          `<option value="${v.id}" ${v.id === ride.vehicleId ? 'selected' : ''}>${v.name}</option>`
-        ).join('');
-        const hasVehicle = !!ride.vehicleId;
-        cta = `<select id="ride-vehicle-${ride.id}" class="ro-select" style="margin-bottom:12px;" onchange="setVehicle('${ride.id}', this.value)">
-          <option value="">${hasVehicle ? 'Change cart...' : 'Select cart...'}</option>${vehOpts}
-        </select>
-        <button class="ro-btn ro-btn--primary ro-btn--action ro-btn--full" onclick="startRide('${ride.id}')"><i class="ti ti-navigation"></i> ON MY WAY</button>`;
+        cta = `<button class="ro-btn ro-btn--primary ro-btn--action ro-btn--full" onclick="startRide('${ride.id}')"><i class="ti ti-navigation"></i> ON MY WAY</button>`;
       } else if (ride.status === 'driver_on_the_way') {
         cta = `<button class="ro-btn ro-btn--primary ro-btn--action ro-btn--full" onclick="action('${ride.id}','here')"><i class="ti ti-map-pin"></i> I'M HERE</button>`;
       } else if (ride.status === 'driver_arrived_grace') {
@@ -294,7 +280,6 @@
         <span style="width:10px; height:10px; border-radius:50%; background:var(--status-completed); display:inline-block;"></span>
         <span class="fw-700" style="font-size:14px;">You're Online</span>
       </div>
-      ${renderVehicleSelector()}
       <button class="ro-btn ro-btn--action ro-btn--full" onclick="toggleClock()" style="background:transparent; color:var(--status-no-show); border:2px solid var(--status-no-show); margin-bottom:24px;"><i class="ti ti-plug-off"></i> CLOCK OUT</button>
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <span class="fw-700" style="font-size:15px;">Available Rides</span>
@@ -359,18 +344,12 @@
     }
 
     function render() {
-      const savedVehicle = document.getElementById('active-vehicle')?.value || '';
-
       const me = employees.find(e => e.id === currentUser.id);
       const isActive = me?.active || false;
       const today = todayLocal();
 
       document.getElementById('home-content').innerHTML = renderHomePanel(isActive, today);
       document.getElementById('rides-content').innerHTML = renderRidesPanel(today);
-
-      // Restore vehicle selection
-      const vehEl = document.getElementById('active-vehicle');
-      if (vehEl && savedVehicle) vehEl.value = savedVehicle;
     }
 
     function updateGraceTimers() {
@@ -615,13 +594,10 @@
     }
 
     async function claim(id) {
-      const vehSelect = document.getElementById('active-vehicle');
-      const vehicleId = vehSelect?.value || null;
-      const body = vehicleId ? JSON.stringify({ vehicleId }) : '{}';
       const response = await fetch(`/api/rides/${id}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body
+        body: '{}'
       });
       if (!response.ok) {
         const err = await response.json();
@@ -673,44 +649,71 @@
       await loadData();
     }
 
-    async function startRide(id) {
-      const selectEl = document.getElementById(`ride-vehicle-${id}`);
-      const ride = rides.find(r => r.id === id);
-      const vehicleId = selectEl?.value || ride?.vehicleId || null;
-      if (!vehicleId) {
-        showToastNew('Please select a cart before starting this ride', 'error');
-        if (selectEl) selectEl.focus();
-        return;
-      }
-      const response = await fetch(`/api/rides/${id}/on-the-way`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vehicleId })
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        showToastNew(err.error || 'Could not start ride', 'error');
-      } else {
-        showToastNew('Marked as on the way', 'success');
-      }
-      await loadData();
-    }
+    function startRide(rideId) {
+      var options = vehicles.filter(function(v) { return v.status === 'available'; }).map(function(v) {
+        return '<option value="' + v.id + '">' + v.name + '</option>';
+      }).join('');
 
-    async function setVehicle(rideId, vehicleId) {
-      if (!vehicleId) return;
-      const response = await fetch(`/api/rides/${rideId}/set-vehicle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vehicleId })
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        showToastNew(err.error || 'Could not set vehicle', 'error');
-      } else {
-        const veh = vehicles.find(v => v.id === vehicleId);
-        showToastNew(`Vehicle set to ${veh?.name || 'cart'}`, 'success');
-      }
-      await loadData();
+      var body = '<div style="margin-bottom:12px;">Which vehicle are you taking?</div>'
+        + '<select id="modal-vehicle-select" class="form-select">'
+        + '<option value="">Select a vehicle\u2026</option>'
+        + options
+        + '</select>';
+
+      var overlay = document.createElement('div');
+      overlay.className = 'ro-modal-overlay open';
+      overlay.innerHTML =
+        '<div class="ro-modal">' +
+        '<div class="ro-modal__title">Confirm On My Way</div>' +
+        '<div class="ro-modal__body">' + body + '</div>' +
+        '<div class="ro-modal__actions">' +
+        '<button class="ro-btn ro-btn--outline" data-action="cancel">Cancel</button>' +
+        '<button class="ro-btn ro-btn--primary" data-action="confirm">Confirm</button>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+
+      overlay.querySelector('[data-action="cancel"]').onclick = function() { overlay.remove(); };
+      overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+      overlay.querySelector('[data-action="confirm"]').onclick = async function() {
+        var vehicleId = document.getElementById('modal-vehicle-select').value;
+        if (!vehicleId) {
+          showToastNew('Please select a vehicle', 'warning');
+          return;
+        }
+        var confirmBtn = overlay.querySelector('[data-action="confirm"]');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Starting\u2026';
+        try {
+          var svRes = await fetch('/api/rides/' + rideId + '/set-vehicle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicleId: vehicleId })
+          });
+          if (!svRes.ok) {
+            var svErr = await svRes.json();
+            showToastNew(svErr.error || 'Failed to set vehicle', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm';
+            return;
+          }
+          var otwRes = await fetch('/api/rides/' + rideId + '/on-the-way', { method: 'POST' });
+          if (!otwRes.ok) {
+            var otwErr = await otwRes.json();
+            showToastNew(otwErr.error || 'Failed to start ride', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm';
+            return;
+          }
+          overlay.remove();
+          showToastNew('On your way!', 'success');
+          loadData();
+        } catch (err) {
+          showToastNew('Network error', 'error');
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Confirm';
+        }
+      };
     }
 
     async function logout() {
