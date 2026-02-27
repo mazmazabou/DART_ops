@@ -2852,6 +2852,203 @@ function positionChartTooltip(e, tip) {
   tip.style.top = top + 'px';
 }
 
+function renderColumnChart(containerId, data, options = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!data || !data.length) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-bar-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No ride data for this period.</div></div>';
+    return;
+  }
+  const W = 700, H = 220;
+  const pad = { top: 16, right: 16, bottom: 36, left: 40 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const maxY = Math.max(...data.map(d => parseInt(d.count) || 0), 1);
+  const total = data.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+  const unit = options.unit || 'rides';
+  const fillColor = options.color || 'var(--color-primary)';
+
+  // Y-axis gridlines
+  const yTicks = 4;
+  let gridLines = '';
+  for (let i = 0; i <= yTicks; i++) {
+    const yVal = Math.round(maxY * i / yTicks);
+    const yPos = pad.top + ch - (i / yTicks) * ch;
+    gridLines += `<line x1="${pad.left}" y1="${yPos}" x2="${W - pad.right}" y2="${yPos}" class="grid-line"/>`;
+    gridLines += `<text x="${pad.left - 6}" y="${yPos + 3}" class="axis-label" text-anchor="end">${yVal}</text>`;
+  }
+
+  // Bars
+  const slotW = cw / data.length;
+  const barW = slotW * 0.6;
+  let bars = '';
+  let labels = '';
+  let valueLabels = '';
+  data.forEach((d, i) => {
+    const val = parseInt(d.count) || 0;
+    const barH = maxY > 0 ? (val / maxY) * ch : 0;
+    const x = pad.left + i * slotW + (slotW - barW) / 2;
+    const y = pad.top + ch - barH;
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${fillColor}" class="col-bar" data-idx="${i}"/>`;
+    if (options.showValues !== false) {
+      valueLabels += `<text x="${x + barW / 2}" y="${y - 4}" class="axis-label" text-anchor="middle">${val}</text>`;
+    }
+    labels += `<text x="${pad.left + i * slotW + slotW / 2}" y="${H - 6}" class="axis-label" text-anchor="middle">${d.label}</text>`;
+  });
+
+  container.innerHTML = `<div class="col-chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${gridLines}${bars}${valueLabels}${labels}</svg></div>`;
+
+  // Tooltips
+  container.querySelectorAll('.col-bar').forEach((bar, idx) => {
+    const d = data[idx];
+    const val = parseInt(d.count) || 0;
+    const pct = total > 0 ? Math.round(val / total * 100) : 0;
+    const text = `${d.label}: ${val} ${unit} (${pct}%)`;
+    bar.addEventListener('mouseenter', (e) => showChartTooltip(e, text));
+    bar.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+    bar.addEventListener('mouseleave', hideChartTooltip);
+  });
+}
+
+function renderLineChart(containerId, data, options = {}) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  if (!data || !data.length) {
+    wrap.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-line"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No daily trend data for this period.</div></div>';
+    return;
+  }
+
+  const W = 700, H = 200;
+  const pad = { top: 16, right: 16, bottom: 32, left: 36 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const maxY = Math.max(...data.map(d => d.value), 1);
+  const stepX = data.length > 1 ? cw / (data.length - 1) : cw;
+  const lineColor = options.color || 'var(--color-primary)';
+  const fillOpacity = options.fillOpacity || 0.12;
+  const unit = options.unit || '';
+
+  const points = data.map((d, i) => ({
+    x: pad.left + (data.length > 1 ? i * stepX : cw / 2),
+    y: pad.top + ch - (d.value / maxY) * ch,
+    d
+  }));
+
+  // Straight line path (L commands, not bezier)
+  let linePath = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    linePath += ` L ${points[i].x} ${points[i].y}`;
+  }
+  const areaPath = linePath + ` L ${points[points.length - 1].x} ${pad.top + ch} L ${points[0].x} ${pad.top + ch} Z`;
+
+  // Y-axis gridlines
+  const yTicks = 4;
+  let gridLines = '';
+  for (let i = 0; i <= yTicks; i++) {
+    const yVal = Math.round(maxY * i / yTicks);
+    const yPos = pad.top + ch - (i / yTicks) * ch;
+    gridLines += `<line x1="${pad.left}" y1="${yPos}" x2="${W - pad.right}" y2="${yPos}" class="grid-line"/>`;
+    gridLines += `<text x="${pad.left - 6}" y="${yPos + 3}" class="axis-label" text-anchor="end">${yVal}</text>`;
+  }
+
+  // X-axis labels
+  let xLabels = '';
+  const labelEvery = Math.max(1, Math.floor(data.length / 8));
+  data.forEach((d, i) => {
+    if (i % labelEvery === 0 || i === data.length - 1) {
+      const x = pad.left + (data.length > 1 ? i * stepX : cw / 2);
+      xLabels += `<text x="${x}" y="${H - 4}" class="axis-label" text-anchor="middle">${d.label}</text>`;
+    }
+  });
+
+  const dots = points.map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r="3" fill="${lineColor}" stroke="var(--color-surface)" stroke-width="1.5" class="area-dot" data-idx="${i}"/>`).join('');
+  const crosshair = `<line x1="0" y1="${pad.top}" x2="0" y2="${pad.top + ch}" class="crosshair" id="${containerId}-crosshair"/>`;
+
+  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    ${gridLines}
+    <path d="${areaPath}" class="area-fill" fill="${lineColor}" opacity="${fillOpacity}"/>
+    <path d="${linePath}" class="area-line" stroke="${lineColor}"/>
+    ${dots}
+    ${crosshair}
+    ${xLabels}
+  </svg>`;
+
+  // Hover interactions
+  const svg = wrap.querySelector('svg');
+  const crosshairEl = document.getElementById(`${containerId}-crosshair`);
+  if (!svg) return;
+
+  svg.addEventListener('mousemove', (e) => {
+    const rect = svg.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    let nearest = 0, minDist = Infinity;
+    points.forEach((p, i) => {
+      const dist = Math.abs(p.x - mouseX);
+      if (dist < minDist) { minDist = dist; nearest = i; }
+    });
+    const p = points[nearest];
+    if (crosshairEl) {
+      crosshairEl.setAttribute('x1', p.x);
+      crosshairEl.setAttribute('x2', p.x);
+    }
+    svg.querySelectorAll('.area-dot').forEach((dot, i) => {
+      dot.setAttribute('r', i === nearest ? '5' : '3');
+      dot.setAttribute('opacity', i === nearest ? '1' : '0.7');
+    });
+    const text = options.tooltipFn ? options.tooltipFn(p.d.raw) : `${p.d.label}: ${p.d.value} ${unit}`;
+    showChartTooltip(e, text);
+  });
+
+  svg.addEventListener('mouseleave', () => {
+    hideChartTooltip();
+    if (crosshairEl) crosshairEl.style.opacity = '0';
+    svg.querySelectorAll('.area-dot').forEach(dot => {
+      dot.setAttribute('r', '3');
+      dot.setAttribute('opacity', '1');
+    });
+  });
+}
+
+function renderStackedBar(containerId, segments, options = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const total = segments.reduce((s, seg) => s + (parseInt(seg.count) || 0), 0);
+  const unit = options.unit || '';
+  if (total === 0) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-bar-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No ride data for this period.</div></div>';
+    return;
+  }
+
+  const trackHtml = segments.map((seg, i) => {
+    const pct = (seg.count / total * 100);
+    return `<div class="stacked-bar__seg" style="width:${pct}%;background:${seg.color};" data-idx="${i}"></div>`;
+  }).join('');
+
+  const legendHtml = segments.map((seg, i) => {
+    const pct = Math.round(seg.count / total * 100);
+    return `<div class="stacked-bar__legend-item" data-idx="${i}">
+      <span class="stacked-bar__legend-dot" style="background:${seg.color};"></span>
+      <span>${seg.label}</span>
+      <span class="stacked-bar__legend-value">${seg.count}</span>
+      <span class="stacked-bar__legend-pct">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="stacked-bar__track">${trackHtml}</div><div class="stacked-bar__legend">${legendHtml}</div>`;
+
+  // Tooltips on segments and legend items
+  container.querySelectorAll('[data-idx]').forEach(el => {
+    const idx = parseInt(el.dataset.idx);
+    const seg = segments[idx];
+    const pct = Math.round(seg.count / total * 100);
+    const text = `${seg.label}: ${seg.count} ${unit} (${pct}%)`;
+    el.addEventListener('mouseenter', (e) => showChartTooltip(e, text));
+    el.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+    el.addEventListener('mouseleave', hideChartTooltip);
+  });
+}
+
 function renderBarChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -3007,7 +3204,7 @@ function renderMilestoneList(containerId, people, type) {
     return;
   }
   const badgeLabels = { 50: 'Rising Star', 100: 'Century Club', 250: 'Quarter Thousand', 500: (tenantConfig?.orgShortName || 'RideOps') + ' Legend', 1000: 'Diamond' };
-  const badgeIcons = { 50: '\u{1F31F}', 100: '\u2B50', 250: '\u{1F3C6}', 500: '\u{1F451}', 1000: '\u{1F48E}' };
+  const badgeIcons = { 50: '<i class="ti ti-star"></i>', 100: '<i class="ti ti-award"></i>', 250: '<i class="ti ti-trophy"></i>', 500: '<i class="ti ti-crown"></i>', 1000: '<i class="ti ti-diamond"></i>' };
   container.innerHTML = '<div class="milestone-list">' + people.map(p => {
     const badges = [50, 100, 250, 500, 1000].map(m => {
       const earned = p.achievedMilestones.includes(m);
@@ -3019,10 +3216,16 @@ function renderMilestoneList(containerId, people, type) {
       <div class="milestone-name">${p.name}</div>
       <div class="milestone-count">${p.rideCount} completed rides</div>
       <div class="milestone-badges">${badges}</div>
-      <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" style="width:0%" data-target="${pct}"></div></div>
       <div class="progress-label">${label}</div>
     </div>`;
   }).join('') + '</div>';
+  // Animate progress bars
+  requestAnimationFrame(() => {
+    container.querySelectorAll('.progress-bar-fill').forEach(bar => {
+      bar.style.width = bar.dataset.target + '%';
+    });
+  });
 }
 
 function renderSemesterReport(data) {
@@ -3030,13 +3233,22 @@ function renderSemesterReport(data) {
   if (!container) return;
   analyticsReportData = data;
 
-  function statBlock(stats, label) {
+  function delta(curr, prev) {
+    if (!prev || prev === 0) return '';
+    const diff = curr - prev;
+    if (diff === 0) return '';
+    const arrow = diff > 0 ? 'ti-arrow-up' : 'ti-arrow-down';
+    const cls = diff > 0 ? 'delta--up' : 'delta--down';
+    return `<span class="delta ${cls}"><i class="ti ${arrow}"></i>${Math.abs(diff)}</span>`;
+  }
+
+  function statBlock(stats, label, prevStats) {
     return `<div class="semester-period">
       <h4>${label}</h4>
-      <div class="semester-stat"><div class="stat-value">${stats.completedRides}</div><div class="stat-label">Rides Completed</div></div>
-      <div class="semester-stat"><div class="stat-value">${stats.peopleHelped ?? 0}</div><div class="stat-label">People Helped</div></div>
-      <div class="semester-stat"><div class="stat-value">${stats.completionRate}%</div><div class="stat-label">Completion Rate</div></div>
-      <div class="semester-stat"><div class="stat-value">${stats.noShows}</div><div class="stat-label">No-Shows</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.completedRides}${prevStats ? delta(stats.completedRides, prevStats.completedRides) : ''}</div><div class="stat-label">Rides Completed</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.peopleHelped ?? 0}${prevStats ? delta(stats.peopleHelped ?? 0, prevStats.peopleHelped ?? 0) : ''}</div><div class="stat-label">People Helped</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.completionRate}%${prevStats ? delta(stats.completionRate, prevStats.completionRate) : ''}</div><div class="stat-label">Completion Rate</div></div>
+      <div class="semester-stat"><div class="stat-value">${stats.noShows}${prevStats ? delta(stats.noShows, prevStats.noShows) : ''}</div><div class="stat-label">No-Shows</div></div>
     </div>`;
   }
 
@@ -3058,7 +3270,7 @@ function renderSemesterReport(data) {
 
   container.innerHTML = `
     <div class="semester-comparison">
-      ${statBlock(data.current, data.semesterLabel + ' (Current)')}
+      ${statBlock(data.current, data.semesterLabel + ' (Current)', data.previous)}
       ${statBlock(data.previous, data.previousLabel + ' (Previous)')}
     </div>
     ${monthlyTable}
@@ -3072,15 +3284,21 @@ function renderSemesterReport(data) {
     const mvp = data.driverLeaderboard?.[0];
     if (c.completedRides === 0) {
       wrapped.innerHTML = `<div class="ro-wrapped">
-        <div class="wrapped-big">\u{1F680} 0 Rides</div>
-        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'RideOps'} has not yet completed any rides this semester.</div>
+        <div class="wrapped-grid">
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-road"></i></div><div class="wrapped-card__value">0</div><div class="wrapped-card__label">Rides Completed</div></div>
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-users"></i></div><div class="wrapped-card__value">0</div><div class="wrapped-card__label">People Helped</div></div>
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-percentage"></i></div><div class="wrapped-card__value">—</div><div class="wrapped-card__label">Completion Rate</div></div>
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-star"></i></div><div class="wrapped-card__value">—</div><div class="wrapped-card__label">MVP Driver</div></div>
+        </div>
       </div>`;
     } else {
       wrapped.innerHTML = `<div class="ro-wrapped">
-        <div class="wrapped-big">\u{1F389} ${c.completedRides} Rides</div>
-        <div class="wrapped-line">In <strong>${data.semesterLabel}</strong>, ${tenantConfig?.orgShortName || 'RideOps'} completed <strong>${c.completedRides}</strong> rides and helped <strong>${c.peopleHelped ?? 0}</strong> people get around campus.</div>
-        ${mvp ? `<div class="wrapped-line">MVP Driver: <strong>${mvp.name}</strong> with <strong>${mvp.completed}</strong> completed rides</div>` : ''}
-        <div class="wrapped-line">Completion Rate: <strong>${c.completionRate}%</strong></div>
+        <div class="wrapped-grid">
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-road"></i></div><div class="wrapped-card__value">${c.completedRides}</div><div class="wrapped-card__label">Rides Completed</div></div>
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-users"></i></div><div class="wrapped-card__value">${c.peopleHelped ?? 0}</div><div class="wrapped-card__label">People Helped</div></div>
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-percentage"></i></div><div class="wrapped-card__value">${c.completionRate}%</div><div class="wrapped-card__label">Completion Rate</div></div>
+          <div class="wrapped-card"><div class="wrapped-card__icon"><i class="ti ti-star"></i></div><div class="wrapped-card__value">${mvp ? mvp.name : '—'}</div><div class="wrapped-card__label">${mvp ? `MVP · ${mvp.completed} rides` : 'MVP Driver'}</div></div>
+        </div>
       </div>`;
     }
   }
@@ -3088,6 +3306,17 @@ function renderSemesterReport(data) {
 
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const STATUS_COLORS = { completed: 'green', cancelled: 'orange', no_show: 'red', denied: '', pending: 'gold', approved: '', scheduled: '' };
+
+function getStatusColor(status) {
+  const map = {
+    completed: 'var(--status-completed)', cancelled: 'var(--status-cancelled)',
+    no_show: 'var(--status-no-show)', denied: 'var(--status-denied)',
+    pending: 'var(--status-pending)', approved: 'var(--status-approved)',
+    scheduled: 'var(--status-scheduled)', driver_on_the_way: 'var(--status-on-the-way)',
+    driver_arrived_grace: 'var(--status-grace)'
+  };
+  return map[status] || 'var(--color-primary)';
+}
 
 async function loadAnalyticsSummary() {
   try {
@@ -3103,60 +3332,31 @@ async function loadAnalyticsFrequency() {
     if (!res.ok) return;
     const data = await res.json();
 
-    // Day of week chart
+    // Day of week — column chart
     const dowData = DOW_NAMES.map((name, i) => {
       const row = data.byDayOfWeek.find(r => parseInt(r.dow) === i);
       return { label: name, count: row ? row.count : 0 };
-    }).filter((_, i) => i >= 1 && i <= 5); // Mon-Fri only
-    renderBarChart('chart-dow', dowData, { unit: 'rides' });
+    }).filter((_, i) => i >= 1 && i <= 5);
+    renderColumnChart('chart-dow', dowData, { unit: 'rides' });
 
-    // Hourly chart
+    // Hourly — column chart
     const hourData = data.byHour
       .filter(r => parseInt(r.hour) >= 8 && parseInt(r.hour) <= 19)
       .map(r => ({ label: `${r.hour}:00`, count: r.count }));
-    renderBarChart('chart-hour', hourData, { colorClass: 'gold', yLabel: '# of rides', unit: 'rides' });
+    renderColumnChart('chart-hour', hourData, { color: 'var(--color-accent-dark)', unit: 'rides' });
 
-    // Daily volume (last 30 entries)
-    const dailyData = data.daily.slice(-30).map(r => ({
+    // Daily volume — line chart
+    const lineData = data.daily.slice(-30).map(r => ({
       label: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      count: r.total
+      value: parseInt(r.total) || 0, raw: r
     }));
-    renderBarChart('chart-daily', dailyData, { yLabel: '# of rides', unit: 'rides' });
+    renderLineChart('chart-daily', lineData, { unit: 'rides' });
 
-    // Status breakdown
-    const statusData = data.byStatus.map(r => ({
-      label: statusLabel(r.status),
-      count: r.count,
-      colorClass: STATUS_COLORS[r.status] || ''
+    // Status breakdown — stacked bar
+    const statusSegments = data.byStatus.map(r => ({
+      label: statusLabel(r.status), count: parseInt(r.count) || 0, color: getStatusColor(r.status)
     }));
-    const statusContainer = document.getElementById('chart-status');
-    if (statusContainer && statusData.length) {
-      const max = Math.max(...statusData.map(d => parseInt(d.count) || 0));
-      const legendHtml = statusData.map(d => {
-        const color = d.colorClass || '';
-        return `<span class="status-legend-item"><span class="status-legend-dot ${color}"></span>${d.label}</span>`;
-      }).join('');
-      statusContainer.innerHTML = '<div class="bar-chart">' + statusData.map(d => {
-        const val = parseInt(d.count) || 0;
-        const pct = max > 0 ? (val / max * 100) : 0;
-        return `<div class="bar-chart-row">
-          <div class="bar-chart-label">${d.label}</div>
-          <div class="bar-chart-track"><div class="bar-chart-fill ${d.colorClass}" style="width:${pct}%"></div></div>
-          <div class="bar-chart-count">${val}</div>
-        </div>`;
-      }).join('') + '</div>' + `<div class="status-legend-row">${legendHtml}</div>`;
-      // Attach hover tooltips to status chart
-      const statusTotal = statusData.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
-      statusContainer.querySelectorAll('.bar-chart-row').forEach((row, idx) => {
-        const d = statusData[idx];
-        const val = parseInt(d.count) || 0;
-        const pct = statusTotal > 0 ? Math.round(val / statusTotal * 100) : 0;
-        const text = `${d.label}: ${val} rides (${pct}%)`;
-        row.addEventListener('mouseenter', (e) => showChartTooltip(e, text));
-        row.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
-        row.addEventListener('mouseleave', hideChartTooltip);
-      });
-    }
+    renderStackedBar('chart-status', statusSegments, { unit: 'rides' });
   } catch (e) { console.error('Analytics frequency error:', e); }
 }
 
@@ -3209,37 +3409,102 @@ async function loadTardinessAnalytics() {
 }
 
 function renderTardinessSection(container, data) {
-  const { summary, byDriver, byDayOfWeek, dailyTrend } = data;
+  const { summary, byDriver, byDayOfWeek, dailyTrend, distribution } = data;
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   let html = '';
 
-  // 1. Summary KPI bar
+  // ── 1. KPI Cards (4 cards with ring gauge for on-time rate) ──
   const onTimeRate = summary.totalClockIns > 0 ? Math.round((summary.onTimeCount / summary.totalClockIns) * 100) : 100;
   const onTimeClass = onTimeRate >= 90 ? 'kpi-card--good' : onTimeRate >= 80 ? 'kpi-card--warning' : 'kpi-card--danger';
   const tardyClass = summary.tardyCount === 0 ? 'kpi-card--good' : 'kpi-card--danger';
   const avgTardy = summary.avgTardinessMinutes ? parseFloat(summary.avgTardinessMinutes).toFixed(1) : '0';
 
+  const ringColor = onTimeRate >= 90 ? 'var(--status-completed)' : onTimeRate >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
+  const ringBg = 'var(--color-border-light)';
+
   html += '<div class="kpi-bar">';
   html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${summary.totalClockIns}</div><div class="kpi-card__label">Total Clock-Ins</div></div>`;
-  html += `<div class="kpi-card ${onTimeClass}"><div class="kpi-card__value">${onTimeRate}%</div><div class="kpi-card__label">On-Time Rate</div></div>`;
+  html += `<div class="kpi-card ${onTimeClass}">
+    <div class="kpi-ring" style="background: conic-gradient(${ringColor} ${onTimeRate * 3.6}deg, ${ringBg} ${onTimeRate * 3.6}deg);">
+      <div class="kpi-ring__inner">${onTimeRate}%</div>
+    </div>
+    <div class="kpi-card__label">On-Time Rate</div>
+  </div>`;
   html += `<div class="kpi-card ${tardyClass}"><div class="kpi-card__value">${summary.tardyCount}</div><div class="kpi-card__label">Tardy Count</div></div>`;
   html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${avgTardy}m</div><div class="kpi-card__label">Avg Tardiness</div></div>`;
   html += '</div>';
 
-  // 2. By Driver table
+  // ── 2. Two-column: SVG Donut + Day of Week Column Chart ──
+  html += '<div class="tardiness-grid">';
+
+  // 2a. SVG Donut
+  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Tardiness Distribution</h3>';
+  if (distribution && distribution.some(d => d.count > 0)) {
+    const donutColors = ['var(--status-completed)', '#FBBF24', 'var(--status-on-the-way)', '#F97316', 'var(--status-no-show)'];
+    const total = distribution.reduce((s, d) => s + d.count, 0);
+    const R = 60, CX = 80, CY = 80, SW = 24;
+    const circumference = 2 * Math.PI * R;
+    let offset = 0;
+
+    let circles = '';
+    distribution.forEach((d, i) => {
+      if (d.count === 0) return;
+      const segLen = (d.count / total) * circumference;
+      circles += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${donutColors[i]}" stroke-width="${SW}" stroke-dasharray="${segLen} ${circumference - segLen}" stroke-dashoffset="${-offset}" class="donut-seg" data-idx="${i}"/>`;
+      offset += segLen;
+    });
+
+    html += `<div class="donut-wrap">
+      <div class="donut-svg-wrap" id="tardiness-donut">
+        <svg viewBox="0 0 160 160">${circles}</svg>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+          <div style="font-size:18px;font-weight:700;color:var(--color-text);line-height:1.1;">${total}</div>
+          <div style="font-size:10px;color:var(--color-text-muted);">clock-ins</div>
+        </div>
+      </div>
+      <div class="donut-legend" id="tardiness-donut-legend">`;
+    distribution.forEach((d, i) => {
+      const pct = total > 0 ? Math.round(d.count / total * 100) : 0;
+      html += `<div class="donut-legend-item" data-idx="${i}">
+        <div class="donut-legend-dot" style="background: ${donutColors[i]};"></div>
+        <div class="donut-legend-label">${d.bucket}</div>
+        <div class="donut-legend-value">${d.count}</div>
+        <div class="donut-legend-pct">${pct}%</div>
+      </div>`;
+    });
+    html += '</div></div>';
+  } else {
+    html += '<div class="ro-empty"><i class="ti ti-chart-donut-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No clock-in data available.</div></div>';
+  }
+  html += '</div>';
+
+  // 2b. Day of Week — column chart placeholder
+  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Tardiness by Day of Week</h3>';
+  html += '<div id="tardiness-dow-col"></div>';
+  html += '</div>';
+  html += '</div>'; // close tardiness-grid
+
+  // ── 3. Daily Trend Line Chart ──
+  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Daily Tardiness Trend</h3><div id="tardiness-area-chart" class="area-chart-wrap"></div></div>';
+
+  // ── 4. Punctuality by Driver Table ──
   html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Punctuality by Driver</h3>';
   if (byDriver && byDriver.length) {
-    html += '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th></tr></thead><tbody>';
+    html += '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th><th>Max Late</th></tr></thead><tbody>';
     byDriver.forEach(d => {
       const driverOnTime = d.totalClockIns > 0 ? Math.round(((d.totalClockIns - d.tardyCount) / d.totalClockIns) * 100) : 100;
       const tardyPct = d.totalClockIns > 0 ? (d.tardyCount / d.totalClockIns * 100) : 0;
       const dotClass = d.tardyCount === 0 ? 'punctuality-dot--good' : tardyPct < 20 ? 'punctuality-dot--warning' : 'punctuality-dot--poor';
       const avg = d.avgTardinessMinutes ? parseFloat(d.avgTardinessMinutes).toFixed(1) + 'm' : '—';
+      const maxL = d.maxTardinessMinutes ? d.maxTardinessMinutes + 'm' : '—';
+      const barColor = driverOnTime >= 90 ? 'var(--status-completed)' : driverOnTime >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
       html += `<tr>
         <td><span class="punctuality-dot ${dotClass}"></span>${d.name}</td>
         <td>${d.totalClockIns}</td>
         <td>${d.tardyCount > 0 ? '<span class="tardy-badge">' + d.tardyCount + '</span>' : '0'}</td>
-        <td>${driverOnTime}%</td>
+        <td><div class="ontime-bar-cell"><div class="ontime-bar-track"><div class="ontime-bar-fill" style="width:${driverOnTime}%; background:${barColor};"></div></div><span class="ontime-bar-label">${driverOnTime}%</span></div></td>
         <td>${avg}</td>
+        <td>${maxL}</td>
       </tr>`;
     });
     html += '</tbody></table></div>';
@@ -3248,31 +3513,66 @@ function renderTardinessSection(container, data) {
   }
   html += '</div>';
 
-  // 3. Tardiness by Day of Week
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Tardiness by Day of Week</h3><div id="tardiness-dow-chart"></div></div>';
-
-  // 4. Daily Trend
-  html += '<div class="ro-section"><h3 class="ro-section__title mb-8">Daily Tardiness Trend</h3><div id="tardiness-daily-chart"></div></div>';
-
   container.innerHTML = html;
 
-  // Render bar charts after DOM is set
-  if (byDayOfWeek && byDayOfWeek.length) {
-    const dowData = byDayOfWeek.map(d => ({
-      label: dayLabels[d.dayOfWeek] || `Day ${d.dayOfWeek}`,
-      count: d.tardyCount
-    }));
-    renderBarChart('tardiness-dow-chart', dowData, { colorClass: 'red', yLabel: 'Tardy count', unit: 'tardy clock-ins' });
+  // ── Post-render: SVG donut tooltips + cross-highlight ──
+  const donutSvg = document.querySelector('#tardiness-donut svg');
+  const donutLegend = document.getElementById('tardiness-donut-legend');
+  if (donutSvg && donutLegend && distribution) {
+    const total = distribution.reduce((s, d) => s + d.count, 0);
+    const segs = donutSvg.querySelectorAll('.donut-seg');
+    const legendItems = donutLegend.querySelectorAll('.donut-legend-item');
+
+    const highlight = (idx, e) => {
+      const d = distribution[idx];
+      if (!d) return;
+      const pct = total > 0 ? Math.round(d.count / total * 100) : 0;
+      showChartTooltip(e, `${d.bucket}: ${d.count} clock-ins (${pct}% of total)`);
+      segs.forEach((s, i) => { s.style.opacity = i === idx ? '1' : '0.4'; });
+      legendItems.forEach((l, i) => { l.style.opacity = i === idx ? '1' : '0.5'; });
+    };
+    const unhighlight = () => {
+      hideChartTooltip();
+      segs.forEach(s => { s.style.opacity = '1'; });
+      legendItems.forEach(l => { l.style.opacity = '1'; });
+    };
+
+    segs.forEach(seg => {
+      const idx = parseInt(seg.dataset.idx);
+      seg.addEventListener('mouseenter', (e) => highlight(idx, e));
+      seg.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+      seg.addEventListener('mouseleave', unhighlight);
+    });
+    legendItems.forEach(item => {
+      const idx = parseInt(item.dataset.idx);
+      item.addEventListener('mouseenter', (e) => highlight(idx, e));
+      item.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+      item.addEventListener('mouseleave', unhighlight);
+    });
   }
 
-  if (dailyTrend && dailyTrend.length) {
-    const trendData = dailyTrend.map(d => ({
-      label: d.date.slice(5), // MM-DD
-      count: d.tardyCount
-    }));
-    renderBarChart('tardiness-daily-chart', trendData, { colorClass: 'orange', yLabel: 'Tardy count', unit: 'tardy clock-ins' });
+  // Day of Week — column chart
+  if (byDayOfWeek && byDayOfWeek.length) {
+    const tardyDowData = [1, 2, 3, 4, 5].map(dow => {
+      const found = byDayOfWeek.find(d => d.dayOfWeek === dow);
+      return { label: dayLabels[dow], count: found ? found.tardyCount : 0 };
+    });
+    renderColumnChart('tardiness-dow-col', tardyDowData, { color: 'var(--status-on-the-way)', unit: 'tardy clock-ins' });
   }
+
+  // Daily trend — line chart
+  const trendData = (dailyTrend || []).map(d => ({
+    label: new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    value: d.tardyCount, raw: d
+  }));
+  renderLineChart('tardiness-area-chart', trendData, {
+    color: 'var(--status-on-the-way)', fillOpacity: 0.12, unit: 'tardy',
+    tooltipFn: (raw) => {
+      const dateStr = new Date(raw.date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      const rate = raw.totalClockIns > 0 ? Math.round(raw.tardyCount / raw.totalClockIns * 100) : 0;
+      return `${dateStr}: ${raw.tardyCount} tardy of ${raw.totalClockIns} (${rate}%) \u00B7 Avg ${raw.avgTardinessMinutes || 0}m`;
+    }
+  });
 }
 
 async function loadAllAnalytics() {

@@ -364,7 +364,7 @@ body {
 .milestone-badge { font-size: 11px; padding: 2px 6px; border-radius: var(--radius-pill); background: var(--color-border-light); color: var(--color-text-muted); }
 .milestone-badge.earned { background: var(--color-accent); color: var(--color-text); }
 .progress-bar-track { height: 6px; background: var(--color-border-light); border-radius: 3px; margin-top: 8px; overflow: hidden; }
-.progress-bar-fill { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 0.3s ease; }
+.progress-bar-fill { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 0.6s ease-out; }
 .progress-label { font-size: 11px; color: var(--color-text-muted); margin-top: 4px; }
 
 /* ── Section 30: History items ── */
@@ -606,17 +606,8 @@ body {
 .semester-stat .stat-value { font-size: 24px; font-weight: 800; color: var(--color-text); }
 .semester-stat .stat-label { font-size: 11px; color: var(--color-text-muted); }
 .ro-wrapped { padding: 16px; background: var(--color-primary-subtle); border-radius: var(--radius-md); }
-.wrapped-big { font-size: 28px; font-weight: 800; color: var(--color-primary); margin-bottom: 8px; }
-.wrapped-line { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; line-height: 1.6; }
 
 /* ── Section 40: Status legend (analytics) ── */
-.status-legend-row { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-.status-legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-muted); }
-.status-legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); }
-.status-legend-dot.green { background: var(--status-completed); }
-.status-legend-dot.red { background: var(--status-no-show); }
-.status-legend-dot.orange { background: var(--status-on-the-way); }
-.status-legend-dot.gold { background: var(--color-accent); }
 
 /* ── Section 41: KPI analytics colors ── */
 .kpi-card--good { border-top: 3px solid var(--status-completed); }
@@ -874,4 +865,204 @@ body {
   padding: 32px 16px;
   color: var(--color-text-muted);
   font-size: 13px;
+}
+
+/* ══════════════════════════════════════════════════
+   Tardiness Analytics — Enhanced Charts
+   ══════════════════════════════════════════════════ */
+
+/* ── KPI Ring Gauge ── */
+.kpi-ring {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 6px;
+}
+.kpi-ring__inner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* ── Tardiness 2-col grid ── */
+.tardiness-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .tardiness-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Donut Chart (CSS conic-gradient) ── */
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 0;
+}
+@media (max-width: 560px) {
+  .donut-wrap { flex-direction: column; align-items: flex-start; }
+}
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  transition: background 0.15s;
+}
+.donut-legend-item:hover {
+  background: var(--color-surface-hover);
+}
+.donut-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.donut-legend-label {
+  font-size: 12px;
+  color: var(--color-text);
+  flex: 1;
+}
+.donut-legend-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.donut-legend-pct {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  width: 36px;
+  text-align: right;
+}
+
+/* ── SVG Area Chart ── */
+.area-chart-wrap {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+.area-chart-wrap svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.area-chart-wrap .area-fill {
+  transition: opacity 0.15s;
+}
+.area-chart-wrap .area-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.area-chart-wrap .area-dot {
+  transition: r 0.15s, opacity 0.15s;
+  cursor: default;
+}
+.area-chart-wrap .grid-line {
+  stroke: var(--color-border-light);
+  stroke-width: 1;
+}
+.area-chart-wrap .axis-label {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+  font-family: inherit;
+}
+.area-chart-wrap .crosshair {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3,3;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.area-chart-wrap:hover .crosshair {
+  opacity: 1;
+}
+
+/* ── Column Chart ── */
+.col-chart-wrap { position: relative; width: 100%; }
+.col-chart-wrap svg { display: block; width: 100%; }
+.col-bar { transition: opacity 0.15s; cursor: default; }
+.col-bar:hover { opacity: 0.8; }
+
+/* ── Stacked Bar ── */
+.stacked-bar__track { display: flex; height: 28px; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-border-light); }
+.stacked-bar__seg { transition: opacity 0.15s; cursor: default; min-width: 2px; }
+.stacked-bar__seg:hover { opacity: 0.75; }
+.stacked-bar__legend { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.stacked-bar__legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: default; padding: 3px 6px; border-radius: var(--radius-sm); transition: background 0.15s; }
+.stacked-bar__legend-item:hover { background: var(--color-surface-hover); }
+.stacked-bar__legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.stacked-bar__legend-value { font-weight: 600; }
+.stacked-bar__legend-pct { font-size: 11px; color: var(--color-text-muted); }
+
+/* ── SVG Donut ── */
+.donut-svg-wrap { position: relative; width: 160px; height: 160px; flex-shrink: 0; }
+.donut-svg-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.donut-seg { transition: opacity 0.15s; cursor: default; }
+.donut-seg:hover { opacity: 0.7; }
+
+/* ── Delta Badges ── */
+.delta { font-size: 12px; font-weight: 600; margin-left: 6px; }
+.delta--up { color: var(--status-completed); }
+.delta--down { color: var(--status-no-show); }
+.delta i { font-size: 12px; margin-right: 2px; }
+
+/* ── Wrapped 2×2 Grid ── */
+.wrapped-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 480px) { .wrapped-grid { grid-template-columns: 1fr; } }
+.wrapped-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px; text-align: center; }
+.wrapped-card__icon { font-size: 24px; color: var(--color-primary); margin-bottom: 6px; }
+.wrapped-card__value { font-size: 24px; font-weight: 800; color: var(--color-text); }
+.wrapped-card__label { font-size: 11px; color: var(--color-text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ── Milestone icon ── */
+.milestone-badge i { font-size: 13px; vertical-align: -1px; }
+
+/* ── Enhanced Driver Table ── */
+.ontime-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ontime-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--color-border-light);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 40px;
+}
+.ontime-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.ontime-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 36px;
+  text-align: right;
 }
