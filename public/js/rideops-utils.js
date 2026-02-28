@@ -20,11 +20,17 @@ function hexToRgb(hex) {
   return ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255);
 }
 
-// Build locations API URL — server session handles campus now.
-// Fallback: pass sessionStorage campus for demo.html legacy flow.
+// Build locations API URL — detect org from URL path first, then sessionStorage fallback.
 function locationsUrl() {
   var campus = null;
-  try { campus = sessionStorage.getItem('ro-demo-campus'); } catch(e) {}
+  var pathParts = window.location.pathname.split('/').filter(Boolean);
+  var knownSlugs = ['usc', 'stanford', 'ucla', 'uci'];
+  if (pathParts.length > 0 && knownSlugs.indexOf(pathParts[0]) !== -1) {
+    campus = pathParts[0];
+  }
+  if (!campus) {
+    try { campus = sessionStorage.getItem('ro-demo-campus'); } catch(e) {}
+  }
   if (campus) return '/api/locations?campus=' + encodeURIComponent(campus);
   return '/api/locations';
 }
@@ -33,12 +39,24 @@ function locationsUrl() {
 // SessionStorage override kept as fallback for demo.html pill flow.
 async function applyTenantTheme() {
   try {
-    var config = await fetch('/api/tenant-config').then(function(r) { return r.json(); });
+    // Detect org slug from URL path (e.g. /usc, /usc/driver → 'usc')
+    var orgSlug = null;
+    var pathParts = window.location.pathname.split('/').filter(Boolean);
+    var knownSlugs = ['usc', 'stanford', 'ucla', 'uci'];
+    if (pathParts.length > 0 && knownSlugs.indexOf(pathParts[0]) !== -1) {
+      orgSlug = pathParts[0];
+    }
+
+    // Pass org slug as query param to avoid session race condition
+    var url = '/api/tenant-config';
+    if (orgSlug) url += '?campus=' + orgSlug;
+
+    var config = await fetch(url).then(function(r) { return r.json(); });
     var root = document.documentElement;
 
-    // Fallback: if server didn't return campus-specific config, check sessionStorage
+    // SessionStorage fallback ONLY for demo.html legacy flow (not org-scoped URLs)
     var campusKey = config.campusKey || null;
-    if (!campusKey) {
+    if (!campusKey && !orgSlug) {
       try { campusKey = sessionStorage.getItem('ro-demo-campus'); } catch(e) {}
       if (campusKey && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[campusKey]) {
         var ct = CAMPUS_THEMES[campusKey];

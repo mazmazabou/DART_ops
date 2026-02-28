@@ -1344,6 +1344,9 @@ app.get('/demo-config.js', (req, res) => {
   res.send(`
     (function() {
       if (window.location.pathname.indexOf('demo') !== -1) return;
+      var _pParts = window.location.pathname.split('/').filter(Boolean);
+      var _orgSlugs = ['usc', 'stanford', 'ucla', 'uci'];
+      if (_pParts.length > 0 && _orgSlugs.indexOf(_pParts[0]) !== -1) return;
 
       var s = document.createElement('style');
       s.textContent = 'body { padding-top: 32px !important; } .driver-header { top: 32px !important; } .rider-header { top: 32px !important; } .ro-sidebar { top: 32px !important; } .ro-header { top: 32px !important; }';
