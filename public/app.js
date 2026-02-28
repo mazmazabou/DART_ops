@@ -2123,7 +2123,7 @@ function getDateKey(dateStr) {
 }
 
 // ----- Ride Lists -----
-let rideStatusFilter = 'all';
+let rideStatusFilter = new Set(['all']);
 let _ridesSelectedIds = new Set();
 
 function _ridesUpdateSelectionUI() {
@@ -2142,11 +2142,14 @@ function _ridesUpdateSelectionUI() {
 function getFilteredRides() {
   let filtered = rides;
 
-  // Status filter
-  if (rideStatusFilter === 'in_progress') {
-    filtered = filtered.filter(r => ['scheduled', 'driver_on_the_way', 'driver_arrived_grace'].includes(r.status));
-  } else if (rideStatusFilter !== 'all') {
-    filtered = filtered.filter(r => r.status === rideStatusFilter);
+  // Status filter (multi-select)
+  if (!rideStatusFilter.has('all')) {
+    filtered = filtered.filter(r => {
+      if (rideStatusFilter.has('in_progress')) {
+        if (['scheduled', 'driver_on_the_way', 'driver_arrived_grace'].includes(r.status)) return true;
+      }
+      return rideStatusFilter.has(r.status);
+    });
   }
 
   // Date range filter
@@ -4622,12 +4625,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Navigation is initialized via rideops-utils.js initSidebar() + initSubTabs() in index.html
 
-  // Ride filter pills
+  // Ride filter pills (multi-select)
   document.querySelectorAll('#rides-filter-bar .filter-pill[data-ride-status]').forEach(pill => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('#rides-filter-bar .filter-pill').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      rideStatusFilter = pill.dataset.rideStatus;
+      const status = pill.dataset.rideStatus;
+      if (status === 'all') {
+        // Reset to "All"
+        rideStatusFilter = new Set(['all']);
+      } else {
+        // Remove "all" if present
+        rideStatusFilter.delete('all');
+        if (rideStatusFilter.has(status)) {
+          rideStatusFilter.delete(status);
+          // If nothing left, revert to "all"
+          if (rideStatusFilter.size === 0) rideStatusFilter = new Set(['all']);
+        } else {
+          rideStatusFilter.add(status);
+        }
+      }
+      // Update pill visual state
+      document.querySelectorAll('#rides-filter-bar .filter-pill').forEach(p => {
+        p.classList.toggle('active', rideStatusFilter.has(p.dataset.rideStatus));
+      });
       renderRideLists();
     });
   });
