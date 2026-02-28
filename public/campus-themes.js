@@ -16,7 +16,7 @@ var CAMPUS_THEMES = {
     orgName: 'Stanford ATS', orgShortName: 'ATS',
     orgTagline: 'Accessible Transportation Service', orgInitials: 'AT',
     primaryColor: '#8C1515', primaryLight: '#B83A4B', primaryDark: '#820000',
-    secondaryColor: '#53565A', secondaryTextColor: '#FFFFFF',
+    secondaryColor: '#FFFFFF', secondaryTextColor: '#8C1515',
     sidebarBg: '#1A0505', sidebarText: '#C4A8A8',
     sidebarActiveBg: 'rgba(140,21,21,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://campus-map.stanford.edu/', campusKey: 'stanford'

@@ -2854,35 +2854,50 @@ function openProfileById(id) {
   openAdminDrawer(targetId);
 }
 
-function showRulesModal() {
+window._cachedRulesHtml = null;
+
+async function showRulesModal() {
   const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal-box" style="max-width:600px;">
-      <div class="modal-title">Program Rules &amp; Guidelines</div>
-      <ul style="padding-left:20px; line-height:1.8; color:var(--muted); font-size:14px;">
-        ${(tenantConfig?.rules || [
-          'This is a free accessible transportation service available during operating hours, Monday\u2013Friday.',
-          'Vehicles cannot leave campus grounds.',
-          'Riders must be present at the designated pickup location at the requested time.',
-          'Drivers will wait up to 5 minutes (grace period). After that, the ride may be marked as a no-show.',
-          'Service is automatically terminated after 5 consecutive missed pick-ups.'
-        ]).map(r => `<li>${r}</li>`).join('')}
-      </ul>
-      <div class="modal-actions">
-        <button class="btn primary modal-close-btn">Close</button>
-      </div>
-    </div>
-  `;
+  overlay.className = 'ro-modal-overlay open';
+  overlay.innerHTML =
+    '<div class="ro-modal" style="max-width:600px;width:92%;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+    '<div class="ro-modal__title" style="margin:0;">Program Rules &amp; Guidelines</div>' +
+    '<button class="ro-btn ro-btn--outline ro-btn--sm modal-close-btn">\u2715 Close</button>' +
+    '</div>' +
+    '<div id="rules-modal-body" style="font-size:14px;line-height:1.8;color:var(--color-text);max-height:65vh;overflow-y:auto;">' +
+    '<div class="text-muted text-sm">Loading...</div>' +
+    '</div>' +
+    '</div>';
   document.body.appendChild(overlay);
-  requestAnimationFrame(() => overlay.classList.add('show'));
-  const close = () => {
-    overlay.classList.remove('show');
-    overlay.classList.add('hiding');
-    setTimeout(() => overlay.remove(), 200);
-  };
+  const close = () => overlay.remove();
   overlay.querySelector('.modal-close-btn').onclick = close;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  try {
+    if (!window._cachedRulesHtml) {
+      const data = await fetch('/api/program-rules').then(r => r.json());
+      window._cachedRulesHtml = data.rulesHtml || '';
+    }
+    const body = overlay.querySelector('#rules-modal-body');
+    if (body) {
+      if (window._cachedRulesHtml) {
+        body.innerHTML = window._cachedRulesHtml;
+      } else {
+        const fallback = (window.tenantConfig && window.tenantConfig.rules) || [
+          'This is a free accessible transportation service, Monday\u2013Friday.',
+          'Vehicles cannot leave campus grounds.',
+          'Riders must be at the pickup location at the requested time.',
+          'Drivers wait up to 5 minutes. After that the ride may be a no-show.',
+          '5 consecutive no-shows result in automatic service termination.'
+        ];
+        body.innerHTML = '<ul style="padding-left:20px;">' + fallback.map(r => '<li>' + r + '</li>').join('') + '</ul>';
+      }
+    }
+  } catch (err) {
+    const body = overlay.querySelector('#rules-modal-body');
+    if (body) body.innerHTML = '<p class="text-muted">Could not load rules. Please try again.</p>';
+    console.error('showRulesModal error:', err);
+  }
 }
 
 // initSubTabs — delegated to rideops-utils.js initSubTabs()
@@ -4313,6 +4328,61 @@ async function saveBusinessRules() {
   }
 }
 
+let guidelinesQuill = null;
+let guidelinesLoaded = false;
+
+async function loadProgramGuidelines() {
+  if (guidelinesLoaded) return;
+  guidelinesLoaded = true;
+  const editorEl = document.getElementById('program-guidelines-editor');
+  if (!editorEl || typeof Quill === 'undefined') {
+    console.error('Quill not available or editor element missing');
+    return;
+  }
+  guidelinesQuill = new Quill('#program-guidelines-editor', {
+    theme: 'snow',
+    modules: {
+      toolbar: [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ color: [] }, { background: [] }],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['clean']
+      ]
+    },
+    placeholder: 'Enter program rules and guidelines for riders and drivers...'
+  });
+  try {
+    const data = await fetch('/api/program-rules').then(r => r.json());
+    if (data.rulesHtml) guidelinesQuill.clipboard.dangerouslyPasteHTML(data.rulesHtml);
+  } catch (err) {
+    console.error('loadProgramGuidelines fetch error:', err);
+  }
+  const saveBtn = document.getElementById('save-program-guidelines-btn');
+  if (saveBtn) saveBtn.addEventListener('click', saveProgramGuidelines);
+}
+
+async function saveProgramGuidelines() {
+  if (!guidelinesQuill) return;
+  const saveBtn = document.getElementById('save-program-guidelines-btn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Saving...'; }
+  try {
+    const res = await fetch('/api/program-rules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rulesHtml: guidelinesQuill.root.innerHTML })
+    });
+    const data = await res.json();
+    if (data.ok) { showToast('Program guidelines saved', 'success'); window._cachedRulesHtml = null; }
+    else showToast(data.error || 'Save failed', 'error');
+  } catch (err) {
+    showToast('Failed to save guidelines', 'error');
+    console.error('saveProgramGuidelines error:', err);
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="ti ti-device-floppy"></i> Save'; }
+  }
+}
+
 // ----- Notification Preferences -----
 let notifPrefsLoaded = false;
 
@@ -4818,6 +4888,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadBusinessRules();
       }
     });
+  }
+
+  const guidelinesTab = document.querySelector('.ro-tab[data-subtarget="admin-guidelines-view"]');
+  if (guidelinesTab) {
+    guidelinesTab.addEventListener('click', () => { loadProgramGuidelines(); });
   }
 
   // Notifications: lazy load on first sub-tab click
