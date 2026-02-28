@@ -1095,19 +1095,26 @@ body {
   background: var(--color-surface);
 }
 .analytics-card__header {
+  background: var(--color-primary);
+  color: var(--color-secondary);
   padding: 10px 16px;
-  border-bottom: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  font-size: 13px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
+.analytics-card__header h4,
 .analytics-card__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
+  color: inherit;
   margin: 0;
+  font-size: 13px;
+  font-weight: 700;
 }
-.analytics-card__title i { margin-right: 4px; color: var(--color-text-muted); }
+.analytics-card__title i { margin-right: 4px; color: inherit; opacity: 0.8; }
+.analytics-card__header .csv-export-icon { color: var(--color-secondary); opacity: 0.7; background: none; border: none; cursor: pointer; padding: 4px; border-radius: var(--radius-sm); font-size: 15px; line-height: 1; transition: opacity 0.15s; }
+.analytics-card__header .csv-export-icon:hover { opacity: 1; }
 .csv-export-icon { background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); font-size: 15px; line-height: 1; transition: color 0.15s, background 0.15s; }
 .csv-export-icon:hover { color: var(--color-primary); background: rgba(var(--color-primary-rgb),0.08); }
 .analytics-card__body { padding: 12px 16px 16px; }

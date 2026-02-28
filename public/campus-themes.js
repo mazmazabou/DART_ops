@@ -60,17 +60,16 @@ function getCampusPalette(campusKey) {
   switch (campusKey) {
 
     case 'usc':
-      // Tertiary palette from USC brand guidelines.
-      // Cardinal and Gold are primary — these are supporting accents only.
+      // Darkened tertiary palette — washed-out lime, peach, yellow replaced.
       return [
         '#2B5597',  // Blue (PMS 7685)
-        '#FF9015',  // Orange (PMS 1495)
-        '#F26178',  // Pink-Red (PMS 709)
-        '#DAE343',  // Lime (PMS 380)
-        '#908C13',  // Olive (PMS 582)
-        '#F2C6A7',  // Peach (PMS 474)
         '#E43D30',  // Red-Orange (PMS 179)
-        '#FDE021',  // Bright Yellow (PMS 107)
+        '#FF9015',  // Orange (PMS 1495)
+        '#908C13',  // Olive (PMS 582) — replaces bright lime
+        '#F26178',  // Pink-Red (PMS 709)
+        '#740000',  // Cardinal Dark
+        '#CC7A00',  // Darkened gold — replaces bright yellow
+        '#B05A00',  // Deep burnt orange — replaces peach
       ];
 
     case 'stanford':
