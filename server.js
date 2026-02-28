@@ -3797,13 +3797,21 @@ app.get('/api/analytics/export-report', requireOffice, async (req, res) => {
     workbook.created = new Date();
     const generatedAt = new Date().toISOString();
 
-    // Helper: add header row to a sheet
+    // Helper: add title row + column header row to a sheet
     function addSheetHeader(sheet, title) {
       sheet.mergeCells('A1', `${String.fromCharCode(64 + sheet.columnCount)}1`);
-      const headerCell = sheet.getCell('A1');
-      headerCell.value = `${title}  |  Period: ${from} to ${to}  |  Generated: ${generatedAt}`;
-      headerCell.font = { bold: true, size: 11 };
-      headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } };
+      const titleCell = sheet.getCell('A1');
+      titleCell.value = `${title}  |  Period: ${from} to ${to}  |  Generated: ${generatedAt}`;
+      titleCell.font = { bold: true, size: 11 };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } };
+      // Re-insert column headers as row 2 (overwritten by merge above)
+      const headers = sheet.columns.map(c => c.header || c.key || '');
+      const headerRow = sheet.addRow(headers);
+      headerRow.font = { bold: true };
+      headerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6DCE4' } };
+        cell.border = { bottom: { style: 'thin' } };
+      });
     }
 
     // Helper: auto-size columns
@@ -3884,7 +3892,7 @@ app.get('/api/analytics/export-report', requireOffice, async (req, res) => {
     });
 
     // Conditional formatting for completion rate and no-show rate rows
-    const completionRow = 5; // Row 5 = Completion Rate (row 2 header + rows)
+    const completionRow = 6; // Row 6 = Completion Rate (row 1 title + row 2 col headers + 4 data rows)
     const noShowRow = 8; // Row 8 = No-Show Rate
     const completionVal = sTotal > 0 ? sCompleted / sTotal : 0;
     const noShowVal = sTotal > 0 ? sNoShows / sTotal : 0;
