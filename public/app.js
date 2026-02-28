@@ -4742,6 +4742,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Rides CSV export
+  const ridesCsvBtn = document.getElementById('rides-export-csv-btn');
+  if (ridesCsvBtn) {
+    ridesCsvBtn.addEventListener('click', () => {
+      const filtered = getFilteredRides();
+      if (!filtered.length) return showToastNew('No rides to export', 'info');
+      const headers = ['Requested Time', 'Rider', 'Pickup', 'Dropoff', 'Status', 'Driver', 'Notes'];
+      const rows = filtered.map(r => [
+        r.requestedTime || '',
+        r.riderName || '',
+        r.pickupLocation || '',
+        r.dropoffLocation || '',
+        r.status || '',
+        r.assignedDriverId ? (employees.find(e => e.id === r.assignedDriverId)?.name || '') : '',
+        (r.notes || '').replace(/"/g, '""')
+      ]);
+      let csv = headers.join(',') + '\n';
+      rows.forEach(row => {
+        csv += row.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',') + '\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'rides-export-' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
   // Admin user filter input
   const adminFilterInput = document.getElementById('admin-user-filter');
   if (adminFilterInput) {
