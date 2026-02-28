@@ -36,6 +36,75 @@ function hideLoader(containerId) {
   el.innerHTML = '';
 }
 
+// Analytics skeleton loading states
+function showAnalyticsSkeleton(containerId, type) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  if (type === 'chart') {
+    el.innerHTML = '<div class="analytics-skeleton" style="height:200px;display:flex;align-items:flex-end;gap:8px;padding:16px;">' +
+      '<div style="flex:1;background:var(--color-border);border-radius:4px 4px 0 0;height:40%;opacity:0.4;"></div>' +
+      '<div style="flex:1;background:var(--color-border);border-radius:4px 4px 0 0;height:70%;opacity:0.5;"></div>' +
+      '<div style="flex:1;background:var(--color-border);border-radius:4px 4px 0 0;height:55%;opacity:0.4;"></div>' +
+      '<div style="flex:1;background:var(--color-border);border-radius:4px 4px 0 0;height:85%;opacity:0.6;"></div>' +
+      '<div style="flex:1;background:var(--color-border);border-radius:4px 4px 0 0;height:45%;opacity:0.4;"></div>' +
+      '</div>';
+  } else if (type === 'table') {
+    el.innerHTML = '<div class="analytics-skeleton" style="padding:16px;">' +
+      '<div class="analytics-skeleton__bar analytics-skeleton__bar--full"></div>' +
+      '<div class="analytics-skeleton__bar analytics-skeleton__bar--long"></div>' +
+      '<div class="analytics-skeleton__bar analytics-skeleton__bar--medium"></div>' +
+      '<div class="analytics-skeleton__bar analytics-skeleton__bar--short"></div>' +
+      '<div class="analytics-skeleton__bar analytics-skeleton__bar--long"></div>' +
+      '</div>';
+  } else if (type === 'donut') {
+    el.innerHTML = '<div class="analytics-skeleton" style="height:200px;display:flex;align-items:center;justify-content:center;">' +
+      '<div style="width:140px;height:140px;border-radius:50%;border:24px solid var(--color-border);opacity:0.4;"></div>' +
+      '</div>';
+  } else if (type === 'heatmap') {
+    el.innerHTML = '<div class="analytics-skeleton" style="height:280px;padding:16px;display:grid;grid-template-columns:60px repeat(5, 1fr);gap:4px;">' +
+      Array(66).fill('<div style="background:var(--color-border);border-radius:3px;opacity:0.3;"></div>').join('') +
+      '</div>';
+  } else if (type === 'kpi') {
+    el.innerHTML = Array(6).fill(
+      '<div class="kpi-card kpi-card--neutral" style="opacity:0.5;">' +
+      '<div class="kpi-card__value" style="background:var(--color-border);width:40px;height:28px;border-radius:4px;margin:0 auto;"></div>' +
+      '<div class="kpi-card__label" style="background:var(--color-border);width:80px;height:12px;border-radius:4px;margin:8px auto 0;"></div>' +
+      '</div>'
+    ).join('');
+  }
+}
+
+// Make analytics table headers sortable on click
+function makeSortable(tableElement) {
+  if (!tableElement) return;
+  var headers = tableElement.querySelectorAll('thead th');
+  headers.forEach(function(th, colIdx) {
+    th.classList.add('sortable-header');
+    th.addEventListener('click', function() {
+      var tbody = tableElement.querySelector('tbody');
+      var rows = Array.from(tbody.querySelectorAll('tr'));
+      var currentDir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+
+      // Reset other headers
+      headers.forEach(function(h) { h.removeAttribute('data-sort-dir'); });
+      th.dataset.sortDir = currentDir;
+
+      rows.sort(function(a, b) {
+        var aText = (a.cells[colIdx] ? a.cells[colIdx].textContent.trim().replace('%', '') : '');
+        var bText = (b.cells[colIdx] ? b.cells[colIdx].textContent.trim().replace('%', '') : '');
+        var aNum = parseFloat(aText);
+        var bNum = parseFloat(bText);
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return currentDir === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        return currentDir === 'asc' ? aText.localeCompare(bText) : bText.localeCompare(aText);
+      });
+
+      rows.forEach(function(r) { tbody.appendChild(r); });
+    });
+  });
+}
+
 // Status display helpers
 function statusLabel(status) {
   const labels = {
@@ -4139,6 +4208,7 @@ function renderTopRoutesTable(containerId, routes) {
   });
   html += '</tbody></table>';
   container.innerHTML = html;
+  makeSortable(container.querySelector('table'));
 }
 
 function renderDriverLeaderboard(containerId, drivers) {
@@ -4159,6 +4229,7 @@ function renderDriverLeaderboard(containerId, drivers) {
   });
   html += '</tbody></table>';
   container.innerHTML = html;
+  makeSortable(container.querySelector('table'));
 }
 
 function renderShiftCoverageChart(containerId, data) {
@@ -4231,6 +4302,11 @@ function renderFleetUtilChart(containerId, data) {
   }
   var palette = getCurrentCampusPalette();
   var vehicles = data.vehicles.filter(function(v) { return v.status !== 'retired'; });
+  var totalRides = vehicles.reduce(function(s, v) { return s + (v.totalRides || 0); }, 0);
+  if (totalRides === 0) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-bus"></i><div class="ro-empty__title">No vehicle assignments</div><div class="ro-empty__message">No vehicles were assigned to rides in this period. Assign vehicles to rides from the dispatch view.</div></div>';
+    return;
+  }
   var maxRides = Math.max.apply(null, vehicles.map(function(v) { return v.totalRides || 0; }).concat([1]));
 
   var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
@@ -4259,6 +4335,19 @@ function renderFleetUtilChart(containerId, data) {
 // ── Updated Analytics Orchestrator ──
 
 async function loadAllAnalytics() {
+  // Show skeleton loading states
+  showAnalyticsSkeleton('analytics-kpi-grid', 'kpi');
+  showAnalyticsSkeleton('chart-ride-volume', 'chart');
+  showAnalyticsSkeleton('chart-ride-outcomes', 'donut');
+  showAnalyticsSkeleton('chart-peak-hours', 'heatmap');
+  showAnalyticsSkeleton('chart-dow', 'chart');
+  showAnalyticsSkeleton('chart-hour', 'chart');
+  showAnalyticsSkeleton('chart-top-routes', 'table');
+  showAnalyticsSkeleton('chart-driver-leaderboard', 'table');
+  showAnalyticsSkeleton('chart-shift-coverage', 'table');
+  showAnalyticsSkeleton('chart-fleet-util', 'chart');
+  showAnalyticsSkeleton('chart-rider-cohorts', 'chart');
+
   // Fetch KPI data sources first (in parallel)
   var results = await Promise.all([
     fetch('/api/analytics/summary' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),

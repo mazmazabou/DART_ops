@@ -1437,3 +1437,62 @@ body {
 .ro-table th[data-sort]:hover {
   color: var(--color-primary);
 }
+
+/* ── Analytics Skeleton Loading ── */
+.analytics-skeleton {
+  background: var(--color-surface-dim, #f3f4f6);
+  border-radius: 8px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.analytics-skeleton__bar {
+  background: var(--color-border);
+  border-radius: 4px;
+  height: 16px;
+  margin: 8px 0;
+}
+.analytics-skeleton__bar--short { width: 40%; }
+.analytics-skeleton__bar--medium { width: 65%; }
+.analytics-skeleton__bar--long { width: 85%; }
+.analytics-skeleton__bar--full { width: 100%; }
+
+/* ── Sortable table header indicators ── */
+.ro-table th.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.ro-table th.sortable-header:hover {
+  color: var(--color-primary);
+}
+.ro-table th.sortable-header::after {
+  content: '\2195';
+  margin-left: 4px;
+  opacity: 0.3;
+  font-size: 10px;
+}
+.ro-table th.sortable-header[data-sort-dir="asc"]::after {
+  content: '\2191';
+  opacity: 0.8;
+}
+.ro-table th.sortable-header[data-sort-dir="desc"]::after {
+  content: '\2193';
+  opacity: 0.8;
+}
+.ro-table th.sortable-header[data-sort-dir] {
+  color: var(--color-primary);
+}
+
+/* ── Analytics Print Styles ── */
+@media print {
+  .ro-sidebar, .demo-banner, .ro-header, .ro-nav-item,
+  .analytics-date-bar, .analytics-quick-select,
+  .ro-tabs, .ro-btn { display: none !important; }
+  .tab-panel, .sub-panel { display: block !important; }
+  .analytics-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+  main, .ro-main { margin: 0 !important; padding: 0 !important; }
+  .ro-shell { display: block !important; }
+}
