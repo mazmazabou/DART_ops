@@ -30,6 +30,12 @@
     .demo-footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--color-text-muted); }
     .demo-footer a { color: var(--color-primary); text-decoration: none; font-weight: 600; }
     .demo-footer a:hover { text-decoration: underline; }
+    /* Campus selector pills */
+    .campus-selector { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+    .campus-pill { padding: 6px 14px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; cursor: pointer; border: 1.5px solid var(--color-border); background: var(--color-surface); color: var(--color-text-secondary); transition: all 0.15s; }
+    .campus-pill:hover { border-color: var(--color-text-muted); color: var(--color-text); }
+    .campus-pill.active { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
+    .campus-pill .pill-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
   </style>
 </head>
 <body>
@@ -40,6 +46,24 @@
         <span class="demo-brand-text">RideOps</span>
       </div>
       <div class="demo-subtitle">Campus Transportation Management</div>
+    </div>
+
+    <div class="campus-selector" id="campus-selector">
+      <button class="campus-pill active" onclick="selectCampus(this, '')" data-campus="">
+        <span class="pill-dot" style="background:#4682B4;"></span>RideOps
+      </button>
+      <button class="campus-pill" onclick="selectCampus(this, 'usc')" data-campus="usc">
+        <span class="pill-dot" style="background:#990000;"></span>USC
+      </button>
+      <button class="campus-pill" onclick="selectCampus(this, 'stanford')" data-campus="stanford">
+        <span class="pill-dot" style="background:#8C1515;"></span>Stanford
+      </button>
+      <button class="campus-pill" onclick="selectCampus(this, 'ucla')" data-campus="ucla">
+        <span class="pill-dot" style="background:#2774AE;"></span>UCLA
+      </button>
+      <button class="campus-pill" onclick="selectCampus(this, 'uci')" data-campus="uci">
+        <span class="pill-dot" style="background:#0064A4;"></span>UCI
+      </button>
     </div>
 
     <div class="strip-list">
@@ -78,16 +102,64 @@
     </div>
   </div>
 
+  <script src="/campus-themes.js"></script>
   <script src="/demo-config.js"></script>
   <script>
     // Load tenant config for demo page
     fetch('/api/tenant-config').then(function(r) { return r.ok ? r.json() : null; }).then(function(c) {
       if (!c) return;
-      var el = document.getElementById('demo-org-name');
-      if (el) el.textContent = c.orgName || 'RideOps';
-      var tl = document.getElementById('demo-org-tagline');
-      if (tl) tl.textContent = c.orgTagline || 'Accessible Campus Transportation';
+      // Apply saved campus on page load
+      restoreSavedCampus(c);
     }).catch(function() {});
+
+    function selectCampus(el, campusKey) {
+      // Update pill active states
+      document.querySelectorAll('.campus-pill').forEach(function(p) { p.classList.remove('active'); });
+      el.classList.add('active');
+
+      // Store in sessionStorage
+      try {
+        if (campusKey) {
+          sessionStorage.setItem('ro-demo-campus', campusKey);
+        } else {
+          sessionStorage.removeItem('ro-demo-campus');
+        }
+      } catch(e) {}
+
+      // Update preview text and colors
+      var nameEl = document.getElementById('demo-org-name');
+      var taglineEl = document.getElementById('demo-org-tagline');
+      var brandText = document.querySelector('.demo-brand-text');
+      var root = document.documentElement;
+
+      if (campusKey && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[campusKey]) {
+        var ct = CAMPUS_THEMES[campusKey];
+        if (nameEl) nameEl.textContent = ct.orgName;
+        if (taglineEl) taglineEl.textContent = ct.orgTagline;
+        if (brandText) brandText.textContent = ct.orgShortName;
+        root.style.setProperty('--color-primary', ct.primaryColor);
+      } else {
+        if (nameEl) nameEl.textContent = 'RideOps';
+        if (taglineEl) taglineEl.textContent = 'Accessible Campus Transportation';
+        if (brandText) brandText.textContent = 'RideOps';
+        root.style.setProperty('--color-primary', '#4682B4');
+      }
+    }
+
+    function restoreSavedCampus(serverConfig) {
+      var saved = null;
+      try { saved = sessionStorage.getItem('ro-demo-campus'); } catch(e) {}
+      if (saved && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[saved]) {
+        var pill = document.querySelector('.campus-pill[data-campus="' + saved + '"]');
+        if (pill) selectCampus(pill, saved);
+      } else {
+        // Use server config defaults
+        var el = document.getElementById('demo-org-name');
+        if (el) el.textContent = serverConfig.orgName || 'RideOps';
+        var tl = document.getElementById('demo-org-tagline');
+        if (tl) tl.textContent = serverConfig.orgTagline || 'Accessible Campus Transportation';
+      }
+    }
 
     async function loginAs(username, password, redirectTo) {
       var rows = document.querySelectorAll('.demo-row');

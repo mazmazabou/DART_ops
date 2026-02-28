@@ -69,6 +69,13 @@ try {
     : require('./tenants/default-locations');
 } catch { campusLocations = require('./tenants/default-locations'); }
 
+// All campus locations for demo mode campus switching
+const allCampusLocations = { default: campusLocations };
+try { allCampusLocations.usc = require('./tenants/usc-buildings'); } catch {}
+try { allCampusLocations.stanford = require('./tenants/stanford-locations'); } catch {}
+try { allCampusLocations.ucla = require('./tenants/ucla-locations'); } catch {}
+try { allCampusLocations.uci = require('./tenants/uci-locations'); } catch {}
+
 // ----- Notification event types -----
 const NOTIFICATION_EVENT_TYPES = [
   { key: 'driver_tardy', label: 'Driver Clocked In Late', description: 'A driver clocks in after their scheduled shift start time', defaultThreshold: null, thresholdUnit: null, category: 'staff' },
@@ -1846,6 +1853,10 @@ app.put('/api/rides/:id', requireOffice, async (req, res) => {
 });
 
 app.get('/api/locations', requireAuth, (req, res) => {
+  const campus = req.query.campus;
+  if (DEMO_MODE && campus && allCampusLocations[campus]) {
+    return res.json(allCampusLocations[campus]);
+  }
   res.json(campusLocations);
 });
 

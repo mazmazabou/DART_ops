@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="/css/rideops-theme.css">
   <script src="/js/rideops-utils.js"></script>
+  <script src="/campus-themes.js"></script>
   <script src="/demo-config.js"></script>
   <!-- Locations loaded dynamically from /api/locations -->
   <style>
@@ -266,7 +267,7 @@
 
     // ── Locations ──
     async function loadLocations() {
-      try { var res = await fetch('/api/locations'); locations = await res.json(); }
+      try { var res = await fetch(locationsUrl()); locations = await res.json(); }
       catch(e) { locations = []; }
       var pickupSel = document.getElementById('pickup-location');
       var dropoffSel = document.getElementById('dropoff-location');

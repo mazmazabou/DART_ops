@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/css/rideops-theme.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
   <!-- Locations loaded dynamically from /api/locations -->
+  <script src="/campus-themes.js"></script>
   <script src="/demo-config.js"></script>
 </head>
 <body>
@@ -74,6 +75,9 @@
         </button>
         <button class="ro-nav-item" data-target="analytics-panel" title="Analytics">
           <i class="ti ti-chart-bar"></i><span class="ro-nav-label">Analytics</span>
+        </button>
+        <button class="ro-nav-item" data-target="map-panel" title="Campus Map" id="nav-map" style="display:none;">
+          <i class="ti ti-map"></i><span class="ro-nav-label">Campus Map</span>
         </button>
         <button class="ro-nav-item" data-target="settings-panel" title="Settings">
           <i class="ti ti-settings"></i><span class="ro-nav-label">Settings</span>
@@ -323,6 +327,17 @@
 
           <div class="sub-panel" id="analytics-tardiness-view">
             <div id="tardiness-analytics-container"></div>
+          </div>
+        </section>
+
+        <!-- ═══ CAMPUS MAP PANEL ═══ -->
+        <section class="tab-panel" id="map-panel">
+          <div style="padding:16px;">
+            <div id="map-container" style="width:100%;height:calc(100vh - 120px);border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--color-border);background:var(--color-surface);">
+              <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--color-text-muted);">
+                <span>No campus map available</span>
+              </div>
+            </div>
           </div>
         </section>
 

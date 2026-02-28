@@ -1,17 +1,68 @@
 /* ── RideOps Shared Utilities ── */
 
-// Tenant theme loader
+// Convert hex color to "r, g, b" string for rgba() usage
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  var n = parseInt(hex, 16);
+  return ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255);
+}
+
+// Build locations API URL with optional campus param from sessionStorage
+function locationsUrl() {
+  var campus = null;
+  try { campus = sessionStorage.getItem('ro-demo-campus'); } catch(e) {}
+  if (campus) return '/api/locations?campus=' + encodeURIComponent(campus);
+  return '/api/locations';
+}
+
+// Tenant theme loader — merges campus override from sessionStorage in demo mode
 async function applyTenantTheme() {
   try {
-    const config = await fetch('/api/tenant-config').then(r => r.json());
-    const root = document.documentElement;
-    if (config.primaryColor) root.style.setProperty('--color-primary', config.primaryColor);
+    var config = await fetch('/api/tenant-config').then(function(r) { return r.json(); });
+    var root = document.documentElement;
+
+    // Check for demo campus override
+    var campusKey = null;
+    try { campusKey = sessionStorage.getItem('ro-demo-campus'); } catch(e) {}
+    if (campusKey && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[campusKey]) {
+      var ct = CAMPUS_THEMES[campusKey];
+      // Merge campus theme over server config
+      config.orgName = ct.orgName;
+      config.orgShortName = ct.orgShortName;
+      config.orgTagline = ct.orgTagline;
+      config.orgInitials = ct.orgInitials;
+      config.primaryColor = ct.primaryColor;
+      config.secondaryColor = ct.secondaryColor;
+      config.mapUrl = ct.mapUrl;
+    }
+
+    // Apply primary/accent colors
+    if (config.primaryColor) {
+      root.style.setProperty('--color-primary', config.primaryColor);
+      root.style.setProperty('--color-primary-rgb', hexToRgb(config.primaryColor));
+    }
     if (config.secondaryColor) root.style.setProperty('--color-accent', config.secondaryColor);
-    const orgEl = document.getElementById('org-name');
+
+    // Apply sidebar overrides if campus theme provides them
+    if (campusKey && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[campusKey]) {
+      var ct = CAMPUS_THEMES[campusKey];
+      if (ct.sidebarBg) root.style.setProperty('--color-sidebar-bg', ct.sidebarBg);
+      if (ct.sidebarText) root.style.setProperty('--color-sidebar-text', ct.sidebarText);
+      if (ct.sidebarActiveBg) root.style.setProperty('--color-sidebar-active-bg', ct.sidebarActiveBg);
+      if (ct.sidebarHover) root.style.setProperty('--color-sidebar-hover', ct.sidebarHover);
+      if (ct.sidebarBorder) root.style.setProperty('--color-sidebar-border', ct.sidebarBorder);
+      root.style.setProperty('--color-sidebar-active', ct.primaryColor);
+    }
+
+    // Apply org name/short name to DOM
+    var orgEl = document.getElementById('org-name');
     if (orgEl && config.orgName) orgEl.textContent = config.orgName;
-    const shortEl = document.getElementById('org-short-name');
+    var shortEl = document.getElementById('org-short-name');
     if (shortEl && config.orgShortName) shortEl.textContent = config.orgShortName;
-  } catch (e) { console.warn('Tenant config not loaded:', e); }
+
+    return config;
+  } catch (e) { console.warn('Tenant config not loaded:', e); return null; }
 }
 
 // Status badge HTML

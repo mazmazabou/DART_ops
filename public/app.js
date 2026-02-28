@@ -78,6 +78,32 @@ async function loadTenantConfig() {
     if (res.ok) tenantConfig = await res.json();
   } catch {}
   if (!tenantConfig) return;
+
+  // Apply campus override from sessionStorage in demo mode
+  let campusKey = null;
+  try { campusKey = sessionStorage.getItem('ro-demo-campus'); } catch {}
+  if (campusKey && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[campusKey]) {
+    const ct = CAMPUS_THEMES[campusKey];
+    tenantConfig.orgName = ct.orgName;
+    tenantConfig.orgShortName = ct.orgShortName;
+    tenantConfig.orgTagline = ct.orgTagline;
+    tenantConfig.orgInitials = ct.orgInitials;
+    tenantConfig.primaryColor = ct.primaryColor;
+    tenantConfig.secondaryColor = ct.secondaryColor;
+    tenantConfig.mapUrl = ct.mapUrl;
+    // Apply CSS vars
+    const root = document.documentElement;
+    root.style.setProperty('--color-primary', ct.primaryColor);
+    root.style.setProperty('--color-primary-rgb', hexToRgb(ct.primaryColor));
+    if (ct.secondaryColor) root.style.setProperty('--color-accent', ct.secondaryColor);
+    if (ct.sidebarBg) root.style.setProperty('--color-sidebar-bg', ct.sidebarBg);
+    if (ct.sidebarText) root.style.setProperty('--color-sidebar-text', ct.sidebarText);
+    if (ct.sidebarActiveBg) root.style.setProperty('--color-sidebar-active-bg', ct.sidebarActiveBg);
+    if (ct.sidebarHover) root.style.setProperty('--color-sidebar-hover', ct.sidebarHover);
+    if (ct.sidebarBorder) root.style.setProperty('--color-sidebar-border', ct.sidebarBorder);
+    root.style.setProperty('--color-sidebar-active', ct.primaryColor);
+  }
+
   document.title = tenantConfig.orgName + ' Operations Console';
   const orgShort = document.getElementById('org-short-name');
   if (orgShort) orgShort.textContent = tenantConfig.orgShortName;
@@ -87,6 +113,22 @@ async function loadTenantConfig() {
   if (headerTitle) headerTitle.textContent = tenantConfig.orgName + ' Operations Console';
   const wrappedTitle = document.getElementById('ro-wrapped-title');
   if (wrappedTitle) wrappedTitle.textContent = tenantConfig.orgShortName + ' Wrapped';
+
+  // Show campus map nav item if mapUrl is configured
+  loadMapPanel();
+}
+
+function loadMapPanel() {
+  const mapNav = document.getElementById('nav-map');
+  const mapContainer = document.getElementById('map-container');
+  if (!tenantConfig || !tenantConfig.mapUrl) {
+    if (mapNav) mapNav.style.display = 'none';
+    return;
+  }
+  if (mapNav) mapNav.style.display = '';
+  if (mapContainer) {
+    mapContainer.innerHTML = '<iframe src="' + tenantConfig.mapUrl + '" style="width:100%;height:100%;border:none;" title="Campus Map" loading="lazy"></iframe>';
+  }
 }
 
 // ----- Auth -----
@@ -1843,10 +1885,10 @@ function buildKebabMenu(ride, onDone) {
 }
 
 async function showEditRideModal(ride, onDone) {
-  // Fetch locations for dropdowns
+  // Fetch locations for dropdowns (uses campus param in demo mode)
   let locations = [];
   try {
-    const locRes = await fetch('/api/locations');
+    const locRes = await fetch(locationsUrl());
     locations = await locRes.json();
   } catch { /* fallback empty */ }
 
