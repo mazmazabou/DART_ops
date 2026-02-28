@@ -4711,6 +4711,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Rides delete-selected button
+  const ridesDeleteSelBtn = document.getElementById('rides-delete-selected-btn');
+  if (ridesDeleteSelBtn) {
+    ridesDeleteSelBtn.addEventListener('click', () => {
+      const ids = Array.from(_ridesSelectedIds);
+      if (!ids.length) return;
+      showModalNew({
+        title: 'Delete Rides',
+        body: 'Delete ' + ids.length + ' ride' + (ids.length !== 1 ? 's' : '') + '? This cannot be undone.',
+        confirmLabel: 'Delete',
+        confirmClass: 'ro-btn--danger',
+        onConfirm: async function() {
+          try {
+            const res = await fetch('/api/rides/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              showToastNew('Deleted ' + data.deleted + ' ride' + (data.deleted !== 1 ? 's' : ''), 'success');
+            }
+          } catch {}
+          _ridesSelectedIds = new Set();
+          _ridesUpdateSelectionUI();
+          await loadRides();
+        }
+      });
+    });
+  }
+
   // Admin user filter input
   const adminFilterInput = document.getElementById('admin-user-filter');
   if (adminFilterInput) {

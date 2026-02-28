@@ -1857,6 +1857,20 @@ app.post('/api/rides/:id/cancel', requireAuth, async (req, res) => {
   }
 });
 
+// Bulk delete rides (office only)
+app.post('/api/rides/bulk-delete', requireOffice, async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids array required' });
+  try {
+    await query('DELETE FROM ride_events WHERE ride_id = ANY($1::text[])', [ids]);
+    const result = await query('DELETE FROM rides WHERE id = ANY($1::text[])', [ids]);
+    res.json({ deleted: result.rowCount });
+  } catch (err) {
+    console.error('POST /api/rides/bulk-delete error:', err);
+    res.status(500).json({ error: 'Failed to delete rides' });
+  }
+});
+
 // ----- Office admin override endpoints -----
 app.post('/api/rides/:id/unassign', requireOffice, async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
