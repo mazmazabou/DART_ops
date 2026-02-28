@@ -723,7 +723,10 @@
         window._pollIntervals = [];
       }
       await fetch('/api/auth/logout', { method: 'POST' });
-      window.location.href = '/login';
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      var slugs = ['usc', 'stanford', 'ucla', 'uci'];
+      var org = (parts.length > 0 && slugs.indexOf(parts[0]) !== -1) ? parts[0] : null;
+      window.location.href = org ? '/' + org : '/login';
     }
 
     init();
