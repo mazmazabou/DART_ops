@@ -1710,6 +1710,8 @@ async function saveAdminProfile(userId) {
 // ----- Ride Filter -----
 let rideFilterText = '';
 let historyFilterText = '';
+let historyDateFrom = '';
+let historyDateTo = '';
 
 function rideMatchesFilter(ride, filterText) {
   if (!filterText) return true;
@@ -2085,7 +2087,6 @@ function buildHistoryItem(ride) {
     <div>${statusBadge(ride.status)}${cancelledByOffice ? ' <span class="small-text">(cancelled by office)</span>' : ''} <span data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}" class="clickable-name">${ride.riderName}</span></div>
     <div>${ride.pickupLocation} → ${ride.dropoffLocation}</div>
     <div class="small-text">When: ${formatDate(ride.requestedTime)}</div>
-    <div class="small-text">Misses: ${ride.consecutiveMisses || 0}</div>
     ${ride.vehicleId ? `<div class="small-text">Cart: ${vehicles.find(v => v.id === ride.vehicleId)?.name || ride.vehicleId}</div>` : ''}
   `;
   item.appendChild(buildKebabMenu(ride, () => loadRides()));
@@ -2169,8 +2170,10 @@ function renderRideLists() {
   if (countEl) countEl.textContent = `${filtered.length} ride${filtered.length !== 1 ? 's' : ''}`;
 
   // History tab (still uses old format)
-  const historyAll = rides.filter(r => ['completed', 'no_show', 'denied', 'cancelled'].includes(r.status));
-  const history = historyAll.filter(r => rideMatchesFilter(r, historyFilterText));
+  let historyFiltered = rides.filter(r => ['completed', 'no_show', 'denied', 'cancelled'].includes(r.status));
+  if (historyDateFrom) historyFiltered = historyFiltered.filter(r => r.requestedTime && getDateKey(r.requestedTime) >= historyDateFrom);
+  if (historyDateTo) historyFiltered = historyFiltered.filter(r => r.requestedTime && getDateKey(r.requestedTime) <= historyDateTo);
+  const history = historyFiltered.filter(r => rideMatchesFilter(r, historyFilterText));
   if (historyEl) renderHistory(history);
 }
 
@@ -2230,8 +2233,11 @@ function renderHistory(history) {
     }
   });
 
-  if (!history.length && !historyFilterText) {
-    historyEl.innerHTML = '<div class="ro-empty"><i class="ti ti-history"></i><div class="ro-empty__title">No completed history yet</div><div class="ro-empty__message">Completed and no-show rides will appear here.</div></div>';
+  if (!history.length) {
+    const hasFilters = historyFilterText || historyDateFrom || historyDateTo;
+    historyEl.innerHTML = hasFilters
+      ? '<div class="ro-empty"><i class="ti ti-filter-off"></i><div class="ro-empty__title">No rides match filters</div><div class="ro-empty__message">Try adjusting your date range or search text.</div></div>'
+      : '<div class="ro-empty"><i class="ti ti-history"></i><div class="ro-empty__title">No completed history yet</div><div class="ro-empty__message">Completed and no-show rides will appear here.</div></div>';
   }
 }
 
@@ -4652,13 +4658,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 300));
   }
 
-  // History filter input
+  // History filter inputs
   const historyFilterInput = document.getElementById('history-filter-input');
   if (historyFilterInput) {
     historyFilterInput.addEventListener('input', debounce(() => {
       historyFilterText = historyFilterInput.value.trim();
       renderRideLists();
     }, 300));
+  }
+  const historyDateFromInput = document.getElementById('history-date-from');
+  const historyDateToInput = document.getElementById('history-date-to');
+  if (historyDateFromInput) {
+    historyDateFromInput.addEventListener('change', () => {
+      historyDateFrom = historyDateFromInput.value || '';
+      renderRideLists();
+    });
+  }
+  if (historyDateToInput) {
+    historyDateToInput.addEventListener('change', () => {
+      historyDateTo = historyDateToInput.value || '';
+      renderRideLists();
+    });
   }
 
   // Admin user filter input

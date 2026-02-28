@@ -206,7 +206,11 @@
 
           <div class="sub-panel" id="rides-history-view">
             <div class="filter-bar">
-              <input type="text" id="history-filter-input" class="ro-input" placeholder="Filter history by name, location, or status..." style="max-width:400px;">
+              <label class="text-sm text-muted" for="history-date-from">From</label>
+              <input type="date" id="history-date-from" class="ro-input" style="width:auto;">
+              <label class="text-sm text-muted" for="history-date-to">To</label>
+              <input type="date" id="history-date-to" class="ro-input" style="width:auto;">
+              <input type="text" id="history-filter-input" class="ro-input" placeholder="Search..." style="max-width:200px;">
             </div>
             <div class="ro-section" id="history-list">
               <div class="ro-section__header"><h3 class="ro-section__title">Completed &amp; No-Show History</h3></div>
