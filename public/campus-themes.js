@@ -2,7 +2,7 @@
    secondaryColor     = official accent/gold/grey
    secondaryTextColor = text color to place ON TOP of secondaryColor for contrast
 */
-var DEFAULT_HEADER_BG = '#EEF3F8'; // --color-primary-subtle (RideOps steelblue tint)
+var DEFAULT_HEADER_BG = '#D4E3F0'; // steelblue 20% tint — darker for contrast
 
 var CAMPUS_THEMES = {
   usc: {
@@ -13,7 +13,7 @@ var CAMPUS_THEMES = {
     sidebarBg: '#1A0000', sidebarText: '#C4A3A3',
     sidebarActiveBg: 'rgba(153,0,0,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://maps.usc.edu/', campusKey: 'usc',
-    headerBg: '#FFF2BF'  // Gold 25% tint — cardinal text reads clean on it
+    headerBg: '#FFE8A0'  // Gold 35% tint — deeper gold, cardinal text pops
   },
   stanford: {
     orgName: 'Stanford ATS', orgShortName: 'ATS',
@@ -23,7 +23,7 @@ var CAMPUS_THEMES = {
     sidebarBg: '#1A0505', sidebarText: '#C4A8A8',
     sidebarActiveBg: 'rgba(140,21,21,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://campus-map.stanford.edu/', campusKey: 'stanford',
-    headerBg: '#F4F4F4'  // Fog Light — warm off-white, cardinal pops on it
+    headerBg: '#EDE8E3'  // Sandstone tint — warm Stanford feel, cardinal pops
   },
   ucla: {
     orgName: 'UCLA BruinAccess', orgShortName: 'BruinAccess',
@@ -33,7 +33,7 @@ var CAMPUS_THEMES = {
     sidebarBg: '#0D1B2A', sidebarText: '#8FAFC8',
     sidebarActiveBg: 'rgba(39,116,174,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d6608.890031780498!2d-118.44687!3d34.068921!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80c2bc85f179c2a3%3A0xf6a491a8cc730837!2sUCLA!5e0!3m2!1sen!2sus!4v1', campusKey: 'ucla',
-    headerBg: '#DAEBFE'  // Lightest Blue (PMS 2707C) — official UCLA palette
+    headerBg: '#C2DBFA'  // UCLA Blue 25% tint — stronger blue, good contrast
   },
   uci: {
     orgName: 'UCI AnteaterExpress', orgShortName: 'AntExpress',
@@ -43,7 +43,7 @@ var CAMPUS_THEMES = {
     sidebarBg: '#001A2E', sidebarText: '#7BAAC4',
     sidebarActiveBg: 'rgba(37,87,153,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d6620.471084289972!2d-117.846!3d33.6405!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80dcde0e2592bf91%3A0x79fbc4d6c29d9bfa!2sUniversity%20of%20California%2C%20Irvine!5e0!3m2!1sen!2sus!4v1', campusKey: 'uci',
-    headerBg: '#E8EEF5'  // 10% tint of UCI Blue #255799
+    headerBg: '#D0DEF0'  // UCI Blue 20% tint — richer blue, better contrast
   }
 };
 
