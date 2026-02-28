@@ -2199,8 +2199,9 @@ function renderRideLists() {
         <td>${ride.assignedDriverId ? `<span class="clickable-name" data-user="${ride.assignedDriverId}">${driverName}</span>` : '—'}</td>
         <td></td>
       `;
-      // Checkbox handler
+      // Checkbox handler — preserve selections across re-renders
       const cb = tr.querySelector('.ride-row-cb');
+      if (_ridesSelectedIds.has(ride.id)) cb.checked = true;
       cb.addEventListener('change', (e) => {
         e.stopPropagation();
         if (cb.checked) _ridesSelectedIds.add(ride.id);
@@ -2229,11 +2230,17 @@ function renderRideLists() {
   const countEl = document.getElementById('ride-filter-count');
   if (countEl) countEl.textContent = `${filtered.length} ride${filtered.length !== 1 ? 's' : ''}`;
 
-  // Reset selection on re-render
-  _ridesSelectedIds = new Set();
+  // Prune selections for rides no longer visible, preserve the rest
+  const visibleRideIds = new Set(filtered.map(r => r.id));
+  for (const id of _ridesSelectedIds) {
+    if (!visibleRideIds.has(id)) _ridesSelectedIds.delete(id);
+  }
   _ridesUpdateSelectionUI();
   const selectAllCb = document.getElementById('rides-select-all');
-  if (selectAllCb) selectAllCb.checked = false;
+  if (selectAllCb) {
+    const allCbs = document.querySelectorAll('#rides-tbody .ride-row-cb');
+    selectAllCb.checked = allCbs.length > 0 && _ridesSelectedIds.size === allCbs.length;
+  }
 }
 
 async function updateRide(url, body = null) {
