@@ -76,7 +76,7 @@ Legacy routes (`/office`, `/driver`, `/rider`) still work with default RideOps b
 - **Rides Management** — Table + calendar views, multi-select filter pills, bulk select/delete, CSV export
 - **Staff & Shifts** — Weekly schedule editor, clock-in/out tracking, tardiness monitoring
 - **Fleet Management** — Vehicle CRUD, maintenance logging, mileage tracking, retire/reactivate
-- **Analytics** — Ride volume, tardiness trends, hotspot heatmaps, route frequency, vehicle usage, milestones
+- **Analytics** — Data-science-grade reporting: 6-KPI dashboard, ride volume/outcomes charts, peak hours heatmap, driver leaderboard, shift coverage analysis, rider cohort tracking, fleet utilization, route intelligence. Date range picker with quick-select presets (7D/30D/Semester). Multi-sheet Excel export (.xlsx) with conditional formatting. Hotspot heatmaps, tardiness trends, milestones
 - **Campus Map** — Embedded campus map per tenant
 - **Settings** — Configurable service hours, no-show rules, notification preferences, data retention/purge
 - **User Management** — CRUD users, bulk select/delete, password reset, miss count reset

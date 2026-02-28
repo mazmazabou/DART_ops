@@ -56,6 +56,7 @@ Defines branding overrides per campus: orgName, orgShortName, orgTagline, orgIni
 - **Frontend:** Vanilla HTML/CSS/JS (no framework). Multi-page: index.html (office/admin), driver.html, rider.html, login.html, signup.html
 - **Auth:** Session-based with bcrypt password hashing. Default password: `demo123`
 - **Email:** Nodemailer with optional SMTP (falls back to console logging)
+- **Reports:** ExcelJS for multi-sheet .xlsx workbook generation (server-side, npm package)
 
 ## Running the Application
 
@@ -150,6 +151,16 @@ Default login credentials (password: `demo123`):
   - Driver console: data refresh every 3s, grace timers update every 1s
   - Rider console: rides refresh every 5s
 - Ride checkbox selections persist across poll re-renders (not reset on table refresh)
+
+### Analytics Architecture
+- **Date Range Picker:** Quick-select buttons (Today, 7D, 30D, Month, Semester) + manual from/to inputs
+- **Default Range:** Last 7 days (set on page load, persists across sub-tab switches within session)
+- **Dashboard Sub-Tab Widgets:** KPI bar (6 cards) → Ride Volume line + Outcomes donut → Peak Hours heatmap → DOW + Hour column charts → Top Routes + Driver Leaderboard → Shift Coverage → Fleet Utilization + Rider Cohorts
+- **Reports Sub-Tab:** Excel export with report type selector (Full/Rides/Drivers/Riders/Fleet) + semester report + wrapped
+- **Excel Export:** 8-sheet workbook via exceljs: Summary, Daily Volume, Routes, Driver Performance, Rider Analysis, Fleet, Shift Coverage, Peak Hours — all with conditional formatting
+- **Loading States:** Skeleton placeholders (pulse animation) shown for all chart containers during fetch
+- **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming
+- **Sortable Tables:** Top Routes and Driver Leaderboard tables support click-to-sort on column headers
 
 ## Database Schema
 
@@ -313,13 +324,26 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - `GET /api/vehicles/:id/maintenance` — Get maintenance history (staff only)
 
 ### Analytics (Office only)
-- `GET /api/analytics/tardiness` — Aggregate tardiness stats (optional `?from=&to=`)
-- `GET /api/analytics/summary` — Aggregate ride stats
+All analytics endpoints support `?from=&to=` date params (default: last 7 days).
+- `GET /api/analytics/summary` — Aggregate ride stats (totals, rates, unique riders/drivers)
 - `GET /api/analytics/hotspots` — Pickup/dropoff frequency heatmap
-- `GET /api/analytics/frequency` — Route frequency analysis
+- `GET /api/analytics/frequency` — Route frequency, DOW/hour/daily breakdown, top riders/drivers
 - `GET /api/analytics/vehicles` — Vehicle usage metrics
-- `GET /api/analytics/milestones` — Milestone badges
-- `GET /api/analytics/semester-report` — Long-form semester summary
+- `GET /api/analytics/milestones` — Milestone badges (cumulative, no date filter)
+- `GET /api/analytics/semester-report` — Long-form semester comparison
+- `GET /api/analytics/tardiness` — Tardiness stats, by-driver, by-DOW, daily trend, distribution
+- `GET /api/analytics/ride-volume` — Rides per day/week/month with rates (`?granularity=day|week|month`)
+- `GET /api/analytics/ride-outcomes` — Terminal status distribution + weekly trend
+- `GET /api/analytics/peak-hours` — DOW × Hour heatmap grid (ISODOW 1-5 × operating hours)
+- `GET /api/analytics/routes` — Top N routes by frequency with completion rate (`?limit=20`)
+- `GET /api/analytics/driver-performance` — Per-driver scorecard (rides, tardiness, punctuality, hours)
+- `GET /api/analytics/driver-utilization` — Per-driver shift time vs active ride time
+- `GET /api/analytics/rider-cohorts` — Active/new/returning/churned/at-risk/terminated classification
+- `GET /api/analytics/rider-no-shows` — No-show rate by rider + strike distribution histogram
+- `GET /api/analytics/fleet-utilization` — Per-vehicle rides + maintenance in period
+- `GET /api/analytics/vehicle-demand` — Standard vs accessible demand ratio + weekly trend
+- `GET /api/analytics/shift-coverage` — Scheduled vs actual driver-hours, day-by-day gap analysis
+- `GET /api/analytics/export-report` — Multi-sheet Excel workbook (.xlsx) download via exceljs
 
 ### Settings (Office only)
 - `GET /api/settings` — Get all tenant settings
