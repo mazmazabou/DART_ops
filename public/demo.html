@@ -42,7 +42,7 @@
   <div class="demo-wrap">
     <div class="demo-header">
       <div class="demo-brand">
-        <img src="/logoWithBackground.png" alt="RideOps" class="ro-brand-icon" style="object-fit:cover;" />
+        <img src="/logoWithoutBackground.png" alt="RideOps" class="ro-brand-icon" style="object-fit:cover;" />
         <span class="demo-brand-text">RideOps</span>
       </div>
       <div class="demo-subtitle">Campus Transportation Management</div>
@@ -52,19 +52,20 @@
       <button class="campus-pill active" onclick="selectCampus(this, '')" data-campus="">
         <span class="pill-dot" style="background:#4682B4;"></span>RideOps
       </button>
-      <button class="campus-pill" onclick="selectCampus(this, 'usc')" data-campus="usc">
+      <button class="campus-pill" onclick="goToOrg('usc')" data-campus="usc">
         <span class="pill-dot" style="background:#990000;"></span>USC
       </button>
-      <button class="campus-pill" onclick="selectCampus(this, 'stanford')" data-campus="stanford">
+      <button class="campus-pill" onclick="goToOrg('stanford')" data-campus="stanford">
         <span class="pill-dot" style="background:#8C1515;"></span>Stanford
       </button>
-      <button class="campus-pill" onclick="selectCampus(this, 'ucla')" data-campus="ucla">
+      <button class="campus-pill" onclick="goToOrg('ucla')" data-campus="ucla">
         <span class="pill-dot" style="background:#2774AE;"></span>UCLA
       </button>
-      <button class="campus-pill" onclick="selectCampus(this, 'uci')" data-campus="uci">
+      <button class="campus-pill" onclick="goToOrg('uci')" data-campus="uci">
         <span class="pill-dot" style="background:#0064A4;"></span>UCI
       </button>
     </div>
+    <div style="text-align:center; font-size:11px; color:var(--color-text-muted); margin-bottom:12px;">Select a campus to go directly to their portal, or pick a role below for default RideOps.</div>
 
     <div class="strip-list">
       <div class="demo-row" onclick="loginAs('office', 'demo123', '/')">
@@ -159,6 +160,10 @@
         var tl = document.getElementById('demo-org-tagline');
         if (tl) tl.textContent = serverConfig.orgTagline || 'Accessible Campus Transportation';
       }
+    }
+
+    function goToOrg(slug) {
+      window.location.href = '/' + slug;
     }
 
     async function loginAs(username, password, redirectTo) {
