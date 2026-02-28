@@ -366,6 +366,7 @@
                 <table class="ro-table" id="admin-users-table">
                   <thead>
                     <tr>
+                      <th style="width:32px"><input type="checkbox" id="users-select-all"></th>
                       <th>Name</th>
                       <th>Email</th>
                       <th>Username</th>
@@ -380,6 +381,7 @@
                 </table>
                 <div class="table-toolbar">
                   <span class="table-toolbar__count" id="admin-user-filter-count"></span>
+                  <button class="ro-btn ro-btn--danger ro-btn--sm" id="users-delete-selected-btn" style="display:none;"><i class="ti ti-trash"></i> Delete Selected (<span id="users-selected-count">0</span>)</button>
                   <div class="table-toolbar__actions">
                     <div style="position:relative;">
                       <button class="table-toolbar__btn" id="admin-role-filter-btn" title="Filter by role"><i class="ti ti-filter"></i></button>

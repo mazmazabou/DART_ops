@@ -281,13 +281,32 @@ function filterAdminUsers() {
   if (countEl) countEl.textContent = isFiltered ? `${filteredAdminUsers.length} of ${adminUsers.length} users` : `${adminUsers.length} users`;
 }
 
+let _usersSelectedIds = new Set();
+
+function _usersUpdateSelectionUI() {
+  const count = _usersSelectedIds.size;
+  const deleteBtn = document.getElementById('users-delete-selected-btn');
+  const countEl = document.getElementById('users-selected-count');
+  const selectAllCb = document.getElementById('users-select-all');
+  if (deleteBtn) deleteBtn.style.display = count > 0 ? 'inline-flex' : 'none';
+  if (countEl) countEl.textContent = count;
+  if (selectAllCb) {
+    const allCbs = document.querySelectorAll('#admin-users-table tbody .user-row-cb:not(:disabled)');
+    selectAllCb.checked = allCbs.length > 0 && count === allCbs.length;
+  }
+}
+
 function renderAdminUsers(users) {
   const tbody = document.querySelector('#admin-users-table tbody');
   if (!tbody) return;
   tbody.innerHTML = '';
+  _usersSelectedIds = new Set();
+  _usersUpdateSelectionUI();
   users.forEach((u) => {
     const tr = document.createElement('tr');
+    const isSelf = currentUser && u.id === currentUser.id;
     tr.innerHTML = `
+      <td><input type="checkbox" class="user-row-cb" data-user-id="${u.id}" ${isSelf ? 'disabled title="Cannot select your own account"' : ''} style="cursor:${isSelf ? 'not-allowed' : 'pointer'};"></td>
       <td>${u.name || ''}</td>
       <td><span class="admin-name-secondary">${u.email || ''}</span></td>
       <td>${u.username || ''}</td>
@@ -297,11 +316,19 @@ function renderAdminUsers(users) {
       <td></td>
       <td><i class="ti ti-chevron-right admin-chevron"></i></td>
     `;
-    // Insert kebab menu into the 7th cell
-    const kebabCell = tr.querySelectorAll('td')[6];
+    // Checkbox handler
+    const cb = tr.querySelector('.user-row-cb');
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      if (cb.checked) _usersSelectedIds.add(u.id);
+      else _usersSelectedIds.delete(u.id);
+      _usersUpdateSelectionUI();
+    });
+    // Insert kebab menu into the 8th cell (shifted by 1 due to checkbox column)
+    const kebabCell = tr.querySelectorAll('td')[7];
     kebabCell.appendChild(buildAdminKebabMenu(u));
-    // Row click opens drawer (skip if kebab clicked)
-    tr.onclick = (e) => { if (!e.target.closest('.kebab-menu-wrapper')) openAdminDrawer(u.id); };
+    // Row click opens drawer (skip if kebab or checkbox clicked)
+    tr.onclick = (e) => { if (!e.target.closest('.kebab-menu-wrapper') && !e.target.closest('.user-row-cb')) openAdminDrawer(u.id); };
     tbody.appendChild(tr);
   });
 }
@@ -4710,6 +4737,48 @@ document.addEventListener('DOMContentLoaded', async () => {
   const adminFilterInput = document.getElementById('admin-user-filter');
   if (adminFilterInput) {
     adminFilterInput.addEventListener('input', debounce(filterAdminUsers, 300));
+  }
+
+  // Users select-all checkbox
+  const usersSelectAllCb = document.getElementById('users-select-all');
+  if (usersSelectAllCb) {
+    usersSelectAllCb.addEventListener('change', () => {
+      const checked = usersSelectAllCb.checked;
+      document.querySelectorAll('#admin-users-table tbody .user-row-cb:not(:disabled)').forEach(cb => {
+        cb.checked = checked;
+        if (checked) _usersSelectedIds.add(cb.dataset.userId);
+        else _usersSelectedIds.delete(cb.dataset.userId);
+      });
+      _usersUpdateSelectionUI();
+    });
+  }
+
+  // Users delete-selected button
+  const usersDeleteSelBtn = document.getElementById('users-delete-selected-btn');
+  if (usersDeleteSelBtn) {
+    usersDeleteSelBtn.addEventListener('click', () => {
+      const ids = Array.from(_usersSelectedIds);
+      if (!ids.length) return;
+      showModalNew({
+        title: 'Delete Users',
+        body: 'Delete ' + ids.length + ' selected user' + (ids.length !== 1 ? 's' : '') + '? This cannot be undone.',
+        confirmLabel: 'Delete',
+        confirmClass: 'ro-btn--danger',
+        onConfirm: async function() {
+          let deleted = 0;
+          for (const id of ids) {
+            try {
+              const res = await fetch('/api/admin/users/' + id, { method: 'DELETE' });
+              if (res.ok) deleted++;
+            } catch {}
+          }
+          showToastNew('Deleted ' + deleted + ' user' + (deleted !== 1 ? 's' : ''), 'success');
+          _usersSelectedIds = new Set();
+          _usersUpdateSelectionUI();
+          await loadAdminUsers();
+        }
+      });
+    });
   }
 
   // Admin drawer close events
