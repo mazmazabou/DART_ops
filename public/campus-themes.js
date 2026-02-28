@@ -40,3 +40,95 @@ var CAMPUS_THEMES = {
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://map.uci.edu/', campusKey: 'uci'
   }
 };
+
+/**
+ * Returns an ordered array of hex colors for the current campus,
+ * suitable for chart fills, schedule grid columns, and categorical pills.
+ * Status colors (pending/approved/completed/no_show etc.) are handled
+ * separately by CSS variables and are NOT part of this palette.
+ *
+ * @param {string} campusKey  — 'usc' | 'stanford' | 'ucla' | 'uci' | null
+ * @returns {string[]}        — array of hex color strings, 6–10 colors
+ */
+function getCampusPalette(campusKey) {
+  switch (campusKey) {
+
+    case 'usc':
+      // Tertiary palette from USC brand guidelines.
+      // Cardinal and Gold are primary — these are supporting accents only.
+      return [
+        '#2B5597',  // Blue (PMS 7685)
+        '#FF9015',  // Orange (PMS 1495)
+        '#F26178',  // Pink-Red (PMS 709)
+        '#DAE343',  // Lime (PMS 380)
+        '#908C13',  // Olive (PMS 582)
+        '#F2C6A7',  // Peach (PMS 474)
+        '#E43D30',  // Red-Orange (PMS 179)
+        '#FDE021',  // Bright Yellow (PMS 107)
+      ];
+
+    case 'stanford':
+      // Landmark accent palette. Cool blue-green progression first,
+      // then warm tones. All 14 named accents, lightest to darkest per group.
+      // Digital interactive colors included at end for UI-safe use.
+      return [
+        '#4298B5',  // Sky
+        '#007C92',  // Lagunita
+        '#279989',  // Palo Verde
+        '#175E54',  // Palo Alto
+        '#6FA287',  // Bay
+        '#8F993E',  // Olive
+        '#E98300',  // Poppy
+        '#E04F39',  // Spirited
+        '#FEDD5C',  // Illuminating
+        '#620059',  // Plum
+        '#651C32',  // Brick
+        '#5D4B3C',  // Archway
+        '#7F7776',  // Stone
+        '#DAD7CB',  // Fog
+      ];
+
+    case 'ucla':
+      // Blue tone range first (schedule grids, multi-driver charts),
+      // then gold tones (highlights, secondary fills).
+      return [
+        '#003B5C',  // Darkest Blue
+        '#005587',  // Darker Blue
+        '#2774AE',  // UCLA Blue
+        '#8BB8E8',  // Lighter Blue
+        '#DAEBFE',  // Lightest Blue
+        '#FFB81C',  // Darkest Gold
+        '#FFC72C',  // Darker Gold
+        '#FFD100',  // UCLA Gold
+      ];
+
+    case 'uci':
+      // Richest palette of the four. Blue → teal → turquoise for schedule
+      // columns; orange and gold for warm accents; accents for outliers.
+      return [
+        '#002244',  // Darkest Blue
+        '#1B3D6D',  // Dark Blue
+        '#0083B3',  // Teal Blue
+        '#00B0CA',  // Turquoise
+        '#F78D2D',  // Orange
+        '#F0AB00',  // Deep Gold
+        '#3F9C35',  // Green
+        '#7AB800',  // Lime Green
+        '#6AA2B8',  // Light Blue
+        '#7C109A',  // Bright Purple
+      ];
+
+    default:
+      // RideOps platform defaults — steelblue family + neutrals
+      return [
+        '#4682B4',  // Steel Blue (primary)
+        '#36648B',  // Steel Blue Dark
+        '#B0C4DE',  // Steel Blue Light
+        '#D2B48C',  // Tan
+        '#C4A067',  // Tan Dark
+        '#8FAF9F',  // Sage
+        '#7A9DBF',  // Dusty Blue
+        '#BFA98A',  // Warm Sand
+      ];
+  }
+}

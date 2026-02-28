@@ -12,6 +12,12 @@ function handleSessionExpiry(res) {
   return false;
 }
 
+function getCurrentCampusPalette() {
+  var key = sessionStorage.getItem('ro-demo-campus');
+  if (typeof getCampusPalette === 'function') return getCampusPalette(key);
+  return ['var(--color-primary)', 'var(--color-accent)', 'var(--color-primary-light)'];
+}
+
 // Loading state management
 function showLoader(containerId, message = 'Loading...') {
   const el = document.getElementById(containerId);
@@ -2383,6 +2389,12 @@ async function renderDispatchGrid() {
   }
   html += '</div>';
 
+  // Assign each active driver a color from the campus palette for visual identification
+  const campusPal = getCurrentCampusPalette();
+  activeDrivers.forEach((driver, idx) => {
+    driver._paletteColor = campusPal[idx % campusPal.length];
+  });
+
   // Active drivers
   activeDrivers.forEach(driver => {
     const driverRides = dayRides.filter(r => r.assignedDriverId === driver.id);
@@ -2522,7 +2534,7 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
         const lastName = (r.riderName || '').split(' ').pop();
         const abbrev = abbreviateLocation(r.pickupLocation);
         const isDraggable = r.status === 'scheduled';
-        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}"${isDraggable ? ' draggable="true"' : ''} style="left:${left};width:50%;background:${bg};" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
+        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}"${isDraggable ? ' draggable="true"' : ''} style="left:${left};width:50%;background:${bg};border-left:3px solid ${driver._paletteColor || bg};" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
       }
     });
 
@@ -2974,6 +2986,7 @@ function renderColumnChart(containerId, data, options = {}) {
   const maxY = Math.max(...data.map(d => parseInt(d.count) || 0), 1);
   const total = data.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
   const unit = options.unit || 'rides';
+  const palette = options.palette || null;
   const fillColor = options.color || 'var(--color-primary)';
 
   // Y-axis gridlines
@@ -2997,7 +3010,8 @@ function renderColumnChart(containerId, data, options = {}) {
     const barH = maxY > 0 ? (val / maxY) * ch : 0;
     const x = pad.left + i * slotW + (slotW - barW) / 2;
     const y = pad.top + ch - barH;
-    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${fillColor}" class="col-bar" data-idx="${i}"/>`;
+    const barColor = palette ? palette[i % palette.length] : fillColor;
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${barColor}" class="col-bar" data-idx="${i}"/>`;
     if (options.showValues !== false) {
       valueLabels += `<text x="${x + barW / 2}" y="${y - 4}" class="axis-label" text-anchor="middle">${val}</text>`;
     }
@@ -3236,16 +3250,17 @@ function renderHotspotList(containerId, items, colorClass, unit) {
     container.innerHTML = '<div class="ro-empty"><i class="ti ti-map-pin-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No location data available.</div></div>';
     return;
   }
-  const cls = colorClass || '';
+  const pal = getCurrentCampusPalette();
   const max = Math.max(...items.map(i => parseInt(i.count) || 0));
   container.innerHTML = '<div class="hotspot-list">' + items.map((item, idx) => {
     const val = parseInt(item.count) || 0;
     const pct = max > 0 ? (val / max * 100) : 0;
     const name = item.location || item.route;
+    const barFillColor = pal[idx % pal.length];
     return `<div class="hotspot-item">
       <div class="hotspot-rank">#${idx + 1}</div>
       <div class="hotspot-name" title="${name}">${name}</div>
-      <div class="hotspot-bar"><div class="hotspot-bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="hotspot-bar"><div class="hotspot-bar-fill" style="width:${pct}%;background:${barFillColor};"></div></div>
       <div class="hotspot-count">${val}</div>
     </div>`;
   }).join('') + '</div>';
@@ -3556,20 +3571,20 @@ async function loadAnalyticsFrequency() {
       const row = data.byDayOfWeek.find(r => parseInt(r.dow) === pgDow);
       return { label: DOW_NAMES[pgDow], count: row ? row.count : 0 };
     });
-    renderColumnChart('chart-dow', dowData, { unit: 'rides' });
+    renderColumnChart('chart-dow', dowData, { unit: 'rides', palette: getCurrentCampusPalette() });
 
     // Hourly — column chart
     const hourData = data.byHour
       .filter(r => parseInt(r.hour) >= 8 && parseInt(r.hour) <= 19)
       .map(r => ({ label: `${r.hour}:00`, count: r.count }));
-    renderColumnChart('chart-hour', hourData, { color: 'var(--color-accent-dark)', unit: 'rides' });
+    renderColumnChart('chart-hour', hourData, { unit: 'rides', palette: getCurrentCampusPalette() });
 
     // Daily volume — line chart
     const lineData = data.daily.slice(-30).map(r => ({
       label: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       value: parseInt(r.total) || 0, raw: r
     }));
-    renderLineChart('chart-daily', lineData, { unit: 'rides' });
+    renderLineChart('chart-daily', lineData, { unit: 'rides', color: getCurrentCampusPalette()[0] });
 
     // Status breakdown — stacked bar (filter transient statuses)
     const hiddenStatuses = ['driver_on_the_way', 'driver_arrived_grace'];
