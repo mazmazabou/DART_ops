@@ -1,9 +1,30 @@
+# Dependencies
 node_modules/
-.DS_Store
-*.log
-.vscode/
-test-results/
-public/.RData
-public/.Rhistory
+
+# Environment
 .env
 .env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+
+# Playwright
+.playwright-mcp/
+test-results/
+
+# R artifacts (legacy)
+public/.RData
+public/.Rhistory
+
+# Build artifacts
+*.log
+
+# Tabler (loaded from CDN, never local)
+tabler/
+
+# Deprecated styles
+public/styles.css

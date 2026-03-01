@@ -120,6 +120,24 @@ Default login credentials (password: `demo123`):
 - `demo-seed.js` — Seeds demo data: 650+ rides, 5 weeks of shifts, clock events, recurring rides, vehicles, notifications
 - `public/favicon.svg` — RideOps favicon (blue circle with RO)
 - `db/schema.sql` — PostgreSQL schema reference
+- `docs/reference/AUDIT_REPORT.md` — Pre-demo platform audit (2026-03-01)
+- `docs/reference/school-themes.md` — Campus color palette specifications
+
+## Project Structure
+
+### Documentation (`docs/`)
+- `docs/reference/` — Living reference docs (tooling, audit reports, campus research, theme specs)
+- `docs/architecture/` — Technical design documents (analytics architecture, redesign plans)
+- `docs/prompts/` — Saved Claude Code prompt templates for complex features
+- `docs/audits/` — Historical audit reports (.docx)
+
+### Screenshots (`screenshots/`)
+- `screenshots/linkedin/` — Marketing screenshots for social media
+- `screenshots/design-inspiration/` — UI reference material with subdirectories by feature area
+- `screenshots/development/` — Development verification screenshots (theme checks, UI states, etc.)
+
+### Scripts (`scripts/`)
+- Utility scripts for screenshot automation and dev workflows. Not part of the app runtime.
 
 ## Architecture
 
@@ -294,6 +312,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 ### Shifts (Office only)
 - `GET /api/shifts` — List all shifts
 - `POST /api/shifts` — Create shift
+- `PUT /api/shifts/:id` — Update shift (office only)
 - `DELETE /api/shifts/:id` — Delete shift
 
 ### Rides
@@ -313,6 +332,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - `POST /api/rides/:id/reassign` — Transfer ride to different driver (office only, accepts `{ driverId }`)
 - `POST /api/rides/:id/set-vehicle` — Assign vehicle to ride (staff only)
 - `PATCH /api/rides/:id/vehicle` — Per-ride vehicle assignment (requireStaff: drivers + office, accepts `{ vehicle_id }`)
+- `PUT /api/rides/:id` — Edit ride details with change notes (office only)
 - `POST /api/rides/bulk-delete` — Delete multiple rides (office only, accepts `{ ids: [...] }`)
 - `POST /api/rides/purge-old` — Purge terminal rides older than retention period (office only)
 
@@ -454,3 +474,36 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 - Don't remove `.tab-panel` / `.sub-panel` CSS classes from panel elements
 - Don't use `$1::uuid[]` for array parameter casts — IDs are text format, use `$1::text[]`
 - Don't reset bulk-selection Sets on table re-render — preserve selections across polling cycles
+
+## Known Issues & Tech Debt
+
+*Identified during pre-demo audit on 2026-03-01. See `docs/reference/AUDIT_REPORT.md` for full details.*
+
+### Critical (Must Fix Before Production)
+- **Session security:** Hardcoded fallback secret, in-memory MemoryStore, `secure: false` cookies, no `trust proxy`. Need `connect-pg-simple`, env var validation, conditional secure cookies.
+- **SQL injection:** `server.js:109` — `TENANT.timezone` interpolated into SQL without parameterization.
+- **No rate limiting:** Login and signup endpoints accept unlimited requests. Need `express-rate-limit`.
+- **No graceful shutdown:** No SIGTERM/SIGINT handlers. Deploys drop in-flight requests.
+
+### High Priority
+- **Missing DB indexes:** `rides` table has zero indexes beyond PK. Will degrade at scale (1000+ rides/semester). Need indexes on status, requested_time, rider_email, assigned_driver_id, rider_id, vehicle_id. Also `ride_events(ride_id)`, `shifts(employee_id)`.
+- **No transactions:** Multi-step operations (no-show, completion, cancellation) use separate queries without transaction wrapping. Server crash mid-flow → inconsistent data.
+- **Stored XSS:** Program rules HTML only blocks `<script>` tags. `<img onerror>`, `<svg onload>` bypass the filter.
+- **Sync bcrypt:** `bcrypt.hashSync()`/`compareSync()` block event loop ~100ms per call. Switch to async versions.
+- **Missing error handling:** ~20+ async route handlers lack try/catch. DB errors → client hangs.
+- **No `/health` endpoint:** Deployment platforms can't health-check the app.
+- **Phantom notification events:** `driver_no_clock_in`, `daily_summary`, and `ride_completed` (office) appear in preferences UI but are never dispatched.
+- **`uscId` field name:** Signup API sends member ID as "uscId" — visible to non-USC evaluators in network tab.
+- **Office grace timer hardcoded:** `app.js:2812` uses `300` (5 min) instead of configurable `tenantConfig.grace_period_minutes`.
+- **`auto_deny_outside_hours` setting:** Exists in UI but has no effect — service hours always enforced.
+
+### Medium Priority
+- **No pagination on rides API:** Returns all rides every 5 seconds.
+- **Demo re-seed interval:** `setInterval` re-seeds demo data every hour, overwriting mid-demo changes.
+- **Polling ignores tab visibility:** Office console generates ~17 API requests/minute even when backgrounded.
+- **Two toast systems + two modal systems:** Legacy `showToast`/`showConfirmModal` (utils.js) vs new `showToastNew`/`showModalNew` (rideops-utils.js).
+- **`utils.js:158`:** `showEmptyState()` renders Material Symbols icon class (not loaded) instead of Tabler Icons.
+- **Password minimum inconsistency:** Signup requires 6 chars, change-password requires 8, admin-create has no minimum.
+- **Email env var mismatch:** Code reads `FROM_NAME`/`FROM_EMAIL`, docs say `NOTIFICATION_FROM`/`NOTIFICATION_FROM_NAME`.
+- **Notification emails hardcode "RideOps":** Should use tenant orgName for white-label branding.
+- **`db/schema.sql` stale:** Missing 4 tables and ~15 columns added via migrations.
