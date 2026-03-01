@@ -1204,6 +1204,11 @@ input[type="checkbox"]:disabled {
 }
 .widget-card--large { grid-column: 1 / -1; }
 .widget-card--medium { /* default, spans 1 column */ }
+.widget-card--small { /* compact single column */ }
+.widget-card--small .widget-card__header { padding: 6px 12px; font-size: 12px; }
+.widget-card--small .widget-card__body { padding: 8px 12px 12px; }
+.widget-card--small .widget-card__title { font-size: 12px; }
+.widget-card--small .widget-card__title i { font-size: 13px; }
 
 .widget-card__header {
   background: var(--color-primary);

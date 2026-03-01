@@ -27,7 +27,7 @@ var WIDGET_REGISTRY = {
     title: 'Ride Volume',
     icon: 'ti-chart-area-line',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-ride-volume',
     category: 'rides',
     description: 'Daily ride volume over the selected date range.'
@@ -36,7 +36,7 @@ var WIDGET_REGISTRY = {
     title: 'Ride Outcomes',
     icon: 'ti-chart-donut-3',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-ride-outcomes',
     category: 'rides',
     description: 'Donut chart of ride completion, cancellation, and no-show rates.'
@@ -54,7 +54,7 @@ var WIDGET_REGISTRY = {
     title: 'Rides by Day of Week',
     icon: 'ti-calendar-stats',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-dow',
     category: 'rides',
     description: 'Column chart of ride counts per day of week.'
@@ -63,7 +63,7 @@ var WIDGET_REGISTRY = {
     title: 'Rides by Hour',
     icon: 'ti-clock-hour-4',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-hour',
     category: 'rides',
     description: 'Column chart of ride counts per hour of the day.'
@@ -72,7 +72,7 @@ var WIDGET_REGISTRY = {
     title: 'Top Routes',
     icon: 'ti-route',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-top-routes',
     category: 'rides',
     description: 'Ranked table of most popular pickup-to-dropoff routes.'
@@ -81,7 +81,7 @@ var WIDGET_REGISTRY = {
     title: 'Driver Leaderboard',
     icon: 'ti-steering-wheel',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-driver-leaderboard',
     category: 'drivers',
     description: 'Driver scorecard with rides, punctuality, and hours.'
@@ -99,7 +99,7 @@ var WIDGET_REGISTRY = {
     title: 'Fleet Utilization',
     icon: 'ti-bus',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-fleet-util',
     category: 'fleet',
     description: 'Per-vehicle ride counts and maintenance in period.'
@@ -108,7 +108,7 @@ var WIDGET_REGISTRY = {
     title: 'Rider Cohorts',
     icon: 'ti-users-group',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'chart-rider-cohorts',
     category: 'riders',
     description: 'Active, new, returning, churned, at-risk rider segments.'
@@ -117,7 +117,7 @@ var WIDGET_REGISTRY = {
     title: 'Top Pickup Locations',
     icon: 'ti-map-pin',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'w-hotspot-pickups',
     category: 'locations',
     description: 'Ranked bar list of most popular pickup locations.'
@@ -126,7 +126,7 @@ var WIDGET_REGISTRY = {
     title: 'Top Dropoff Locations',
     icon: 'ti-map-pin-filled',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'w-hotspot-dropoffs',
     category: 'locations',
     description: 'Ranked bar list of most popular dropoff locations.'
@@ -144,7 +144,7 @@ var WIDGET_REGISTRY = {
     title: 'Driver Milestones',
     icon: 'ti-trophy',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'w-driver-milestones',
     category: 'achievements',
     description: 'Driver achievement badges based on cumulative rides.'
@@ -153,7 +153,7 @@ var WIDGET_REGISTRY = {
     title: 'Rider Milestones',
     icon: 'ti-award',
     defaultSize: 'medium',
-    allowedSizes: ['medium', 'large'],
+    allowedSizes: ['small', 'medium', 'large'],
     containerId: 'w-rider-milestones',
     category: 'achievements',
     description: 'Rider achievement badges based on cumulative rides.'
