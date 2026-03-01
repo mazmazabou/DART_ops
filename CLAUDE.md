@@ -103,7 +103,7 @@ Default login credentials (password: `demo123`):
 - `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, DEFAULT_WIDGET_LAYOUT)
 - `public/js/widget-system.js` — Widget dashboard runtime: layout persistence, grid rendering, edit mode, SortableJS integration
 - `public/demo-config.js` — Demo mode configuration
-- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header)
+- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header, Map tab, per-ride vehicle selector)
 - `public/rider.html` — Rider request form and ride history (self-contained with inline JS/CSS, campus-themed header)
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
 - `public/login.html` / `signup.html` — Auth pages with org-scoped URL support
@@ -158,7 +158,7 @@ Default login credentials (password: `demo123`):
 - **Widget System:** Customizable dashboard with drag-and-drop widget cards (SortableJS CDN). 16 registered widgets across 8 categories. Users can add/remove/resize/reorder widgets. Layout persisted per-user in localStorage with versioned schema (`WIDGET_LAYOUT_VERSION`).
 - **Widget Files:** `widget-registry.js` (static metadata), `widget-system.js` (runtime). Widget loaders registered in `app.js` DOMContentLoaded via `registerWidgetLoader()`.
 - **Widget Container IDs:** Dashboard widgets use IDs from `WIDGET_REGISTRY.containerId`. Hotspot/milestone widgets use `w-` prefix (`w-hotspot-pickups`) to avoid duplicate IDs with sub-tab containers.
-- **Date Range Picker:** Quick-select buttons (Today, 7D, 30D, Month, Semester) + manual from/to inputs
+- **Date Range Picker:** Quick-select buttons (Today, Week, 30 Days, Month, [Academic Period]) + manual from/to inputs. Last preset label driven by `academic_period_label` tenant_setting (Semester/Quarter/Trimester).
 - **Default Range:** Last 7 days (set on page load, persists across sub-tab switches within session)
 - **Reports Sub-Tab:** Excel export with report type selector (Full/Rides/Drivers/Riders/Fleet) + semester report + wrapped
 - **Excel Export:** 8-sheet workbook via exceljs: Summary, Daily Volume, Routes, Driver Performance, Rider Analysis, Fleet, Shift Coverage, Peak Hours — all with conditional formatting
@@ -220,6 +220,7 @@ IDs follow pattern: `prefix_${random}` (e.g., `ride_abc123`, `shift_xyz789`, `dr
 | notify_rider_strike_warning | true | boolean | notifications |
 | ride_retention_value | 0 | number | data |
 | ride_retention_unit | months | select | data |
+| academic_period_label | Semester | select | operations |
 
 ## Ride Status Flow
 
@@ -265,7 +266,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - `POST /api/auth/change-password` — Change own password
 
 ### Configuration
-- `GET /api/tenant-config` — Get tenant branding config (public, accepts `?campus=slug`)
+- `GET /api/tenant-config` — Get tenant branding config (public, accepts `?campus=slug`). Includes `grace_period_minutes` and `academic_period_label` from tenant_settings.
 - `GET /api/client-config` — Get isDev flag (public)
 
 ### User Management (Office only)
@@ -311,6 +312,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - `POST /api/rides/:id/unassign` — Remove driver, revert to approved (office only)
 - `POST /api/rides/:id/reassign` — Transfer ride to different driver (office only, accepts `{ driverId }`)
 - `POST /api/rides/:id/set-vehicle` — Assign vehicle to ride (staff only)
+- `PATCH /api/rides/:id/vehicle` — Per-ride vehicle assignment (driver or office, accepts `{ vehicle_id }`)
 - `POST /api/rides/bulk-delete` — Delete multiple rides (office only, accepts `{ ids: [...] }`)
 - `POST /api/rides/purge-old` — Purge terminal rides older than retention period (office only)
 

@@ -363,7 +363,8 @@ async function seedDefaultSettings() {
     { key: 'notify_rider_no_show', value: 'true', type: 'boolean', label: 'Notify Rider of No-Show', description: 'Send notification to rider when marked no-show', category: 'notifications' },
     { key: 'notify_rider_strike_warning', value: 'true', type: 'boolean', label: 'Notify Rider of Strike Warning', description: 'Warn rider when approaching strike limit', category: 'notifications' },
     { key: 'ride_retention_value', value: '0', type: 'number', label: 'Ride Data Retention — Value', description: 'Number of time units to retain closed rides. 0 = keep forever.', category: 'data' },
-    { key: 'ride_retention_unit', value: 'months', type: 'select', label: 'Ride Data Retention — Unit', description: 'Time unit for ride retention period.', category: 'data' }
+    { key: 'ride_retention_unit', value: 'months', type: 'select', label: 'Ride Data Retention — Unit', description: 'Time unit for ride retention period.', category: 'data' },
+    { key: 'academic_period_label', value: 'Semester', type: 'select', label: 'Academic Period Label', description: 'Label for the full-term date range preset in analytics (Semester, Quarter, or Trimester).', category: 'operations' }
   ];
   for (const s of defaults) {
     await query(
@@ -758,12 +759,24 @@ app.get('/api/client-config', (req, res) => {
   res.json({ isDev: isDevRequest(req) });
 });
 
-app.get('/api/tenant-config', (req, res) => {
+app.get('/api/tenant-config', async (req, res) => {
+  let config = { ...TENANT };
   const campus = req.session.campus || req.query.campus;
   if (campus && campusConfigs[campus]) {
-    return res.json({ ...TENANT, ...campusConfigs[campus] });
+    config = { ...config, ...campusConfigs[campus] };
   }
-  res.json(TENANT);
+  try {
+    const settingsRes = await query(
+      `SELECT setting_key, setting_value FROM tenant_settings WHERE setting_key IN ('grace_period_minutes', 'academic_period_label')`
+    );
+    for (const row of settingsRes.rows) {
+      if (row.setting_key === 'grace_period_minutes') config.grace_period_minutes = parseInt(row.setting_value) || 5;
+      if (row.setting_key === 'academic_period_label') config.academic_period_label = row.setting_value || 'Semester';
+    }
+  } catch (e) { /* defaults applied below */ }
+  if (!config.grace_period_minutes) config.grace_period_minutes = 5;
+  if (!config.academic_period_label) config.academic_period_label = 'Semester';
+  res.json(config);
 });
 
 app.get('/api/program-rules', async (req, res) => {
@@ -2314,6 +2327,27 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
       console.error('[Notifications] no-show dispatch error:', err.message);
     }
   })();
+});
+
+// ----- Per-ride vehicle assignment (driver or office) -----
+app.patch('/api/rides/:id/vehicle', requireAuth, async (req, res) => {
+  const { vehicle_id } = req.body;
+  if (!vehicle_id) return res.status(400).json({ error: 'vehicle_id is required' });
+  const rideRes = await query('SELECT * FROM rides WHERE id = $1', [req.params.id]);
+  if (!rideRes.rowCount) return res.status(404).json({ error: 'Ride not found' });
+  const ride = rideRes.rows[0];
+  // Must be the assigned driver or office
+  if (req.session.role !== 'office' && ride.assigned_driver_id !== req.session.userId) {
+    return res.status(403).json({ error: 'Not authorized for this ride' });
+  }
+  if (['completed','no_show','cancelled','denied'].includes(ride.status)) {
+    return res.status(400).json({ error: 'Cannot set vehicle on a terminal ride' });
+  }
+  const vehRes = await query('SELECT id, name, status FROM vehicles WHERE id = $1', [vehicle_id]);
+  if (!vehRes.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
+  if (vehRes.rows[0].status === 'retired') return res.status(400).json({ error: 'Vehicle is retired' });
+  await query('UPDATE rides SET vehicle_id = $1, updated_at = NOW() WHERE id = $2', [vehicle_id, ride.id]);
+  res.json({ ok: true, vehicle_id, vehicle_name: vehRes.rows[0].name });
 });
 
 // ----- Set vehicle on ride -----

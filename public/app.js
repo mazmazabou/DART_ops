@@ -219,6 +219,12 @@ async function loadTenantConfig() {
   const wrappedTitle = document.getElementById('ro-wrapped-title');
   if (wrappedTitle) wrappedTitle.textContent = tenantConfig.orgShortName + ' Wrapped';
 
+  // Update analytics academic period preset label
+  const semesterBtn = document.getElementById('analytics-semester-btn');
+  if (semesterBtn && tenantConfig.academic_period_label) {
+    semesterBtn.textContent = tenantConfig.academic_period_label;
+  }
+
   // Show campus map nav item if mapUrl is configured
   loadMapPanel();
 }
@@ -4945,6 +4951,16 @@ async function loadBusinessRules() {
         } else if (s.type === 'time') {
           html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
           html += `<input type="time" id="setting-${s.key}" data-key="${s.key}" data-type="time" value="${s.value}" class="ro-input" style="max-width:150px;">`;
+          if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
+          html += '</div>';
+        } else if (s.key === 'academic_period_label') {
+          const aplOptions = ['Semester', 'Quarter', 'Trimester'];
+          html += `<div class="field-group"><label class="ro-label">${s.label}</label>`;
+          html += `<select id="setting-${s.key}" data-key="${s.key}" data-type="select" class="ro-input" style="max-width:200px;">`;
+          for (const opt of aplOptions) {
+            html += `<option value="${opt}"${s.value === opt ? ' selected' : ''}>${opt}</option>`;
+          }
+          html += '</select>';
           if (s.description) html += `<div class="text-xs text-muted" style="margin-top:4px;">${s.description}</div>`;
           html += '</div>';
         } else {
