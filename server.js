@@ -107,7 +107,9 @@ const SIGNUP_ENABLED = process.env.DISABLE_RIDER_SIGNUP !== 'true';
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: process.env.PGSSLMODE === 'require' || process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined
+  ssl: process.env.NODE_ENV === 'production' || process.env.PGSSLMODE === 'require' || process.env.DATABASE_SSL === 'true'
+    ? { rejectUnauthorized: false }
+    : undefined
 });
 
 pool.on('connect', async (client) => {

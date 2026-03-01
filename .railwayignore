@@ -2,3 +2,12 @@
 .env.*
 node_modules
 .git
+
+# Not needed at runtime — reduce deploy size
+screenshots/
+docs/
+scripts/
+tests/
+.claude/
+.playwright-mcp/
+linkedin_screenshots/

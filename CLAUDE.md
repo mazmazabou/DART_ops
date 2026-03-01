@@ -96,6 +96,24 @@ Default login credentials (password: `demo123`):
 - Drivers: `alex`, `jordan`, `taylor`, `morgan`
 - Riders: `casey`, `riley`
 
+## Deployment
+
+### Railway (Production)
+- **URL:** https://app.ride-ops.com (custom domain) / https://rideops-app-production.up.railway.app (Railway default)
+- **Config:** `railway.json` defines health check, restart policy, and Nixpacks builder
+- **Database:** Railway PostgreSQL addon (auto-provisions, sets DATABASE_URL)
+- **SSL:** Required for database connections in production (`ssl: { rejectUnauthorized: false }`)
+- **Health check:** `GET /health` — used by Railway for readiness checks
+- **Environment:** All config via Railway environment variables (see `.env.example`)
+- **Demo mode:** `DEMO_MODE=true` seeds 650+ rides on startup, enables demo role picker at `/demo`
+- **Deploys:** Automatic on push to `main` branch (Railway watches GitHub repo)
+- **Deploy exclusions:** `.railwayignore` excludes screenshots/, docs/, tests/, scripts/ to reduce image size
+
+### Marketing Site (Separate)
+- **URL:** https://ride-ops.com
+- **Host:** Vercel (Next.js)
+- **Repo:** rideops-site (separate repository)
+
 ## Key Files
 
 - `server.js` — Express server, all API routes, DB schema init, auth middleware, tenant loading, business logic
@@ -129,6 +147,9 @@ Default login credentials (password: `demo123`):
 - `docs/reference/SECURITY.md` — Security posture overview for university IT evaluators
 - `docs/reference/school-themes.md` — Campus color palette specifications
 - `.nvmrc` — Node.js version pin (18)
+- `railway.json` — Railway deployment config (health check, restart policy, Nixpacks builder)
+- `.env.example` — Environment variable documentation for local dev and Railway
+- `.railwayignore` — Files excluded from Railway deploy (screenshots, docs, tests)
 
 ## Project Structure
 
@@ -585,6 +606,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 
 ### Medium Priority
 - **No pagination on rides API:** Returns all rides every 5 seconds.
+- **Railway custom domain:** `app.ride-ops.com` CNAME configured in Squarespace DNS pointing to Railway service.
 - ~~**Demo re-seed interval:**~~ **RESOLVED** — Removed automatic hourly reseed. Manual `POST /api/dev/reseed` endpoint (office + DEMO_MODE only).
 - ~~**Polling ignores tab visibility:**~~ **RESOLVED** — All 3 views (office, driver, rider) pause polling via `visibilitychange` and resume with immediate data refresh.
 - ~~**Two toast systems + two modal systems:**~~ **RESOLVED** — `showToast`/`showConfirmModal` removed from utils.js; all code uses `showToastNew`/`showModalNew` from rideops-utils.js.
