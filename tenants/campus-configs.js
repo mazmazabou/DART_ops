@@ -16,8 +16,23 @@ module.exports = {
     sidebarBorder: 'rgba(255,255,255,0.08)',
     headerBg: '#FFE8A0',
     mapUrl: 'https://maps.usc.edu/',
+    mapTitle: 'USC Campus Map',
     campusKey: 'usc',
     locationsKey: 'usc',
+    idFieldLabel: 'USC ID',
+    idFieldMaxLength: 10,
+    idFieldPattern: '^\\d{10}$',
+    idFieldPlaceholder: '1234567890',
+    serviceScopeText: 'USC campus only',
+    timezone: 'America/Los_Angeles',
+    rules: [
+      'DART is a free service provided by USC Transportation to assist USC students, faculty and staff with mobility issues in getting around campus. Service is available at UPC during the Fall and Spring semesters only, between 8:00am\u20137:00pm, Monday\u2013Friday.',
+      'DART vehicles (golf carts) are not city-street legal and cannot leave campus. Service is NOT available to off-campus housing, off-campus parking structures, the USC Village, etc.',
+      'If the DART driver arrives at the pickup location and the rider is not present, the driver will wait up to 5 minutes (grace period). After 5 minutes, the ride will be marked as a no-show.',
+      '5 consecutive no-shows will result in automatic service termination. Completed rides reset the no-show counter.',
+      'Riders must be present at the designated pickup location at the requested time. The driver will not search the surrounding area.',
+      'For safety reasons, DART carts follow designated campus paths and may not take the shortest route. Please allow extra time.'
+    ],
   },
   stanford: {
     orgName: 'Stanford ATS',
