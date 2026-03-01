@@ -121,11 +121,10 @@ async function applyTenantTheme() {
 }
 
 // Status badge HTML
-function statusBadge(status, graceMins) {
+function statusBadge(status) {
   var label;
   if (status === 'driver_arrived_grace') {
-    var mins = graceMins || window._opsGraceMins || 5;
-    label = mins + '-min grace period';
+    label = 'Grace Period';
   } else {
     label = (status || '').replace(/_/g, ' ').replace('driver ', '');
   }

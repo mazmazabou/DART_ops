@@ -14,7 +14,7 @@
   <!-- Locations loaded dynamically from /api/locations -->
   <style>
     body { padding-bottom: 56px; }
-    .rider-header { position: sticky; top: 0; z-index: 20; height: 48px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+    .rider-header { position: sticky; top: 0; z-index: 20; height: 48px; background: var(--color-header-bg); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
     .rider-header__left { display: flex; align-items: center; gap: 8px; }
     .rider-header__left span { font-weight: 700; font-size: 14px; }
     .rider-main { max-width: 600px; margin: 0 auto; padding: 16px; }
@@ -258,12 +258,18 @@
     }
 
     // ── Tenant config ──
-    fetch('/api/tenant-config').then(function(r) { return r.ok ? r.json() : null; }).then(function(c) {
-      if (!c) return;
-      document.title = (c.orgShortName || 'RideOps') + ' Rider';
-      var el = document.getElementById('org-short-name');
-      if (el) el.textContent = c.orgShortName || 'RideOps';
-    }).catch(function() {});
+    (function() {
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      var campusSlug = ['usc','stanford','ucla','uci'].indexOf(parts[0]) !== -1 ? parts[0] : '';
+      var url = '/api/tenant-config' + (campusSlug ? '?campus=' + campusSlug : '');
+      fetch(url).then(function(r) { return r.ok ? r.json() : null; }).then(function(c) {
+        if (!c) return;
+        document.title = (c.orgShortName || 'RideOps') + ' Rider';
+        var el = document.getElementById('org-short-name');
+        if (el) el.textContent = c.orgShortName || 'RideOps';
+        if (typeof applyTenantTheme === 'function') applyTenantTheme(c);
+      }).catch(function() {});
+    })();
 
     // ── Locations ──
     async function loadLocations() {
