@@ -1443,6 +1443,8 @@ VALID_ORG_SLUGS.forEach(slug => {
 
 // ----- Pages -----
 app.get('/login', (req, res) => {
+  // Clear campus from session so bare /login shows neutral branding
+  delete req.session.campus;
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
