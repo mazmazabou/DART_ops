@@ -237,8 +237,46 @@ function loadMapPanel() {
     return;
   }
   if (mapNav) mapNav.style.display = '';
-  if (mapContainer) {
-    mapContainer.innerHTML = '<iframe src="' + tenantConfig.mapUrl + '" style="width:100%;height:100%;border:none;" title="Campus Map" loading="lazy"></iframe>';
+  if (!mapContainer) return;
+  // Clear existing content
+  mapContainer.textContent = '';
+  if (tenantConfig.mapEmbeddable === false) {
+    // Render fallback card for non-embeddable maps (mapUrl comes from server tenant config, not user input)
+    var fallback = document.createElement('div');
+    fallback.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;padding:40px;text-align:center;';
+    var iconWrap = document.createElement('div');
+    iconWrap.style.cssText = 'width:80px;height:80px;border-radius:50%;background:var(--color-primary);display:flex;align-items:center;justify-content:center;';
+    var icon = document.createElement('i');
+    icon.className = 'ti ti-map-2';
+    icon.style.cssText = 'font-size:36px;color:white;';
+    iconWrap.appendChild(icon);
+    var title = document.createElement('div');
+    title.style.cssText = 'font-size:18px;font-weight:700;color:var(--color-text);';
+    title.textContent = tenantConfig.mapTitle || 'Campus Map';
+    var desc = document.createElement('div');
+    desc.style.cssText = 'font-size:13px;color:var(--color-text-muted);max-width:360px;';
+    desc.textContent = 'This campus map cannot be embedded directly. Click the button below to open it in a new tab.';
+    var link = document.createElement('a');
+    link.href = tenantConfig.mapUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:var(--color-primary);color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;';
+    var linkIcon = document.createElement('i');
+    linkIcon.className = 'ti ti-external-link';
+    link.appendChild(linkIcon);
+    link.appendChild(document.createTextNode(' Open Campus Map'));
+    fallback.appendChild(iconWrap);
+    fallback.appendChild(title);
+    fallback.appendChild(desc);
+    fallback.appendChild(link);
+    mapContainer.appendChild(fallback);
+  } else {
+    var iframe = document.createElement('iframe');
+    iframe.src = tenantConfig.mapUrl;
+    iframe.style.cssText = 'width:100%;height:100%;border:none;';
+    iframe.title = 'Campus Map';
+    iframe.loading = 'lazy';
+    mapContainer.appendChild(iframe);
   }
 }
 
