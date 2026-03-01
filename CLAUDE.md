@@ -51,10 +51,12 @@ RideOps is an accessible campus transportation operations platform. It provides 
 Defines branding overrides per campus: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, sidebarBg, sidebarText, headerTint, mapUrl, locationsFile, idFieldLabel/Pattern/MaxLength.
 
 ## Tech Stack
-- **Backend:** Node.js + Express + express-session + bcryptjs
+- **Backend:** Node.js (>=18) + Express + express-session + bcryptjs
 - **Database:** PostgreSQL (via `pg` pool with connection pooling)
+- **Sessions:** `connect-pg-simple` for PostgreSQL-backed session storage (auto-creates `session` table)
+- **Rate Limiting:** `express-rate-limit` on auth endpoints (login 10/15min, signup 5/15min)
 - **Frontend:** Vanilla HTML/CSS/JS (no framework). Multi-page: index.html (office/admin), driver.html, rider.html, login.html, signup.html
-- **Auth:** Session-based with bcrypt password hashing. Default password: `demo123`
+- **Auth:** Session-based with async bcrypt password hashing. Default password: `demo123`
 - **Email:** Nodemailer with optional SMTP (falls back to console logging)
 - **Reports:** ExcelJS for multi-sheet .xlsx workbook generation (server-side, npm package)
 
@@ -85,6 +87,8 @@ SMTP_USER=                     # SMTP username
 SMTP_PASS=                     # SMTP password
 NOTIFICATION_FROM=noreply@ride-ops.com  # Notification sender address
 NOTIFICATION_FROM_NAME=RideOps          # Notification sender name
+SESSION_SECRET=                # Required in production, random fallback in development
+NODE_ENV=production            # Set for secure cookies and strict validation
 ```
 
 Default login credentials (password: `demo123`):
@@ -153,7 +157,11 @@ Default login credentials (password: `demo123`):
   - Seeds default users (drivers, office, sample riders)
   - Seeds default vehicles (3 standard + 1 accessible)
   - Seeds default tenant settings (14+ configurable keys)
-- Session middleware for authentication
+- Session store: `connect-pg-simple` using existing pg pool (auto-creates `session` table)
+- Rate limiting: `express-rate-limit` on `/api/auth/login` (10/15min) and `/api/auth/signup` (5/15min)
+- Async error handling: All async routes wrapped with `wrapAsync()`, global error middleware returns 500 JSON
+- Health check: `GET /health` returns DB connectivity status (unauthenticated)
+- Graceful shutdown: SIGTERM/SIGINT handlers drain connections with 15s timeout
 - Role-based access control via middleware: `requireAuth`, `requireOffice`, `requireStaff`, `requireRider`
 - Database helpers: `query()`, `generateId()`, `addRideEvent()`, `mapRide()`, `getSetting()`
 
@@ -274,6 +282,9 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Ride approval:** Office must check miss count < max strikes before approving rides
 
 ## API Endpoints Overview
+
+### Infrastructure
+- `GET /health` — Health check with DB connectivity status (unauthenticated)
 
 ### Authentication
 - `POST /api/auth/login` — Login with username/password
@@ -480,18 +491,18 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 *Identified during pre-demo audit on 2026-03-01. See `docs/reference/AUDIT_REPORT.md` for full details.*
 
 ### Critical (Must Fix Before Production)
-- **Session security:** Hardcoded fallback secret, in-memory MemoryStore, `secure: false` cookies, no `trust proxy`. Need `connect-pg-simple`, env var validation, conditional secure cookies.
-- **SQL injection:** `server.js:109` — `TENANT.timezone` interpolated into SQL without parameterization.
-- **No rate limiting:** Login and signup endpoints accept unlimited requests. Need `express-rate-limit`.
-- **No graceful shutdown:** No SIGTERM/SIGINT handlers. Deploys drop in-flight requests.
+- ~~**Session security:**~~ **RESOLVED** — `connect-pg-simple` store, `SESSION_SECRET` validation, secure cookies, `trust proxy`.
+- ~~**SQL injection:**~~ **RESOLVED** — Parameterized query for timezone setting.
+- ~~**No rate limiting:**~~ **RESOLVED** — `express-rate-limit` on login (10/15min) and signup (5/15min).
+- ~~**No graceful shutdown:**~~ **RESOLVED** — SIGTERM/SIGINT handlers with 15s timeout.
 
 ### High Priority
 - **Missing DB indexes:** `rides` table has zero indexes beyond PK. Will degrade at scale (1000+ rides/semester). Need indexes on status, requested_time, rider_email, assigned_driver_id, rider_id, vehicle_id. Also `ride_events(ride_id)`, `shifts(employee_id)`.
 - **No transactions:** Multi-step operations (no-show, completion, cancellation) use separate queries without transaction wrapping. Server crash mid-flow → inconsistent data.
-- **Stored XSS:** Program rules HTML only blocks `<script>` tags. `<img onerror>`, `<svg onload>` bypass the filter.
-- **Sync bcrypt:** `bcrypt.hashSync()`/`compareSync()` block event loop ~100ms per call. Switch to async versions.
-- **Missing error handling:** ~20+ async route handlers lack try/catch. DB errors → client hangs.
-- **No `/health` endpoint:** Deployment platforms can't health-check the app.
+- ~~**Stored XSS:**~~ **RESOLVED** — Sanitizer now strips `on*` event handlers and `javascript:` URLs.
+- ~~**Sync bcrypt:**~~ **RESOLVED** — All `hashSync`/`compareSync` replaced with async equivalents.
+- ~~**Missing error handling:**~~ **RESOLVED** — All async routes wrapped with `wrapAsync()`, global error middleware added.
+- ~~**No `/health` endpoint:**~~ **RESOLVED** — `GET /health` with DB connectivity check.
 - **Phantom notification events:** `driver_no_clock_in`, `daily_summary`, and `ride_completed` (office) appear in preferences UI but are never dispatched.
 - **`uscId` field name:** Signup API sends member ID as "uscId" — visible to non-USC evaluators in network tab.
 - **Office grace timer hardcoded:** `app.js:2812` uses `300` (5 min) instead of configurable `tenantConfig.grace_period_minutes`.
