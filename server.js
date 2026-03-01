@@ -110,8 +110,18 @@ const pool = new Pool({
   ssl: process.env.PGSSLMODE === 'require' || process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined
 });
 
-pool.on('connect', (client) => {
-  client.query('SET timezone = $1', [TENANT.timezone]);
+pool.on('connect', async (client) => {
+  if (TENANT.timezone) {
+    const tzCheck = await client.query(
+      "SELECT 1 FROM pg_timezone_names WHERE name = $1",
+      [TENANT.timezone]
+    );
+    if (tzCheck.rows.length > 0) {
+      await client.query(`SET timezone = '${TENANT.timezone}'`);
+    } else {
+      console.warn(`[WARN] Invalid timezone "${TENANT.timezone}" — using database default`);
+    }
+  }
 });
 
 const MIN_PASSWORD_LENGTH = 8;
