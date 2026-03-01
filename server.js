@@ -5,8 +5,15 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
+const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
+
+// Async error wrapper — catches rejected promises and forwards to Express error handler
+const wrapAsync = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 let emailModule;
@@ -106,19 +113,42 @@ const pool = new Pool({
 });
 
 pool.on('connect', (client) => {
-  client.query(`SET timezone = '${TENANT.timezone}'`);
+  client.query('SET timezone = $1', [TENANT.timezone]);
 });
 
+// Session secret validation
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction && !process.env.SESSION_SECRET) {
+  console.error('[FATAL] SESSION_SECRET environment variable is required in production.');
+  console.error('Set a strong, random secret: export SESSION_SECRET=$(openssl rand -hex 32)');
+  process.exit(1);
+}
+if (!isProduction && !process.env.SESSION_SECRET) {
+  console.warn('[WARN] SESSION_SECRET not set — using development-only fallback. Do NOT deploy like this.');
+}
+const sessionSecret = process.env.SESSION_SECRET || 'rideops-dev-only-secret-do-not-use-in-prod';
+
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'rideops-secret-change-in-production',
+  store: new PgSession({
+    pool,
+    tableName: 'session',
+    createTableIfMissing: true
+  }),
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  cookie: {
+    secure: isProduction,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000
+  }
 }));
 
-const defaultPasswordHash = bcrypt.hashSync('demo123', 10);
+let defaultPasswordHash;
 
 // ----- DB helpers -----
 async function query(text, params) {
@@ -715,19 +745,46 @@ function setSessionFromUser(req, user) {
   req.session.memberId = user.member_id;
 }
 
+// ----- Health check (unauthenticated) -----
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', db: 'connected', uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: 'degraded', db: 'disconnected', error: err.message });
+  }
+});
+
+// ----- Rate limiters (auth endpoints only) -----
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again later.' }
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again later.' }
+});
+
 // ----- Auth endpoints -----
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, wrapAsync(async (req, res) => {
   const { username, password } = req.body;
   const userRes = await query('SELECT * FROM users WHERE username = $1', [username.toLowerCase()]);
   const user = userRes.rows[0];
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
   setSessionFromUser(req, user);
   const responseData = { id: user.id, username: user.username, name: user.name, email: user.email, role: user.role, campus: req.session.campus || null };
   if (user.must_change_password) responseData.mustChangePassword = true;
   res.json(responseData);
-});
+}));
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => {
@@ -759,7 +816,7 @@ app.get('/api/client-config', (req, res) => {
   res.json({ isDev: isDevRequest(req) });
 });
 
-app.get('/api/tenant-config', async (req, res) => {
+app.get('/api/tenant-config', wrapAsync(async (req, res) => {
   let config = { ...TENANT };
   const campus = req.session.campus || req.query.campus;
   if (campus && campusConfigs[campus]) {
@@ -777,9 +834,9 @@ app.get('/api/tenant-config', async (req, res) => {
   if (!config.grace_period_minutes) config.grace_period_minutes = 5;
   if (!config.academic_period_label) config.academic_period_label = 'Semester';
   res.json(config);
-});
+}));
 
-app.get('/api/program-rules', async (req, res) => {
+app.get('/api/program-rules', wrapAsync(async (req, res) => {
   try {
     const result = await query("SELECT rules_html FROM program_content WHERE id = 'default'");
     if (!result.rowCount) return res.json({ rulesHtml: '' });
@@ -788,28 +845,33 @@ app.get('/api/program-rules', async (req, res) => {
     console.error('GET /api/program-rules error:', err);
     res.status(500).json({ error: 'Failed to fetch rules' });
   }
-});
+}));
 
-app.put('/api/program-rules', requireOffice, async (req, res) => {
+app.put('/api/program-rules', requireOffice, wrapAsync(async (req, res) => {
   const { rulesHtml } = req.body;
   if (typeof rulesHtml !== 'string') return res.status(400).json({ error: 'rulesHtml must be a string' });
-  if (/<script/i.test(rulesHtml)) return res.status(400).json({ error: 'Script tags not allowed' });
+  // Sanitize: strip script tags, on* event handlers, and javascript: URLs
+  let sanitized = rulesHtml;
+  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  if (/<script/i.test(sanitized)) return res.status(400).json({ error: 'Script tags not allowed' });
+  sanitized = sanitized.replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+  sanitized = sanitized.replace(/href\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, '');
   try {
     const existing = await query("SELECT id FROM program_content WHERE id = 'default'");
     if (existing.rowCount > 0) {
-      await query("UPDATE program_content SET rules_html = $1, updated_at = NOW() WHERE id = 'default'", [rulesHtml]);
+      await query("UPDATE program_content SET rules_html = $1, updated_at = NOW() WHERE id = 'default'", [sanitized]);
     } else {
-      await query("INSERT INTO program_content (id, rules_html, updated_at) VALUES ('default', $1, NOW())", [rulesHtml]);
+      await query("INSERT INTO program_content (id, rules_html, updated_at) VALUES ('default', $1, NOW())", [sanitized]);
     }
     res.json({ ok: true });
   } catch (err) {
     console.error('PUT /api/program-rules error:', err);
     res.status(500).json({ error: 'Failed to save rules' });
   }
-});
+}));
 
 // ----- Settings endpoints -----
-app.get('/api/settings', requireOffice, async (req, res) => {
+app.get('/api/settings', requireOffice, wrapAsync(async (req, res) => {
   try {
     const result = await query('SELECT setting_key, setting_value, setting_type, label, description, category FROM tenant_settings ORDER BY category, setting_key');
     const grouped = {};
@@ -828,9 +890,9 @@ app.get('/api/settings', requireOffice, async (req, res) => {
     console.error('settings fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
-});
+}));
 
-app.put('/api/settings', requireOffice, async (req, res) => {
+app.put('/api/settings', requireOffice, wrapAsync(async (req, res) => {
   try {
     const updates = req.body;
     if (!Array.isArray(updates)) return res.status(400).json({ error: 'Expected array of { key, value }' });
@@ -889,9 +951,9 @@ app.put('/api/settings', requireOffice, async (req, res) => {
     console.error('settings update error:', err);
     res.status(500).json({ error: 'Failed to update settings' });
   }
-});
+}));
 
-app.get('/api/settings/public/operations', async (req, res) => {
+app.get('/api/settings/public/operations', wrapAsync(async (req, res) => {
   try {
     const result = await query(
       `SELECT setting_key, setting_value FROM tenant_settings WHERE category = 'operations' OR setting_key IN ('grace_period_minutes', 'max_no_show_strikes', 'strikes_enabled')`
@@ -916,9 +978,9 @@ app.get('/api/settings/public/operations', async (req, res) => {
       strikes_enabled: 'true'
     });
   }
-});
+}));
 
-app.get('/api/settings/:key', requireAuth, async (req, res) => {
+app.get('/api/settings/:key', requireAuth, wrapAsync(async (req, res) => {
   try {
     const result = await query('SELECT setting_value, setting_type FROM tenant_settings WHERE setting_key = $1', [req.params.key]);
     if (!result.rowCount) return res.status(404).json({ error: 'Setting not found' });
@@ -927,10 +989,10 @@ app.get('/api/settings/:key', requireAuth, async (req, res) => {
     console.error('setting fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch setting' });
   }
-});
+}));
 
 // Self-service profile
-app.get('/api/me', requireAuth, async (req, res) => {
+app.get('/api/me', requireAuth, wrapAsync(async (req, res) => {
   const result = await query(
     `SELECT id, username, name, email, member_id, phone, role, avatar_url, preferred_name, major, graduation_year, bio FROM users WHERE id = $1`,
     [req.session.userId]
@@ -938,9 +1000,9 @@ app.get('/api/me', requireAuth, async (req, res) => {
   const user = result.rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
-});
+}));
 
-app.put('/api/me', requireAuth, async (req, res) => {
+app.put('/api/me', requireAuth, wrapAsync(async (req, res) => {
   const { name, phone, preferredName, major, graduationYear, bio, avatarUrl } = req.body;
   if (name && name.length > 120) return res.status(400).json({ error: 'Name too long' });
   if (phone !== undefined && !isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
@@ -1005,10 +1067,10 @@ app.put('/api/me', requireAuth, async (req, res) => {
   // refresh session display name
   req.session.name = user.name;
   res.json(user);
-});
+}));
 
 // Change own password
-app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+app.post('/api/auth/change-password', requireAuth, wrapAsync(async (req, res) => {
   if (DEMO_MODE) return res.status(403).json({ error: 'Password changes are disabled in demo mode' });
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
@@ -1020,18 +1082,18 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   const userRes = await query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
   const user = userRes.rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+  if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
-  const hash = bcrypt.hashSync(newPassword, 10);
+  const hash = await bcrypt.hash(newPassword, 10);
   await query(
     `UPDATE users SET password_hash = $1, must_change_password = FALSE, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2`,
     [hash, req.session.userId]
   );
   res.json({ success: true });
-});
+}));
 
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', signupLimiter, wrapAsync(async (req, res) => {
   if (!SIGNUP_ENABLED) {
     return res.status(403).json({ error: 'Signup is currently disabled' });
   }
@@ -1054,7 +1116,7 @@ app.post('/api/auth/signup', async (req, res) => {
     return res.status(400).json({ error: `Username, email, phone, or ${TENANT.idFieldLabel} already exists` });
   }
   const id = generateId('rider');
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   await query(
     `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'rider', FALSE)`,
@@ -1064,17 +1126,17 @@ app.post('/api/auth/signup', async (req, res) => {
   const user = userRes.rows[0];
   setSessionFromUser(req, user);
   res.json({ id: user.id, username: user.username, name: user.name, email: user.email, role: user.role });
-});
+}));
 
 // ----- Admin endpoints -----
-app.get('/api/admin/users', requireOffice, async (req, res) => {
+app.get('/api/admin/users', requireOffice, wrapAsync(async (req, res) => {
   const result = await query(
     `SELECT id, username, name, email, member_id, phone, role, active FROM users ORDER BY role, name`
   );
   res.json(result.rows);
-});
+}));
 
-app.get('/api/admin/users/search', requireOffice, async (req, res) => {
+app.get('/api/admin/users/search', requireOffice, wrapAsync(async (req, res) => {
   const member_id = req.query.member_id || req.query.usc_id;
   if (!member_id || !isValidMemberId(member_id)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
   const result = await query(
@@ -1083,9 +1145,9 @@ app.get('/api/admin/users/search', requireOffice, async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'No user found' });
   res.json(result.rows[0]);
-});
+}));
 
-app.delete('/api/admin/users/:id', requireOffice, async (req, res) => {
+app.delete('/api/admin/users/:id', requireOffice, wrapAsync(async (req, res) => {
   if (DEMO_MODE) return res.status(403).json({ error: 'User deletion is disabled in demo mode' });
   const targetId = req.params.id;
   if (targetId === req.session.userId) return res.status(400).json({ error: 'Cannot delete your own office account' });
@@ -1110,9 +1172,9 @@ app.delete('/api/admin/users/:id', requireOffice, async (req, res) => {
 
   await query(`DELETE FROM users WHERE id = $1`, [targetId]);
   res.json({ success: true, deletedId: targetId });
-});
+}));
 
-app.post('/api/admin/users', requireOffice, async (req, res) => {
+app.post('/api/admin/users', requireOffice, wrapAsync(async (req, res) => {
   const { name, email, phone, uscId, role, password, username: reqUsername } = req.body;
   if (!name || !email || !uscId || !role || !password) {
     return res.status(400).json({ error: `Name, email, ${TENANT.idFieldLabel}, role, and password are required` });
@@ -1132,7 +1194,7 @@ app.post('/api/admin/users', requireOffice, async (req, res) => {
   }
 
   const id = generateId(role);
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   await query(
     `INSERT INTO users (id, username, password_hash, name, email, member_id, phone, role, active, must_change_password)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, TRUE)`,
@@ -1151,9 +1213,9 @@ app.post('/api/admin/users', requireOffice, async (req, res) => {
     [id]
   );
   res.json({ ...result.rows[0], emailSent });
-});
+}));
 
-app.put('/api/admin/users/:id', requireOffice, async (req, res) => {
+app.put('/api/admin/users/:id', requireOffice, wrapAsync(async (req, res) => {
   const targetId = req.params.id;
   if (targetId === req.session.userId) return res.status(400).json({ error: 'Cannot edit your own office account here' });
   const { name, phone, email, uscId, role } = req.body;
@@ -1183,9 +1245,9 @@ app.put('/api/admin/users/:id', requireOffice, async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'User not found' });
   res.json(result.rows[0]);
-});
+}));
 
-app.get('/api/admin/users/:id/profile', requireOffice, async (req, res) => {
+app.get('/api/admin/users/:id/profile', requireOffice, wrapAsync(async (req, res) => {
   const key = req.params.id;
   const userRes = await query(
     `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE id = $1 OR email = $1 OR username = $1`,
@@ -1228,10 +1290,10 @@ app.get('/api/admin/users/:id/profile', requireOffice, async (req, res) => {
   }
 
   res.json({ user, upcoming, past, missCount });
-});
+}));
 
 // Admin reset rider miss count
-app.post('/api/admin/users/:id/reset-miss-count', requireOffice, async (req, res) => {
+app.post('/api/admin/users/:id/reset-miss-count', requireOffice, wrapAsync(async (req, res) => {
   const userRes = await query('SELECT id, name, email, role FROM users WHERE id = $1', [req.params.id]);
   if (!userRes.rowCount) return res.status(404).json({ error: 'User not found' });
   const user = userRes.rows[0];
@@ -1239,10 +1301,10 @@ app.post('/api/admin/users/:id/reset-miss-count', requireOffice, async (req, res
   if (!user.email) return res.status(400).json({ error: 'Rider has no email on file' });
   await setRiderMissCount(user.email, 0);
   res.json({ success: true, missCount: 0 });
-});
+}));
 
 // Admin reset password for another user
-app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) => {
+app.post('/api/admin/users/:id/reset-password', requireOffice, wrapAsync(async (req, res) => {
   if (DEMO_MODE) return res.status(403).json({ error: 'Password resets are disabled in demo mode' });
   const targetId = req.params.id;
   if (targetId === req.session.userId) {
@@ -1256,7 +1318,7 @@ app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) 
   const user = userRes.rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const hash = bcrypt.hashSync(newPassword, 10);
+  const hash = await bcrypt.hash(newPassword, 10);
   await query(
     `UPDATE users SET password_hash = $1, must_change_password = TRUE, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2`,
     [hash, targetId]
@@ -1270,7 +1332,7 @@ app.post('/api/admin/users/:id/reset-password', requireOffice, async (req, res) 
   } catch {}
 
   res.json({ success: true, emailSent });
-});
+}));
 
 // Email status check
 app.get('/api/admin/email-status', requireOffice, (req, res) => {
@@ -1402,12 +1464,12 @@ app.get('/demo-config.js', (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ----- Employee endpoints -----
-app.get('/api/employees', requireStaff, async (req, res) => {
+app.get('/api/employees', requireStaff, wrapAsync(async (req, res) => {
   const employees = await getEmployees();
   res.json(employees.map(({ password_hash, ...rest }) => rest));
-});
+}));
 
-app.post('/api/employees/clock-in', requireStaff, async (req, res) => {
+app.post('/api/employees/clock-in', requireStaff, wrapAsync(async (req, res) => {
   const { employeeId } = req.body;
   const result = await query(
     `UPDATE users SET active = TRUE, updated_at = NOW() WHERE id = $1 AND role = 'driver' RETURNING id, username, name, email, role, active`,
@@ -1460,9 +1522,9 @@ app.post('/api/employees/clock-in', requireStaff, async (req, res) => {
       thresholdCheck: clockEvent.tardiness_minutes
     }, query).catch(() => {});
   }
-});
+}));
 
-app.post('/api/employees/clock-out', requireStaff, async (req, res) => {
+app.post('/api/employees/clock-out', requireStaff, wrapAsync(async (req, res) => {
   const { employeeId } = req.body;
   const result = await query(
     `UPDATE users SET active = FALSE, updated_at = NOW() WHERE id = $1 AND role = 'driver' RETURNING id, username, name, email, role, active`,
@@ -1485,9 +1547,9 @@ app.post('/api/employees/clock-out', requireStaff, async (req, res) => {
   }
 
   res.json({ ...result.rows[0], clockEvent });
-});
+}));
 
-app.get('/api/employees/today-status', requireStaff, async (req, res) => {
+app.get('/api/employees/today-status', requireStaff, wrapAsync(async (req, res) => {
   try {
     const now = new Date();
     const local = new Date(now.toLocaleString('en-US', { timeZone: TENANT.timezone }));
@@ -1530,9 +1592,9 @@ app.get('/api/employees/today-status', requireStaff, async (req, res) => {
     console.error('today-status error:', err);
     res.status(500).json({ error: 'Failed to fetch today status' });
   }
-});
+}));
 
-app.get('/api/employees/:id/tardiness', requireOffice, async (req, res) => {
+app.get('/api/employees/:id/tardiness', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { id } = req.params;
     const { from, to } = req.query;
@@ -1572,10 +1634,10 @@ app.get('/api/employees/:id/tardiness', requireOffice, async (req, res) => {
     console.error('tardiness error:', err);
     res.status(500).json({ error: 'Failed to fetch tardiness data' });
   }
-});
+}));
 
 // ----- Shift endpoints -----
-app.get('/api/shifts', requireStaff, async (req, res) => {
+app.get('/api/shifts', requireStaff, wrapAsync(async (req, res) => {
   const { weekStart } = req.query;
   let result;
   if (weekStart) {
@@ -1591,9 +1653,9 @@ app.get('/api/shifts', requireStaff, async (req, res) => {
     );
   }
   res.json(result.rows);
-});
+}));
 
-app.post('/api/shifts', requireOffice, async (req, res) => {
+app.post('/api/shifts', requireOffice, wrapAsync(async (req, res) => {
   const { employeeId, dayOfWeek, startTime, endTime, notes, weekStart } = req.body;
   // Validate dayOfWeek against operating days
   const dow = Number(dayOfWeek);
@@ -1620,16 +1682,16 @@ app.post('/api/shifts', requireOffice, async (req, res) => {
     [shift.id, employeeId, dayOfWeek, startTime, endTime, notes || '', weekStart || null]
   );
   res.json(shift);
-});
+}));
 
-app.delete('/api/shifts/:id', requireOffice, async (req, res) => {
+app.delete('/api/shifts/:id', requireOffice, wrapAsync(async (req, res) => {
   const { id } = req.params;
   const result = await query(`DELETE FROM shifts WHERE id = $1 RETURNING id`, [id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Shift not found' });
   res.json({ id });
-});
+}));
 
-app.put('/api/shifts/:id', requireOffice, async (req, res) => {
+app.put('/api/shifts/:id', requireOffice, wrapAsync(async (req, res) => {
   const { id } = req.params;
   const { employeeId, dayOfWeek, startTime, endTime, notes, weekStart } = req.body;
 
@@ -1684,10 +1746,10 @@ app.put('/api/shifts/:id', requireOffice, async (req, res) => {
   );
 
   res.json(result.rows[0]);
-});
+}));
 
 // ----- Ride endpoints -----
-app.get('/api/rides', requireStaff, async (req, res) => {
+app.get('/api/rides', requireStaff, wrapAsync(async (req, res) => {
   const { status } = req.query;
   const baseSql = `
     SELECT r.id, r.rider_id, r.rider_name, r.rider_email, r.rider_phone, r.pickup_location, r.dropoff_location, r.notes,
@@ -1703,9 +1765,9 @@ app.get('/api/rides', requireStaff, async (req, res) => {
     ? await query(`${baseSql} WHERE r.status = $1 ORDER BY r.requested_time`, [status])
     : await query(`${baseSql} ORDER BY r.requested_time`);
   res.json(result.rows.map(mapRide));
-});
+}));
 
-app.post('/api/rides', requireAuth, async (req, res) => {
+app.post('/api/rides', requireAuth, wrapAsync(async (req, res) => {
   const { riderName, riderEmail, riderPhone, pickupLocation, dropoffLocation, requestedTime, notes } = req.body;
 
   if (!pickupLocation || !dropoffLocation || !requestedTime) {
@@ -1750,9 +1812,9 @@ app.post('/api/rides', requireAuth, async (req, res) => {
     dropoff: dropoffLocation,
     requestedTime: new Date(requestedTime).toLocaleString('en-US', { timeZone: TENANT.timezone })
   }, query).catch(() => {});
-});
+}));
 
-app.post('/api/rides/:id/approve', requireOffice, async (req, res) => {
+app.post('/api/rides/:id/approve', requireOffice, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -1783,9 +1845,9 @@ app.post('/api/rides/:id/approve', requireOffice, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
-app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
+app.post('/api/rides/:id/deny', requireOffice, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -1806,9 +1868,9 @@ app.post('/api/rides/:id/deny', requireOffice, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
-app.get('/api/my-rides', requireRider, async (req, res) => {
+app.get('/api/my-rides', requireRider, wrapAsync(async (req, res) => {
   const result = await query(
     `SELECT r.id, r.rider_name, r.rider_email, r.rider_phone, r.pickup_location, r.dropoff_location, r.notes,
             r.requested_time, r.status, r.assigned_driver_id, r.grace_start_time, r.consecutive_misses, r.recurring_id, r.rider_id, r.vehicle_id,
@@ -1820,9 +1882,9 @@ app.get('/api/my-rides', requireRider, async (req, res) => {
     [req.session.email]
   );
   res.json(result.rows.map(mapRide));
-});
+}));
 
-app.post('/api/rides/:id/cancel', requireAuth, async (req, res) => {
+app.post('/api/rides/:id/cancel', requireAuth, wrapAsync(async (req, res) => {
   const isOffice = req.session.role === 'office';
 
   let rideRes;
@@ -1871,10 +1933,10 @@ app.post('/api/rides/:id/cancel', requireAuth, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
 // Bulk delete rides (office only)
-app.post('/api/rides/bulk-delete', requireOffice, async (req, res) => {
+app.post('/api/rides/bulk-delete', requireOffice, wrapAsync(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids array required' });
   try {
@@ -1885,10 +1947,10 @@ app.post('/api/rides/bulk-delete', requireOffice, async (req, res) => {
     console.error('POST /api/rides/bulk-delete error:', err);
     res.status(500).json({ error: 'Failed to delete rides' });
   }
-});
+}));
 
 // ----- Office admin override endpoints -----
-app.post('/api/rides/:id/unassign', requireOffice, async (req, res) => {
+app.post('/api/rides/:id/unassign', requireOffice, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -1916,9 +1978,9 @@ app.post('/api/rides/:id/unassign', requireOffice, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
-app.post('/api/rides/:id/reassign', requireOffice, async (req, res) => {
+app.post('/api/rides/:id/reassign', requireOffice, wrapAsync(async (req, res) => {
   const { driverId } = req.body;
   if (!driverId) return res.status(400).json({ error: 'driverId is required' });
 
@@ -1946,9 +2008,9 @@ app.post('/api/rides/:id/reassign', requireOffice, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'reassigned');
   res.json(mapRide(result.rows[0]));
-});
+}));
 
-app.put('/api/rides/:id', requireOffice, async (req, res) => {
+app.put('/api/rides/:id', requireOffice, wrapAsync(async (req, res) => {
   const { pickupLocation, dropoffLocation, requestedTime, notes, changeNotes, initials } = req.body;
   if (!changeNotes || !changeNotes.trim()) return res.status(400).json({ error: 'Change notes are required' });
   if (!initials || !initials.trim()) return res.status(400).json({ error: 'Initials are required' });
@@ -1984,7 +2046,7 @@ app.put('/api/rides/:id', requireOffice, async (req, res) => {
   );
   await addRideEvent(ride.id, req.session.userId, 'edited', changeNotes.trim(), initials.trim());
   res.json(mapRide(result.rows[0]));
-});
+}));
 
 app.get('/api/locations', requireAuth, (req, res) => {
   const campus = req.query.campus || req.session.campus;
@@ -1995,7 +2057,7 @@ app.get('/api/locations', requireAuth, (req, res) => {
 });
 
 // ----- Recurring rides -----
-app.post('/api/recurring-rides', requireRider, async (req, res) => {
+app.post('/api/recurring-rides', requireRider, wrapAsync(async (req, res) => {
   const { pickupLocation, dropoffLocation, timeOfDay, startDate, endDate, daysOfWeek, notes, riderPhone } = req.body;
   if (!pickupLocation || !dropoffLocation || !timeOfDay || !startDate || !endDate) {
     return res.status(400).json({ error: 'Pickup, dropoff, start/end date, and time are required' });
@@ -2044,9 +2106,9 @@ app.post('/api/recurring-rides', requireRider, async (req, res) => {
   }
 
   res.json({ recurringId: recurId, createdRides: created });
-});
+}));
 
-app.get('/api/recurring-rides/my', requireRider, async (req, res) => {
+app.get('/api/recurring-rides/my', requireRider, wrapAsync(async (req, res) => {
   const result = await query(
     `SELECT id, pickup_location, dropoff_location, time_of_day, days_of_week, start_date, end_date, status
      FROM recurring_rides WHERE rider_id = $1 ORDER BY created_at DESC`,
@@ -2062,9 +2124,9 @@ app.get('/api/recurring-rides/my', requireRider, async (req, res) => {
     withCounts.push({ ...row, upcomingCount: Number(countRes.rows[0].count) });
   }
   res.json(withCounts);
-});
+}));
 
-app.patch('/api/recurring-rides/:id', requireRider, async (req, res) => {
+app.patch('/api/recurring-rides/:id', requireRider, wrapAsync(async (req, res) => {
   const { status } = req.body;
   if (!['active', 'paused', 'cancelled'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
@@ -2085,9 +2147,9 @@ app.patch('/api/recurring-rides/:id', requireRider, async (req, res) => {
     );
   }
   res.json({ success: true });
-});
+}));
 
-app.post('/api/rides/:id/claim', requireAuth, async (req, res) => {
+app.post('/api/rides/:id/claim', requireAuth, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -2126,10 +2188,10 @@ app.post('/api/rides/:id/claim', requireAuth, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
 // ----- Driver action endpoints -----
-app.post('/api/rides/:id/on-the-way', requireAuth, async (req, res) => {
+app.post('/api/rides/:id/on-the-way', requireAuth, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -2165,9 +2227,9 @@ app.post('/api/rides/:id/on-the-way', requireAuth, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
-app.post('/api/rides/:id/here', requireAuth, async (req, res) => {
+app.post('/api/rides/:id/here', requireAuth, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -2193,9 +2255,9 @@ app.post('/api/rides/:id/here', requireAuth, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
-app.post('/api/rides/:id/complete', requireAuth, async (req, res) => {
+app.post('/api/rides/:id/complete', requireAuth, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -2227,9 +2289,9 @@ app.post('/api/rides/:id/complete', requireAuth, async (req, res) => {
       dropoff: ride.dropoff_location
     }, query).catch(() => {});
   }
-});
+}));
 
-app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
+app.post('/api/rides/:id/no-show', requireAuth, wrapAsync(async (req, res) => {
   const rideRes = await query(`SELECT * FROM rides WHERE id = $1`, [req.params.id]);
   const ride = rideRes.rows[0];
   if (!ride) return res.status(404).json({ error: 'Ride not found' });
@@ -2327,10 +2389,10 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
       console.error('[Notifications] no-show dispatch error:', err.message);
     }
   })();
-});
+}));
 
 // ----- Per-ride vehicle assignment (driver or office) -----
-app.patch('/api/rides/:id/vehicle', requireStaff, async (req, res) => {
+app.patch('/api/rides/:id/vehicle', requireStaff, wrapAsync(async (req, res) => {
   try {
     const { vehicle_id } = req.body;
     if (!vehicle_id) return res.status(400).json({ error: 'vehicle_id is required' });
@@ -2353,10 +2415,10 @@ app.patch('/api/rides/:id/vehicle', requireStaff, async (req, res) => {
     console.error('PATCH /api/rides/:id/vehicle error:', err);
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
-});
+}));
 
 // ----- Set vehicle on ride -----
-app.post('/api/rides/:id/set-vehicle', requireStaff, async (req, res) => {
+app.post('/api/rides/:id/set-vehicle', requireStaff, wrapAsync(async (req, res) => {
   const { vehicleId } = req.body;
   if (!vehicleId) return res.status(400).json({ error: 'vehicleId is required' });
   const rideRes = await query('SELECT * FROM rides WHERE id = $1', [req.params.id]);
@@ -2374,19 +2436,19 @@ app.post('/api/rides/:id/set-vehicle', requireStaff, async (req, res) => {
     [vehicleId, ride.id]
   );
   res.json(mapRide(result.rows[0]));
-});
+}));
 
 // ----- Vehicle endpoints -----
-app.get('/api/vehicles', requireStaff, async (req, res) => {
+app.get('/api/vehicles', requireStaff, wrapAsync(async (req, res) => {
   const includeRetired = req.query.includeRetired === 'true';
   const sql = includeRetired
     ? `SELECT * FROM vehicles ORDER BY name`
     : `SELECT * FROM vehicles WHERE status != 'retired' ORDER BY name`;
   const result = await query(sql);
   res.json(result.rows);
-});
+}));
 
-app.post('/api/vehicles', requireOffice, async (req, res) => {
+app.post('/api/vehicles', requireOffice, wrapAsync(async (req, res) => {
   const { name, type, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Vehicle name is required' });
   const id = generateId('veh');
@@ -2396,9 +2458,9 @@ app.post('/api/vehicles', requireOffice, async (req, res) => {
   );
   const result = await query(`SELECT * FROM vehicles WHERE id = $1`, [id]);
   res.json(result.rows[0]);
-});
+}));
 
-app.put('/api/vehicles/:id', requireOffice, async (req, res) => {
+app.put('/api/vehicles/:id', requireOffice, wrapAsync(async (req, res) => {
   const { name, type, status, notes, totalMiles } = req.body;
   const result = await query(
     `UPDATE vehicles SET
@@ -2413,24 +2475,24 @@ app.put('/api/vehicles/:id', requireOffice, async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
   res.json(result.rows[0]);
-});
+}));
 
-app.delete('/api/vehicles/:id', requireOffice, async (req, res) => {
+app.delete('/api/vehicles/:id', requireOffice, wrapAsync(async (req, res) => {
   await query(`UPDATE rides SET vehicle_id = NULL WHERE vehicle_id = $1`, [req.params.id]);
   const result = await query(`DELETE FROM vehicles WHERE id = $1 RETURNING id`, [req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
   res.json({ success: true });
-});
+}));
 
-app.post('/api/vehicles/:id/retire', requireOffice, async (req, res) => {
+app.post('/api/vehicles/:id/retire', requireOffice, wrapAsync(async (req, res) => {
   const check = await query(`SELECT status FROM vehicles WHERE id = $1`, [req.params.id]);
   if (!check.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
   if (check.rows[0].status === 'retired') return res.status(400).json({ error: 'Vehicle is already retired' });
   const result = await query(`UPDATE vehicles SET status = 'retired' WHERE id = $1 RETURNING *`, [req.params.id]);
   res.json(result.rows[0]);
-});
+}));
 
-app.post('/api/vehicles/:id/maintenance', requireOffice, async (req, res) => {
+app.post('/api/vehicles/:id/maintenance', requireOffice, wrapAsync(async (req, res) => {
   const { notes, mileage } = req.body;
   const result = await query(
     `UPDATE vehicles SET
@@ -2449,9 +2511,9 @@ app.post('/api/vehicles/:id/maintenance', requireOffice, async (req, res) => {
     [logId, req.params.id, notes || null, mileage != null ? mileage : null, req.session.userId]
   );
   res.json(result.rows[0]);
-});
+}));
 
-app.get('/api/vehicles/:id/maintenance', requireStaff, async (req, res) => {
+app.get('/api/vehicles/:id/maintenance', requireStaff, wrapAsync(async (req, res) => {
   const result = await query(
     `SELECT ml.*, u.name AS performed_by_name
      FROM maintenance_logs ml
@@ -2461,7 +2523,7 @@ app.get('/api/vehicles/:id/maintenance', requireStaff, async (req, res) => {
     [req.params.id]
   );
   res.json(result.rows);
-});
+}));
 
 // ----- Analytics endpoints -----
 function buildDateFilter(qp) {
@@ -2472,7 +2534,7 @@ function buildDateFilter(qp) {
   return { clause, params };
 }
 
-app.get('/api/analytics/summary', requireOffice, async (req, res) => {
+app.get('/api/analytics/summary', requireOffice, wrapAsync(async (req, res) => {
   const { clause, params } = buildDateFilter(req.query);
   const result = await query(
     `SELECT
@@ -2504,9 +2566,9 @@ app.get('/api/analytics/summary', requireOffice, async (req, res) => {
     cancellationRate: total > 0 ? parseFloat((parseInt(r.cancelled) / total * 100).toFixed(1)) : 0,
     noShowRate: total > 0 ? parseFloat((parseInt(r.no_shows) / total * 100).toFixed(1)) : 0
   });
-});
+}));
 
-app.get('/api/analytics/hotspots', requireOffice, async (req, res) => {
+app.get('/api/analytics/hotspots', requireOffice, wrapAsync(async (req, res) => {
   const { clause, params } = buildDateFilter(req.query);
   const statusFilter = `AND status NOT IN ('denied','cancelled')`;
   const [pickupRes, dropoffRes, routeRes, matrixRes] = await Promise.all([
@@ -2521,9 +2583,9 @@ app.get('/api/analytics/hotspots', requireOffice, async (req, res) => {
     topRoutes: routeRes.rows,
     matrix: matrixRes.rows
   });
-});
+}));
 
-app.get('/api/analytics/frequency', requireOffice, async (req, res) => {
+app.get('/api/analytics/frequency', requireOffice, wrapAsync(async (req, res) => {
   const { clause, params } = buildDateFilter(req.query);
   const rClause = clause.replace(/requested_time/g, 'r.requested_time');
   const [dailyRes, dowRes, hourRes, topRidersRes, topDriversRes, statusRes] = await Promise.all([
@@ -2555,9 +2617,9 @@ app.get('/api/analytics/frequency', requireOffice, async (req, res) => {
     topDrivers: topDriversRes.rows,
     byStatus: statusRes.rows
   });
-});
+}));
 
-app.get('/api/analytics/vehicles', requireOffice, async (req, res) => {
+app.get('/api/analytics/vehicles', requireOffice, wrapAsync(async (req, res) => {
   const { clause, params } = buildDateFilter(req.query);
   const rClause = clause.replace(/requested_time/g, 'r.requested_time');
   const [vehiclesRes, usageRes] = await Promise.all([
@@ -2580,9 +2642,9 @@ app.get('/api/analytics/vehicles', requireOffice, async (req, res) => {
     };
   });
   res.json(vehicles);
-});
+}));
 
-app.get('/api/analytics/milestones', requireOffice, async (req, res) => {
+app.get('/api/analytics/milestones', requireOffice, wrapAsync(async (req, res) => {
   const thresholds = [50, 100, 250, 500, 1000];
   const [driverRes, riderRes] = await Promise.all([
     query(`SELECT u.id, u.name, COUNT(r.id) AS ride_count
@@ -2608,9 +2670,9 @@ app.get('/api/analytics/milestones', requireOffice, async (req, res) => {
     });
   }
   res.json({ drivers: compute(driverRes.rows), riders: compute(riderRes.rows) });
-});
+}));
 
-app.get('/api/analytics/semester-report', requireOffice, async (req, res) => {
+app.get('/api/analytics/semester-report', requireOffice, wrapAsync(async (req, res) => {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -2688,9 +2750,9 @@ app.get('/api/analytics/semester-report', requireOffice, async (req, res) => {
     topLocations: topLocRes.rows,
     driverLeaderboard: driverBoardRes.rows
   });
-});
+}));
 
-app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
+app.get('/api/analytics/tardiness', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = req.query;
 
@@ -2824,7 +2886,7 @@ app.get('/api/analytics/tardiness', requireOffice, async (req, res) => {
     console.error('analytics tardiness error:', err);
     res.status(500).json({ error: 'Failed to fetch tardiness analytics' });
   }
-});
+}));
 
 // ----- New Analytics Endpoints -----
 
@@ -2851,7 +2913,7 @@ function buildDateFilterDate(qp, column = 'event_date', startParam = 1) {
 }
 
 // 4.1 GET /api/analytics/ride-volume
-app.get('/api/analytics/ride-volume', requireOffice, async (req, res) => {
+app.get('/api/analytics/ride-volume', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const granularity = req.query.granularity || 'day';
@@ -2926,10 +2988,10 @@ app.get('/api/analytics/ride-volume', requireOffice, async (req, res) => {
     console.error('analytics ride-volume error:', err);
     res.status(500).json({ error: 'Failed to fetch ride volume analytics' });
   }
-});
+}));
 
 // 4.2 GET /api/analytics/ride-outcomes
-app.get('/api/analytics/ride-outcomes', requireOffice, async (req, res) => {
+app.get('/api/analytics/ride-outcomes', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const params = [from, to + 'T23:59:59.999Z'];
@@ -2980,10 +3042,10 @@ app.get('/api/analytics/ride-outcomes', requireOffice, async (req, res) => {
     console.error('analytics ride-outcomes error:', err);
     res.status(500).json({ error: 'Failed to fetch ride outcomes analytics' });
   }
-});
+}));
 
 // 4.3 GET /api/analytics/peak-hours
-app.get('/api/analytics/peak-hours', requireOffice, async (req, res) => {
+app.get('/api/analytics/peak-hours', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const params = [from, to + 'T23:59:59.999Z'];
@@ -3033,10 +3095,10 @@ app.get('/api/analytics/peak-hours', requireOffice, async (req, res) => {
     console.error('analytics peak-hours error:', err);
     res.status(500).json({ error: 'Failed to fetch peak hours analytics' });
   }
-});
+}));
 
 // 4.4 GET /api/analytics/routes
-app.get('/api/analytics/routes', requireOffice, async (req, res) => {
+app.get('/api/analytics/routes', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const limit = parseInt(req.query.limit) || 20;
@@ -3081,10 +3143,10 @@ app.get('/api/analytics/routes', requireOffice, async (req, res) => {
     console.error('analytics routes error:', err);
     res.status(500).json({ error: 'Failed to fetch route analytics' });
   }
-});
+}));
 
 // 4.5 GET /api/analytics/driver-performance
-app.get('/api/analytics/driver-performance', requireOffice, async (req, res) => {
+app.get('/api/analytics/driver-performance', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
 
@@ -3228,10 +3290,10 @@ app.get('/api/analytics/driver-performance', requireOffice, async (req, res) => 
     console.error('analytics driver-performance error:', err);
     res.status(500).json({ error: 'Failed to fetch driver performance analytics' });
   }
-});
+}));
 
 // 4.6 GET /api/analytics/driver-utilization
-app.get('/api/analytics/driver-utilization', requireOffice, async (req, res) => {
+app.get('/api/analytics/driver-utilization', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
 
@@ -3344,10 +3406,10 @@ app.get('/api/analytics/driver-utilization', requireOffice, async (req, res) => 
     console.error('analytics driver-utilization error:', err);
     res.status(500).json({ error: 'Failed to fetch driver utilization analytics' });
   }
-});
+}));
 
 // 4.7 GET /api/analytics/rider-cohorts
-app.get('/api/analytics/rider-cohorts', requireOffice, async (req, res) => {
+app.get('/api/analytics/rider-cohorts', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const maxStrikes = await getSetting('max_no_show_strikes', 5);
@@ -3480,10 +3542,10 @@ app.get('/api/analytics/rider-cohorts', requireOffice, async (req, res) => {
     console.error('analytics rider-cohorts error:', err);
     res.status(500).json({ error: 'Failed to fetch rider cohort analytics' });
   }
-});
+}));
 
 // 4.8 GET /api/analytics/rider-no-shows
-app.get('/api/analytics/rider-no-shows', requireOffice, async (req, res) => {
+app.get('/api/analytics/rider-no-shows', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const params = [from, to + 'T23:59:59.999Z'];
@@ -3558,10 +3620,10 @@ app.get('/api/analytics/rider-no-shows', requireOffice, async (req, res) => {
     console.error('analytics rider-no-shows error:', err);
     res.status(500).json({ error: 'Failed to fetch rider no-show analytics' });
   }
-});
+}));
 
 // 4.9 GET /api/analytics/fleet-utilization
-app.get('/api/analytics/fleet-utilization', requireOffice, async (req, res) => {
+app.get('/api/analytics/fleet-utilization', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
 
@@ -3651,10 +3713,10 @@ app.get('/api/analytics/fleet-utilization', requireOffice, async (req, res) => {
     console.error('analytics fleet-utilization error:', err);
     res.status(500).json({ error: 'Failed to fetch fleet utilization analytics' });
   }
-});
+}));
 
 // 4.10 GET /api/analytics/vehicle-demand
-app.get('/api/analytics/vehicle-demand', requireOffice, async (req, res) => {
+app.get('/api/analytics/vehicle-demand', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const params = [from, to + 'T23:59:59.999Z'];
@@ -3721,10 +3783,10 @@ app.get('/api/analytics/vehicle-demand', requireOffice, async (req, res) => {
     console.error('analytics vehicle-demand error:', err);
     res.status(500).json({ error: 'Failed to fetch vehicle demand analytics' });
   }
-});
+}));
 
 // 4.11 GET /api/analytics/shift-coverage
-app.get('/api/analytics/shift-coverage', requireOffice, async (req, res) => {
+app.get('/api/analytics/shift-coverage', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
 
@@ -3821,10 +3883,10 @@ app.get('/api/analytics/shift-coverage', requireOffice, async (req, res) => {
     console.error('analytics shift-coverage error:', err);
     res.status(500).json({ error: 'Failed to fetch shift coverage analytics' });
   }
-});
+}));
 
 // 4.12 GET /api/analytics/export-report
-app.get('/api/analytics/export-report', requireOffice, async (req, res) => {
+app.get('/api/analytics/export-report', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { from, to } = defaultDateRange(req.query);
     const params = [from, to + 'T23:59:59.999Z'];
@@ -4549,11 +4611,11 @@ app.get('/api/analytics/export-report', requireOffice, async (req, res) => {
     console.error('analytics export-report error:', err);
     res.status(500).json({ error: 'Failed to generate export report' });
   }
-});
+}));
 
 // ----- Dev endpoint -----
 // ----- Notification Preferences -----
-app.get('/api/notification-preferences', requireOffice, async (req, res) => {
+app.get('/api/notification-preferences', requireOffice, wrapAsync(async (req, res) => {
   try {
     // Lazy-seed if no preferences exist for this user
     const check = await query('SELECT COUNT(*) FROM notification_preferences WHERE user_id = $1', [req.session.userId]);
@@ -4591,9 +4653,9 @@ app.get('/api/notification-preferences', requireOffice, async (req, res) => {
     console.error('GET notification-preferences error:', err);
     res.status(500).json({ error: 'Failed to load notification preferences' });
   }
-});
+}));
 
-app.put('/api/notification-preferences', requireOffice, async (req, res) => {
+app.put('/api/notification-preferences', requireOffice, wrapAsync(async (req, res) => {
   try {
     const { preferences } = req.body;
     if (!Array.isArray(preferences)) return res.status(400).json({ error: 'preferences must be an array' });
@@ -4613,11 +4675,11 @@ app.put('/api/notification-preferences', requireOffice, async (req, res) => {
     console.error('PUT notification-preferences error:', err);
     res.status(500).json({ error: 'Failed to save notification preferences' });
   }
-});
+}));
 
 // ── In-App Notifications ──
 
-app.get('/api/notifications', requireAuth, async (req, res) => {
+app.get('/api/notifications', requireAuth, wrapAsync(async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = parseInt(req.query.offset) || 0;
@@ -4645,9 +4707,9 @@ app.get('/api/notifications', requireAuth, async (req, res) => {
     console.error('GET /api/notifications error:', err);
     res.status(500).json({ error: 'Failed to fetch notifications' });
   }
-});
+}));
 
-app.put('/api/notifications/read-all', requireAuth, async (req, res) => {
+app.put('/api/notifications/read-all', requireAuth, wrapAsync(async (req, res) => {
   try {
     const result = await query(
       'UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE',
@@ -4658,9 +4720,9 @@ app.put('/api/notifications/read-all', requireAuth, async (req, res) => {
     console.error('PUT /api/notifications/read-all error:', err);
     res.status(500).json({ error: 'Failed to mark notifications as read' });
   }
-});
+}));
 
-app.put('/api/notifications/:id/read', requireAuth, async (req, res) => {
+app.put('/api/notifications/:id/read', requireAuth, wrapAsync(async (req, res) => {
   try {
     const result = await query(
       'UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2',
@@ -4672,10 +4734,10 @@ app.put('/api/notifications/:id/read', requireAuth, async (req, res) => {
     console.error('PUT /api/notifications/:id/read error:', err);
     res.status(500).json({ error: 'Failed to mark notification as read' });
   }
-});
+}));
 
 // Bulk delete notifications
-app.post('/api/notifications/bulk-delete', requireAuth, async (req, res) => {
+app.post('/api/notifications/bulk-delete', requireAuth, wrapAsync(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids array required' });
   try {
@@ -4688,10 +4750,10 @@ app.post('/api/notifications/bulk-delete', requireAuth, async (req, res) => {
     console.error('POST /api/notifications/bulk-delete error:', err);
     res.status(500).json({ error: 'Failed to delete notifications' });
   }
-});
+}));
 
 // Delete all notifications
-app.delete('/api/notifications/all', requireAuth, async (req, res) => {
+app.delete('/api/notifications/all', requireAuth, wrapAsync(async (req, res) => {
   try {
     const result = await query('DELETE FROM notifications WHERE user_id = $1', [req.session.userId]);
     res.json({ deleted: result.rowCount });
@@ -4699,9 +4761,9 @@ app.delete('/api/notifications/all', requireAuth, async (req, res) => {
     console.error('DELETE /api/notifications/all error:', err);
     res.status(500).json({ error: 'Failed to delete all notifications' });
   }
-});
+}));
 
-app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
+app.delete('/api/notifications/:id', requireAuth, wrapAsync(async (req, res) => {
   try {
     const result = await query(
       'DELETE FROM notifications WHERE id = $1 AND user_id = $2',
@@ -4713,10 +4775,10 @@ app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
     console.error('DELETE /api/notifications/:id error:', err);
     res.status(500).json({ error: 'Failed to delete notification' });
   }
-});
+}));
 
 // Purge old closed rides based on retention settings
-app.post('/api/rides/purge-old', requireOffice, async (req, res) => {
+app.post('/api/rides/purge-old', requireOffice, wrapAsync(async (req, res) => {
   try {
     const retentionValue = parseInt(await getSetting('ride_retention_value', '0'));
     const retentionUnit = await getSetting('ride_retention_unit', 'months');
@@ -4744,9 +4806,9 @@ app.post('/api/rides/purge-old', requireOffice, async (req, res) => {
     console.error('POST /api/rides/purge-old error:', err);
     res.status(500).json({ error: 'Failed to purge old rides' });
   }
-});
+}));
 
-app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
+app.post('/api/dev/seed-rides', requireOffice, wrapAsync(async (req, res) => {
   if (!isDevRequest(req)) {
     return res.status(403).json({ error: 'Dev seeding is only available in local development mode' });
   }
@@ -4769,70 +4831,106 @@ app.post('/api/dev/seed-rides', requireOffice, async (req, res) => {
     await addRideEvent(rideId, req.session.userId, 'approved');
   }
   res.json({ message: `Seeded ${sampleRides.length} sample rides for today`, count: sampleRides.length });
+}));
+
+// Global error handler — must be last middleware
+app.use((err, req, res, next) => {
+  console.error(`[ERROR] ${req.method} ${req.path}:`, err.message);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ----- Startup -----
-initDb()
-  .then(async () => {
-    if (DEMO_MODE) {
-      const { seedDemoData } = require('./demo-seed');
-      await seedDemoData(pool).then(() => console.log('Demo data seeded')).catch(console.error);
-      setInterval(() => {
-        seedDemoData(pool).then(() => console.log('Demo data re-seeded')).catch(console.error);
-      }, 60 * 60 * 1000);
+let server;
+
+(async function startup() {
+  // Compute default password hash asynchronously before anything else
+  defaultPasswordHash = await bcrypt.hash('demo123', 10);
+
+  await initDb();
+
+  if (DEMO_MODE) {
+    const { seedDemoData } = require('./demo-seed');
+    await seedDemoData(pool).then(() => console.log('Demo data seeded')).catch(console.error);
+    setInterval(() => {
+      seedDemoData(pool).then(() => console.log('Demo data re-seeded')).catch(console.error);
+    }, 60 * 60 * 1000);
+  }
+
+  server = app.listen(PORT, () => {
+    console.log('Server running from:', __dirname);
+    console.log(`RideOps server running on port ${PORT}${DEMO_MODE ? ' (DEMO MODE)' : ''}`);
+    if (!isProduction) {
+      console.log('Login: alex/jordan/taylor/morgan/office, riders: casey/riley, password: demo123');
     }
-    app.listen(PORT, () => {
-      console.log('Server running from:', __dirname);
-      console.log(`RideOps server running on port ${PORT}${DEMO_MODE ? ' (DEMO MODE)' : ''}`);
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('Login: alex/jordan/taylor/morgan/office, riders: casey/riley, password: demo123');
-      }
-    });
-
-    // Check for stale pending rides every 5 minutes
-    setInterval(async () => {
-      try {
-        const stalePref = await query(`
-          SELECT DISTINCT threshold_value FROM notification_preferences
-          WHERE event_type = 'ride_pending_stale' AND enabled = true AND threshold_value IS NOT NULL
-        `);
-        if (!stalePref.rowCount) return;
-
-        const minThreshold = Math.min(...stalePref.rows.map(r => r.threshold_value));
-        const cutoff = new Date(Date.now() - minThreshold * 60000);
-
-        const staleRides = await query(`
-          SELECT r.*, u.name as rider_display_name
-          FROM rides r
-          LEFT JOIN users u ON u.id = r.rider_id
-          WHERE r.status = 'pending' AND r.created_at <= $1
-        `, [cutoff.toISOString()]);
-
-        for (const ride of staleRides.rows) {
-          // Only notify once per stale ride — skip if notification already exists for this ride
-          const existing = await query(
-            `SELECT 1 FROM notifications WHERE event_type = 'ride_pending_stale' AND metadata->>'rideId' = $1 LIMIT 1`,
-            [ride.id]
-          );
-          if (existing.rowCount > 0) continue;
-
-          const minutesPending = Math.round((Date.now() - new Date(ride.created_at).getTime()) / 60000);
-          dispatchNotification('ride_pending_stale', {
-            rideId: ride.id,
-            riderName: ride.rider_display_name || ride.rider_name || 'Unknown',
-            pickup: ride.pickup_location,
-            dropoff: ride.dropoff_location,
-            requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: TENANT.timezone }),
-            minutesPending,
-            thresholdCheck: minutesPending
-          }, query).catch(() => {});
-        }
-      } catch (err) {
-        console.error('[Notifications] Stale check error:', err.message);
-      }
-    }, 5 * 60 * 1000);
-  })
-  .catch((err) => {
-    console.error('Failed to initialize database', err);
-    process.exit(1);
   });
+
+  // Check for stale pending rides every 5 minutes
+  setInterval(async () => {
+    try {
+      const stalePref = await query(`
+        SELECT DISTINCT threshold_value FROM notification_preferences
+        WHERE event_type = 'ride_pending_stale' AND enabled = true AND threshold_value IS NOT NULL
+      `);
+      if (!stalePref.rowCount) return;
+
+      const minThreshold = Math.min(...stalePref.rows.map(r => r.threshold_value));
+      const cutoff = new Date(Date.now() - minThreshold * 60000);
+
+      const staleRides = await query(`
+        SELECT r.*, u.name as rider_display_name
+        FROM rides r
+        LEFT JOIN users u ON u.id = r.rider_id
+        WHERE r.status = 'pending' AND r.created_at <= $1
+      `, [cutoff.toISOString()]);
+
+      for (const ride of staleRides.rows) {
+        const existing = await query(
+          `SELECT 1 FROM notifications WHERE event_type = 'ride_pending_stale' AND metadata->>'rideId' = $1 LIMIT 1`,
+          [ride.id]
+        );
+        if (existing.rowCount > 0) continue;
+
+        const minutesPending = Math.round((Date.now() - new Date(ride.created_at).getTime()) / 60000);
+        dispatchNotification('ride_pending_stale', {
+          rideId: ride.id,
+          riderName: ride.rider_display_name || ride.rider_name || 'Unknown',
+          pickup: ride.pickup_location,
+          dropoff: ride.dropoff_location,
+          requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: TENANT.timezone }),
+          minutesPending,
+          thresholdCheck: minutesPending
+        }, query).catch(() => {});
+      }
+    } catch (err) {
+      console.error('[Notifications] Stale check error:', err.message);
+    }
+  }, 5 * 60 * 1000);
+})().catch((err) => {
+  console.error('Failed to initialize database', err);
+  process.exit(1);
+});
+
+// ----- Graceful shutdown -----
+function gracefulShutdown(signal) {
+  console.log(`\n[${signal}] Shutting down gracefully...`);
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed');
+      pool.end(() => {
+        console.log('Database pool closed');
+        process.exit(0);
+      });
+    });
+  } else {
+    pool.end(() => process.exit(0));
+  }
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 15000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
