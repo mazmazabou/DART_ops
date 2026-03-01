@@ -39,6 +39,7 @@ RideOps is an accessible campus transportation operations platform. It provides 
   "primaryColor": "#990000",
   "secondaryColor": "#FFCC00",
   "mapUrl": "https://maps.usc.edu/",
+  "mapEmbeddable": true,
   "idFieldLabel": "USC ID",
   "idFieldMaxLength": 10,
   "idFieldPattern": "^\\d{10}$",
@@ -48,7 +49,8 @@ RideOps is an accessible campus transportation operations platform. It provides 
 ```
 
 ### Server-Side Campus Configs (tenants/campus-configs.js)
-Defines complete per-campus overrides merged into `/api/tenant-config` response: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, secondaryTextColor, sidebarBg, sidebarText, sidebarActiveBg, sidebarHover, sidebarBorder, headerBg, mapUrl, campusKey, locationsKey, idFieldLabel, idFieldPattern, idFieldMaxLength, idFieldPlaceholder, serviceScopeText, timezone, rules. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding).
+Defines complete per-campus overrides merged into `/api/tenant-config` response: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, secondaryTextColor, sidebarBg, sidebarText, sidebarActiveBg, sidebarHover, sidebarBorder, headerBg, mapUrl, mapEmbeddable, campusKey, locationsKey, idFieldLabel, idFieldPattern, idFieldMaxLength, idFieldPlaceholder, serviceScopeText, timezone, rules. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding).
+- **`mapEmbeddable`:** Boolean flag. `true` for USC/Stanford (iframe works), `false` for UCLA/UCI (frame-busting scripts). Office/driver views render fallback "Open Campus Map" card when `false`.
 
 ## Tech Stack
 - **Backend:** Node.js (>=18) + Express + express-session + bcryptjs
@@ -72,7 +74,7 @@ npx nodemon server.js
 # With USC DART tenant
 TENANT_FILE=tenants/usc-dart.json node server.js
 
-# Demo mode (seeds 650+ rides, shifts, clock events, notifications)
+# Demo mode (seeds 650+ rides on first run, skips if data exists)
 DEMO_MODE=true node server.js
 
 # Environment variables
@@ -105,7 +107,7 @@ Default login credentials (password: `demo123`):
 - **SSL:** Required for database connections in production (`ssl: { rejectUnauthorized: false }`)
 - **Health check:** `GET /health` — used by Railway for readiness checks
 - **Environment:** All config via Railway environment variables (see `.env.example`)
-- **Demo mode:** `DEMO_MODE=true` seeds 650+ rides on startup, enables demo role picker at `/demo`
+- **Demo mode:** `DEMO_MODE=true` seeds 650+ rides on first startup (skips if data already exists), enables demo role picker at `/demo`
 - **Deploys:** Automatic on push to `main` branch (Railway watches GitHub repo)
 - **Deploy exclusions:** `.railwayignore` excludes screenshots/, docs/, tests/, scripts/ to reduce image size
 - **No TENANT_FILE needed:** Multi-campus routing handled entirely by `campus-configs.js` + org-scoped URLs. Do NOT set `TENANT_FILE` env var.
@@ -130,7 +132,7 @@ Default login credentials (password: `demo123`):
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
 - `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~97 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization
 - `tests/uat.spec.js` — User acceptance tests (4 tests): office login, rider booking flow, office approval, driver clock-in
-- `public/login.html` / `signup.html` — Auth pages with org-scoped URL support
+- `public/login.html` / `signup.html` — Auth pages with org-scoped URL support. `/login` (no slug) shows campus selector above login form; `/:slug` (with slug) shows branded login form only
 - `public/demo.html` — Demo mode role picker with campus-specific links
 - `tenants/campus-configs.js` — Server-side campus branding configs for all 4 campuses
 - `tenants/usc-dart.json` — USC DART tenant configuration
@@ -221,7 +223,7 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - Logout button: `onclick="logout()"` (icon-only, no text label)
 
 ### Analytics Architecture
-- **Widget System:** Customizable dashboard with drag-and-drop widget cards (SortableJS CDN). 16 registered widgets across 8 categories. Users can add/remove/resize/reorder widgets. Layout persisted per-user in localStorage with versioned schema (`WIDGET_LAYOUT_VERSION`).
+- **Widget System:** Customizable dashboard with drag-and-drop widget cards (SortableJS CDN). 16 registered widgets across 8 categories. Users can add/remove/resize/reorder widgets. Three size options: small (compact), medium, large. Layout persisted per-user in localStorage with versioned schema (`WIDGET_LAYOUT_VERSION`).
 - **Widget Files:** `widget-registry.js` (static metadata), `widget-system.js` (runtime). Widget loaders registered in `app.js` DOMContentLoaded via `registerWidgetLoader()`.
 - **Widget Container IDs:** Dashboard widgets use IDs from `WIDGET_REGISTRY.containerId`. Hotspot/milestone widgets use `w-` prefix (`w-hotspot-pickups`) to avoid duplicate IDs with sub-tab containers.
 - **Date Range Picker:** Quick-select buttons (Today, Week, Month, [Academic Period]) + manual from/to inputs. Last preset label driven by `academic_period_label` tenant_setting (Semester/Quarter/Trimester). Date ranges adapt per period type: Semester (Jan/May/Aug), Quarter (Jan/Mar/Jun/Sep), Trimester (Jan/May/Aug).
