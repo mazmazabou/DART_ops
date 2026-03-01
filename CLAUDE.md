@@ -120,7 +120,7 @@ Default login credentials (password: `demo123`):
 - `tenants/uci-locations.js` — 25 UCI campus locations
 - `tenants/default-locations.js` — 32 generic campus locations (default when no tenant)
 - `email.js` — Email sending (nodemailer) with tenant-aware brand colors
-- `notification-service.js` — Notification dispatch engine: `dispatchNotification()` sends to office staff via preferences, `sendRiderEmail()` sends directly to riders
+- `notification-service.js` — Notification dispatch engine: `dispatchNotification()` sends to office staff via preferences, `sendRiderEmail()` sends directly to riders, `setTenantConfig()` injects org branding into email templates
 - `demo-seed.js` — Seeds demo data: 650+ rides, 5 weeks of shifts, clock events, recurring rides, vehicles, notifications
 - `public/favicon.svg` — RideOps favicon (blue circle with RO)
 - `db/schema.sql` — PostgreSQL schema reference
@@ -414,7 +414,7 @@ All analytics endpoints support `?from=&to=` date params (default: last 7 days).
 - `PUT /api/program-rules` — Update rules/guidelines (office only)
 
 ### Constants
-- `NOTIFICATION_EVENT_TYPES` — 9 event types: driver_tardy, driver_no_clock_in, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, ride_completed, new_ride_request, daily_summary
+- `NOTIFICATION_EVENT_TYPES` — 6 event types: driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request
 
 ### Dev Tools
 - `POST /api/dev/seed-rides` — Seed sample rides (office only, disabled in production)
@@ -514,10 +514,10 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 - ~~**Sync bcrypt:**~~ **RESOLVED** — All `hashSync`/`compareSync` replaced with async equivalents.
 - ~~**Missing error handling:**~~ **RESOLVED** — All async routes wrapped with `wrapAsync()`, global error middleware added.
 - ~~**No `/health` endpoint:**~~ **RESOLVED** — `GET /health` with DB connectivity check.
-- **Phantom notification events:** `driver_no_clock_in`, `daily_summary`, and `ride_completed` (office) appear in preferences UI but are never dispatched.
-- **`uscId` field name:** Signup API sends member ID as "uscId" — visible to non-USC evaluators in network tab.
-- **Office grace timer hardcoded:** `app.js:2812` uses `300` (5 min) instead of configurable `tenantConfig.grace_period_minutes`.
-- **`auto_deny_outside_hours` setting:** Exists in UI but has no effect — service hours always enforced.
+- ~~**Phantom notification events:**~~ **RESOLVED** — Removed `driver_no_clock_in`, `daily_summary`, and `ride_completed` from NOTIFICATION_EVENT_TYPES (6 active types remain).
+- ~~**`uscId` field name:**~~ **RESOLVED** — Renamed to `memberId` across all API handlers, frontend forms, and tests.
+- ~~**Office grace timer hardcoded:**~~ **RESOLVED** — `buildGraceInfo()` reads `tenantConfig.grace_period_minutes` dynamically.
+- ~~**`auto_deny_outside_hours` setting:**~~ **RESOLVED** — All 4 service-hours checks gated by `getSetting('auto_deny_outside_hours')`. Defaults to `false` in demo mode.
 
 ### Medium Priority
 - **No pagination on rides API:** Returns all rides every 5 seconds.
@@ -526,6 +526,6 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 - **Two toast systems + two modal systems:** Legacy `showToast`/`showConfirmModal` (utils.js) vs new `showToastNew`/`showModalNew` (rideops-utils.js).
 - **`utils.js:158`:** `showEmptyState()` renders Material Symbols icon class (not loaded) instead of Tabler Icons.
 - ~~**Password minimum inconsistency:**~~ **RESOLVED** — Standardized to 8 characters (`MIN_PASSWORD_LENGTH` constant).
-- **Email env var mismatch:** Code reads `FROM_NAME`/`FROM_EMAIL`, docs say `NOTIFICATION_FROM`/`NOTIFICATION_FROM_NAME`.
-- **Notification emails hardcode "RideOps":** Should use tenant orgName for white-label branding.
+- ~~**Email env var mismatch:**~~ **RESOLVED** — `email.js` reads `NOTIFICATION_FROM_NAME`/`NOTIFICATION_FROM` (with `FROM_NAME`/`FROM_EMAIL` as legacy fallback).
+- ~~**Notification emails hardcode "RideOps":**~~ **RESOLVED** — `notification-service.js` uses `setTenantConfig()` to inject org name and primary color into email templates.
 - ~~**`db/schema.sql` stale:**~~ **RESOLVED** — Regenerated with all 13 tables, columns, indexes, and constraints.
