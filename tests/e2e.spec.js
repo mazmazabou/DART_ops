@@ -64,11 +64,11 @@ async function apiContext(playwright, username) {
 
 /** Login via the UI — fills form and waits for navigation. */
 async function loginUI(page, username) {
-  await page.goto('/login');
+  await page.goto('/usc/login');
   await page.locator('#username').fill(username);
   await page.locator('#password').fill(PASSWORD);
   await Promise.all([
-    page.waitForURL(/\/(office|driver|rider)/, { timeout: 10000 }),
+    page.waitForURL(/\/(office|driver|rider|usc)/, { timeout: 10000 }),
     page.locator('#login-form button[type="submit"]').click(),
   ]);
 }
@@ -827,8 +827,16 @@ test.describe('API: Dev Tools', () => {
 // 13. UI: Login Page (serial)
 // ═══════════════════════════════════════════════════════════════════════════
 test.describe.serial('UI: Login Page', () => {
-  test('login form elements visible', async ({ page }) => {
+  test('campus selector visible on /login', async ({ page }) => {
     await page.goto('/login');
+    await expect(page.locator('#campus-selector-view')).toBeVisible();
+    await expect(page.locator('#login-form-view')).not.toBeVisible();
+    // Campus cards link to /:slug/login
+    await expect(page.locator('.campus-card').first()).toBeVisible();
+  });
+
+  test('campus-scoped login form elements visible', async ({ page }) => {
+    await page.goto('/usc/login');
     await expect(page.locator('#login-form')).toBeVisible();
     await expect(page.locator('#username')).toBeVisible();
     await expect(page.locator('#password')).toBeVisible();
@@ -836,16 +844,16 @@ test.describe.serial('UI: Login Page', () => {
   });
 
   test('invalid login shows error', async ({ page }) => {
-    await page.goto('/login');
+    await page.goto('/usc/login');
     await page.locator('#username').fill('office');
     await page.locator('#password').fill('wrongpassword');
     await page.locator('#login-form button[type="submit"]').click();
     await expect(page.locator('#login-error')).toBeVisible();
   });
 
-  test('office login redirects to /office', async ({ page }) => {
+  test('office login redirects to campus office', async ({ page }) => {
     await loginUI(page, 'office');
-    await expect(page).toHaveURL(/\/office/);
+    await expect(page).toHaveURL(/\/(usc|office)/);
     await expect(page.locator('#dispatch-panel')).toBeVisible({ timeout: 10000 });
   });
 });

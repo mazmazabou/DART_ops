@@ -1434,6 +1434,12 @@ VALID_ORG_SLUGS.forEach(slug => {
     res.sendFile(path.join(__dirname, 'public', 'rider.html'));
   });
 
+  // Campus-scoped login
+  app.get('/' + slug + '/login', (req, res) => {
+    req.session.campus = slug;
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+  });
+
   // Signup
   app.get('/' + slug + '/signup', (req, res) => {
     req.session.campus = slug;

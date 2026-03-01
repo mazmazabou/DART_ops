@@ -21,14 +21,14 @@ function nextWeekday() {
 }
 
 async function login(page, username, password = PASSWORD) {
-  await page.goto("/login");
+  await page.goto("/usc/login");
   await expect(page.locator("#login-form")).toBeVisible();
 
   await page.fill("#username", username);
   await page.fill("#password", password);
 
   await Promise.all([
-    page.waitForURL(/\/(office|driver|rider)/, { timeout: 15000 }),
+    page.waitForURL(/\/(office|driver|rider|usc)/, { timeout: 15000 }),
     page.click('button[type="submit"]'),
   ]);
 }
@@ -38,7 +38,8 @@ async function logout(page) {
   const logoutBtn = page.locator('button[onclick="logout()"]');
   if (await logoutBtn.first().isVisible().catch(() => false)) {
     await logoutBtn.first().click();
-    await page.waitForURL(/\/login/, { timeout: 10000 });
+    // After logout, redirects to /:slug (campus login) or /login (generic)
+    await page.waitForURL(/\/(login|usc|stanford|ucla|uci)$/, { timeout: 10000 });
   }
 }
 
@@ -46,8 +47,8 @@ test.describe("RideOps UAT (Office / Rider / Driver)", () => {
   test("Office login loads core console", async ({ page }) => {
     await login(page, USERS.office);
 
-    // Office redirects to /office
-    await expect(page).toHaveURL(/\/office/);
+    // Office redirects to /usc (campus-scoped office console)
+    await expect(page).toHaveURL(/\/(usc|office)/);
 
     // Dispatch panel is the default visible tab
     await expect(page.locator("#dispatch-panel")).toBeVisible({ timeout: 10000 });
@@ -59,7 +60,7 @@ test.describe("RideOps UAT (Office / Rider / Driver)", () => {
     await expect(page.locator("#dispatch-active-drivers")).toBeVisible();
 
     await logout(page);
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/(login|usc)/);
   });
 
   test("Rider can submit one-time ride request", async ({ page }) => {
@@ -117,7 +118,7 @@ test.describe("RideOps UAT (Office / Rider / Driver)", () => {
 
   test("Office approves and assigns rider request to an active driver", async ({ page }) => {
     await login(page, USERS.office);
-    await expect(page).toHaveURL(/\/office/);
+    await expect(page).toHaveURL(/\/(usc|office)/);
 
     // Dispatch panel is active by default — pending rides are shown there
     await expect(page.locator("#dispatch-panel")).toBeVisible({ timeout: 10000 });

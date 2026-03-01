@@ -59,8 +59,6 @@
     /* Campus selector styles */
     .campus-selector-wrap { width: 100%; max-width: 400px; padding: 24px 24px 0; }
     .campus-selector-card { background: var(--color-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 28px 28px 24px; }
-    .campus-or-divider { width: 100%; max-width: 400px; padding: 0 24px; text-align: center; font-size: 12px; color: var(--color-text-muted); position: relative; margin: 4px 0; }
-    .campus-or-divider span { background: var(--color-page-bg); padding: 0 12px; position: relative; z-index: 1; }
     .campus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
     .campus-card {
       display: flex; align-items: center; gap: 12px;
@@ -123,10 +121,7 @@
     </div>
   </div>
 
-  <!-- Divider between campus selector and login form -->
-  <div class="campus-or-divider" id="campus-or-divider" style="display:none;"><span>or sign in directly</span></div>
-
-  <!-- Login Form (always visible) -->
+  <!-- Login Form (shown when campus slug is in URL) -->
   <div class="login-wrap" id="login-form-view">
     <div class="login-card">
       <div class="login-brand">
@@ -192,18 +187,15 @@
     ];
 
     if (_showSelector) {
-      // Show campus selector above the login form (both visible)
+      // Show campus selector, hide login form (users must pick a campus first)
       document.getElementById('campus-selector-view').style.display = '';
-      document.getElementById('campus-or-divider').style.display = '';
-      // Hide the brand header in login form since campus selector already has it
-      document.querySelector('#login-form-view .login-brand').style.display = 'none';
-      document.getElementById('login-tagline').style.display = 'none';
+      document.getElementById('login-form-view').style.display = 'none';
 
-      // Build campus grid
+      // Build campus grid — each card goes to /:slug/login
       var grid = document.getElementById('campus-grid');
       CAMPUS_LIST.forEach(function(c) {
         var a = document.createElement('a');
-        a.href = '/' + c.slug;
+        a.href = '/' + c.slug + '/login';
         a.className = 'campus-card';
         a.style.setProperty('--campus-accent', c.color);
         var dot = document.createElement('span');
@@ -247,8 +239,9 @@
         });
       }).catch(function() {});
     } else {
-      // Slug detected — hide campus selector, show login form with campus branding
+      // Slug detected — hide campus selector, show branded login form
       document.getElementById('campus-selector-view').style.display = 'none';
+      document.getElementById('login-form-view').style.display = '';
 
       // Org-scoped URL fixups for links
       (function() {
