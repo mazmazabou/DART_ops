@@ -103,7 +103,7 @@ Default login credentials (password: `demo123`):
 - `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, DEFAULT_WIDGET_LAYOUT)
 - `public/js/widget-system.js` — Widget dashboard runtime: layout persistence, grid rendering, edit mode, SortableJS integration
 - `public/demo-config.js` — Demo mode configuration
-- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header, Map tab, per-ride vehicle selector)
+- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector)
 - `public/rider.html` — Rider request form and ride history (self-contained with inline JS/CSS, campus-themed header)
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
 - `public/login.html` / `signup.html` — Auth pages with org-scoped URL support
@@ -266,7 +266,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - `POST /api/auth/change-password` — Change own password
 
 ### Configuration
-- `GET /api/tenant-config` — Get tenant branding config (public, accepts `?campus=slug`). Includes `grace_period_minutes` and `academic_period_label` from tenant_settings.
+- `GET /api/tenant-config` — Get tenant branding config (public, accepts `?campus=slug`). Includes `grace_period_minutes` (from tenant_settings DB via SQL query) and `academic_period_label` from tenant_settings.
 - `GET /api/client-config` — Get isDev flag (public)
 
 ### User Management (Office only)
@@ -312,7 +312,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - `POST /api/rides/:id/unassign` — Remove driver, revert to approved (office only)
 - `POST /api/rides/:id/reassign` — Transfer ride to different driver (office only, accepts `{ driverId }`)
 - `POST /api/rides/:id/set-vehicle` — Assign vehicle to ride (staff only)
-- `PATCH /api/rides/:id/vehicle` — Per-ride vehicle assignment (driver or office, accepts `{ vehicle_id }`)
+- `PATCH /api/rides/:id/vehicle` — Per-ride vehicle assignment (requireStaff: drivers + office, accepts `{ vehicle_id }`)
 - `POST /api/rides/bulk-delete` — Delete multiple rides (office only, accepts `{ ids: [...] }`)
 - `POST /api/rides/purge-old` — Purge terminal rides older than retention period (office only)
 

@@ -2330,24 +2330,29 @@ app.post('/api/rides/:id/no-show', requireAuth, async (req, res) => {
 });
 
 // ----- Per-ride vehicle assignment (driver or office) -----
-app.patch('/api/rides/:id/vehicle', requireAuth, async (req, res) => {
-  const { vehicle_id } = req.body;
-  if (!vehicle_id) return res.status(400).json({ error: 'vehicle_id is required' });
-  const rideRes = await query('SELECT * FROM rides WHERE id = $1', [req.params.id]);
-  if (!rideRes.rowCount) return res.status(404).json({ error: 'Ride not found' });
-  const ride = rideRes.rows[0];
-  // Must be the assigned driver or office
-  if (req.session.role !== 'office' && ride.assigned_driver_id !== req.session.userId) {
-    return res.status(403).json({ error: 'Not authorized for this ride' });
+app.patch('/api/rides/:id/vehicle', requireStaff, async (req, res) => {
+  try {
+    const { vehicle_id } = req.body;
+    if (!vehicle_id) return res.status(400).json({ error: 'vehicle_id is required' });
+    const rideRes = await query('SELECT * FROM rides WHERE id = $1', [req.params.id]);
+    if (!rideRes.rowCount) return res.status(404).json({ error: 'Ride not found' });
+    const ride = rideRes.rows[0];
+    // Must be the assigned driver or office
+    if (req.session.role !== 'office' && ride.assigned_driver_id !== req.session.userId) {
+      return res.status(403).json({ error: 'Not authorized for this ride' });
+    }
+    if (['completed','no_show','cancelled','denied'].includes(ride.status)) {
+      return res.status(400).json({ error: 'Cannot set vehicle on a terminal ride' });
+    }
+    const vehRes = await query('SELECT id, name, status FROM vehicles WHERE id = $1', [vehicle_id]);
+    if (!vehRes.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
+    if (vehRes.rows[0].status === 'retired') return res.status(400).json({ error: 'Vehicle is retired' });
+    await query('UPDATE rides SET vehicle_id = $1, updated_at = NOW() WHERE id = $2', [vehicle_id, ride.id]);
+    res.json({ ok: true, vehicle_id, vehicle_name: vehRes.rows[0].name });
+  } catch (err) {
+    console.error('PATCH /api/rides/:id/vehicle error:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
-  if (['completed','no_show','cancelled','denied'].includes(ride.status)) {
-    return res.status(400).json({ error: 'Cannot set vehicle on a terminal ride' });
-  }
-  const vehRes = await query('SELECT id, name, status FROM vehicles WHERE id = $1', [vehicle_id]);
-  if (!vehRes.rowCount) return res.status(404).json({ error: 'Vehicle not found' });
-  if (vehRes.rows[0].status === 'retired') return res.status(400).json({ error: 'Vehicle is retired' });
-  await query('UPDATE rides SET vehicle_id = $1, updated_at = NOW() WHERE id = $2', [vehicle_id, ride.id]);
-  res.json({ ok: true, vehicle_id, vehicle_name: vehRes.rows[0].name });
 });
 
 // ----- Set vehicle on ride -----

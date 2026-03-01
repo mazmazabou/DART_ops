@@ -389,6 +389,7 @@
       const panel = document.getElementById('map-content');
       if (!panel) return;
       const activeRide = getActiveRide();
+      const campusMapUrl = (window.tenantConfig && window.tenantConfig.mapUrl) || null;
       if (!activeRide) {
         panel.innerHTML = `
           <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;color:var(--color-text-muted);text-align:center;padding:24px;">
@@ -401,10 +402,7 @@
       const pickup = activeRide.pickupLocation || '';
       const dropoff = activeRide.dropoffLocation || '';
       const riderName = activeRide.riderName || 'Rider';
-      const pickupEnc = encodeURIComponent(pickup);
-      const dropoffEnc = encodeURIComponent(dropoff);
-      const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + pickupEnc + '&destination=' + dropoffEnc + '&travelmode=driving';
-      const embedUrl = 'https://maps.google.com/maps?q=' + dropoffEnc + '&output=embed&z=16';
+      const mapHref = campusMapUrl || '#';
       panel.innerHTML = `
         <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
           <div style="background:var(--color-surface);border-radius:12px;padding:16px;border:1px solid var(--color-border);">
@@ -423,28 +421,28 @@
               </div>
             </div>
           </div>
-          <a href="${mapsUrl}" target="_blank" rel="noopener"
+          ${campusMapUrl ? `
+          <a href="${mapHref}" target="_blank" rel="noopener"
              style="display:flex;align-items:center;justify-content:center;gap:10px;
                     background:var(--color-primary);color:white;
                     padding:16px;border-radius:12px;text-decoration:none;
                     font-weight:700;font-size:16px;letter-spacing:0.3px;
                     box-shadow:0 4px 12px rgba(var(--color-primary-rgb),0.35);">
-            <i class="ti ti-navigation" style="font-size:20px;"></i>
-            Open in Maps
-          </a>
-          ${dropoff ? `
-          <div style="border-radius:12px;overflow:hidden;border:1px solid var(--color-border);height:320px;">
-            <iframe src="${embedUrl}" width="100%" height="320" style="border:0;display:block;"
-              allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <i class="ti ti-map-2" style="font-size:20px;"></i>
+            Open Campus Map
+          </a>` : ''}
+          ${campusMapUrl ? `
+          <div style="border-radius:12px;overflow:hidden;border:1px solid var(--color-border);height:380px;">
+            <iframe
+              src="${campusMapUrl}"
+              width="100%" height="380" style="border:0;display:block;"
+              allowfullscreen loading="lazy"
+              title="Campus Map">
+            </iframe>
+          </div>
+          <div style="font-size:11px;color:var(--color-text-muted);text-align:center;margin-top:-4px;">
+            Campus map — use pinch/zoom to navigate
           </div>` : ''}
-          ${dropoff ? `
-          <button onclick="navigator.clipboard && navigator.clipboard.writeText('${dropoff.replace(/'/g,"\\'")}').then(() => showToastNew('Address copied!'))"
-                  style="display:flex;align-items:center;justify-content:center;gap:8px;
-                         background:transparent;border:1px solid var(--color-border);
-                         color:var(--color-text-secondary);padding:12px;border-radius:10px;
-                         font-size:13px;cursor:pointer;width:100%;">
-            <i class="ti ti-copy"></i> Copy Dropoff Address
-          </button>` : ''}
         </div>`;
     }
 
@@ -471,7 +469,9 @@
           body: JSON.stringify({ vehicle_id: vehicleId })
         });
         if (!res.ok) {
-          const err = await res.json();
+          const errBody = await res.text();
+          console.error('Vehicle PATCH failed:', res.status, errBody);
+          try { var err = JSON.parse(errBody); } catch(_) { var err = {}; }
           showToastNew(err.error || 'Failed to record vehicle', 'error');
           return;
         }
@@ -581,7 +581,7 @@
           return;
         }
         document.getElementById('driver-name').textContent = currentUser.name;
-        applyTenantTheme();
+        window.tenantConfig = await applyTenantTheme() || {};
         initBottomTabs();
         initNotificationBell('#notif-bell-btn');
         try {
