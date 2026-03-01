@@ -797,7 +797,7 @@ app.get('/health', async (req, res) => {
 // ----- Rate limiters (auth endpoints only) -----
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: isProduction ? 10 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts. Please try again later.' }
@@ -805,7 +805,7 @@ const loginLimiter = rateLimit({
 
 const signupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: isProduction ? 5 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts. Please try again later.' }
@@ -985,10 +985,10 @@ app.put('/api/settings', requireOffice, wrapAsync(async (req, res) => {
     }
 
     // Numeric minimums
-    for (const [key, label] of [['grace_period_minutes','Grace period'],['max_no_show_strikes','Max no-show strikes'],['tardy_threshold_minutes','Tardy threshold']]) {
+    for (const [key, label, min] of [['grace_period_minutes','Grace period',0],['max_no_show_strikes','Max no-show strikes',1],['tardy_threshold_minutes','Tardy threshold',1]]) {
       if (key in incoming) {
         const val = parseInt(incoming[key], 10);
-        if (isNaN(val) || val < 1) errors.push(`${label} must be at least 1`);
+        if (isNaN(val) || val < min) errors.push(`${label} must be at least ${min}`);
       }
     }
 

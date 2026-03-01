@@ -106,9 +106,11 @@ Default login credentials (password: `demo123`):
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
 - `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, DEFAULT_WIDGET_LAYOUT)
 - `public/js/widget-system.js` — Widget dashboard runtime: layout persistence, grid rendering, edit mode, SortableJS integration
-- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector)
-- `public/rider.html` — Rider request form and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention)
+- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector). All content dynamically rendered into `#home-content` — no static clock button or ride list elements.
+- `public/rider.html` — Rider 3-step booking wizard and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention). Step 1: Where (pickup/dropoff), Step 2: When (date chips + time), Step 3: Confirm + optional recurring toggle. Auto-switches to My Rides tab on load if active rides exist.
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
+- `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~97 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization
+- `tests/uat.spec.js` — User acceptance tests (4 tests): office login, rider booking flow, office approval, driver clock-in
 - `public/login.html` / `signup.html` — Auth pages with org-scoped URL support
 - `public/demo.html` — Demo mode role picker with campus-specific links
 - `tenants/campus-configs.js` — Server-side campus branding configs for all 4 campuses
@@ -181,6 +183,37 @@ Default login credentials (password: `demo123`):
   - Driver console: data refresh every 3s, grace timers update every 1s
   - Rider console: rides refresh every 5s
 - Ride checkbox selections persist across poll re-renders (not reset on table refresh)
+
+### Office Console Panel IDs (index.html)
+Default active tab is `dispatch-panel`. Navigation buttons use `data-target` attribute.
+| Panel ID | Purpose |
+|----------|---------|
+| `dispatch-panel` | Default — KPI cards, pending queue, today's board (schedule grid) |
+| `rides-panel` | Rides table/calendar views with filter pills |
+| `staff-panel` | Driver shifts management |
+| `fleet-panel` | Vehicle management |
+| `analytics-panel` | Widget dashboard (sub-panels: `analytics-dashboard-view`, `analytics-hotspots-view`, etc.) |
+| `map-panel` | Campus map iframe |
+| `settings-panel` | Tenant settings + users management (`admin-users-view` sub-panel) |
+| `profile-panel` | Current user profile |
+
+Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters: `#analytics-from`, `#analytics-to`, `#analytics-refresh-btn`.
+
+### Driver Console (driver.html)
+- Bottom tab navigation: `home-panel` (default), `rides-panel`, `account-panel`
+- **All home content is dynamically rendered** into `#home-content` by `renderHomePanel()` — no static `#clock-btn`, `#clock-status`, `#available-rides`, or `#my-rides` elements
+- Clock button: inline `onclick="toggleClock()"`, text is "CLOCK IN" or "CLOCK OUT"
+- Clock out triggers confirmation via `showModalNew()` (modal class: `ro-modal-overlay.open`)
+- Account tab has static `#profile-name` and `#profile-phone` inputs
+
+### Rider Console (rider.html)
+- Bottom tab navigation: `book-panel` (default), `myrides-panel`
+- **3-step booking wizard** (not a flat form): Step 1 Where (`#step-1`, `#pickup-location`, `#dropoff-location`), Step 2 When (`#step-2`, `#date-chips`, `#ride-time`), Step 3 Confirm (`#step-3`, `#notes`, `#recurring-toggle`, `#confirm-btn`)
+- No `#ride-form`, no `input[name="ride-type"]`, no `#requested-time`, no `#rider-phone`, no `#form-message`
+- **`autoSwitchToActiveRide()`**: On load, if rider has any active rides, automatically switches to `myrides-panel`. Tests must explicitly click the Book tab to access the wizard.
+- My Rides content rendered into `#myrides-content`
+- Account settings accessed via gear button (`#gear-btn`) → drawer overlay (not a tab panel)
+- Logout button: `onclick="logout()"` (icon-only, no text label)
 
 ### Analytics Architecture
 - **Widget System:** Customizable dashboard with drag-and-drop widget cards (SortableJS CDN). 16 registered widgets across 8 categories. Users can add/remove/resize/reorder widgets. Layout persisted per-user in localStorage with versioned schema (`WIDGET_LAYOUT_VERSION`).
@@ -399,7 +432,7 @@ All analytics endpoints support `?from=&to=` date params (default: last 7 days).
 
 ### Settings (Office only)
 - `GET /api/settings` — Get all tenant settings
-- `PUT /api/settings` — Bulk-update settings
+- `PUT /api/settings` — Bulk-update settings (body: array of `[{ key, value }, ...]`, NOT a plain object)
 - `GET /api/settings/public/operations` — Public operations settings (unauthenticated)
 - `GET /api/settings/:key` — Get single setting
 
@@ -447,6 +480,23 @@ All analytics endpoints support `?from=&to=` date params (default: last 7 days).
 - **URL references:** Use extensionless paths (`/login` not `/login.html`)
 - **Fetch response checks:** All `fetch()` calls MUST check `res.ok` before showing success feedback. Always handle error responses with `showToastNew(data.error, 'error')`
 - **FOUC prevention:** Synchronous IIFEs in `<head>` set both CSS custom properties AND `document.title` from campus slug before first paint
+
+## Testing
+
+### Test Suite
+- **Framework:** Playwright (config in `playwright.config.js`)
+- **Files:** `tests/e2e.spec.js` (~97 tests), `tests/uat.spec.js` (4 tests)
+- **Run:** `npx playwright test` (requires server running on port 3000)
+- **Server must be running** with `DEMO_MODE=true` for seed data
+
+### Test Conventions
+- API tests use `playwright.request.newContext()` with cookie-based auth
+- UI tests use `loginUI()` helper that navigates and submits the login form
+- `test.describe.serial` for groups with shared state (ride lifecycle, clock events)
+- Settings API expects array format: `{ data: [{ key: 'grace_period_minutes', value: '0' }] }`
+- Rider tests must explicitly click `button[data-target="book-panel"]` because `autoSwitchToActiveRide()` may hide the booking wizard
+- Driver tests reference dynamically rendered content (e.g., `button:has-text("CLOCK IN")`) — no static element IDs for clock or ride sections
+- Modal confirmation selector: `.ro-modal-overlay.open button:has-text("...")` (not `.show`)
 
 ## UI Redesign Architecture
 
