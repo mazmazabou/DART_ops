@@ -3044,20 +3044,30 @@ function setAnalyticsQuickRange(preset) {
       fromStr = d7.getFullYear() + '-' + String(d7.getMonth() + 1).padStart(2, '0') + '-' + String(d7.getDate()).padStart(2, '0');
       break;
     }
-    case '30d': {
-      var d30 = new Date(_today.getTime() - 29 * 86400000);
-      fromStr = d30.getFullYear() + '-' + String(d30.getMonth() + 1).padStart(2, '0') + '-' + String(d30.getDate()).padStart(2, '0');
-      break;
-    }
     case 'this-month':
       fromStr = todayStr.slice(0, 8) + '01';
       break;
     case 'semester': {
-      var month = _today.getMonth();
+      var month = _today.getMonth(); // 0-indexed
       var year = _today.getFullYear();
-      if (month <= 4) { fromStr = year + '-01-10'; }
-      else if (month <= 6) { fromStr = year + '-05-16'; }
-      else { fromStr = year + '-08-15'; }
+      var periodLabel = (tenantConfig && tenantConfig.academic_period_label) || 'Semester';
+      if (periodLabel === 'Quarter') {
+        // Quarter: Winter Jan 5, Spring Mar 25, Summer Jun 15, Fall Sep 20
+        if (month <= 2) { fromStr = year + '-01-05'; }       // Winter
+        else if (month <= 5) { fromStr = year + '-03-25'; }  // Spring
+        else if (month <= 8) { fromStr = year + '-06-15'; }  // Summer
+        else { fromStr = year + '-09-20'; }                  // Fall
+      } else if (periodLabel === 'Trimester') {
+        // Trimester: Spring Jan 10, Summer May 5, Fall Aug 25
+        if (month <= 3) { fromStr = year + '-01-10'; }       // Spring
+        else if (month <= 7) { fromStr = year + '-05-05'; }  // Summer
+        else { fromStr = year + '-08-25'; }                  // Fall
+      } else {
+        // Semester (default): Spring Jan 10, Summer May 16, Fall Aug 15
+        if (month <= 4) { fromStr = year + '-01-10'; }       // Spring
+        else if (month <= 6) { fromStr = year + '-05-16'; }  // Summer
+        else { fromStr = year + '-08-15'; }                  // Fall
+      }
       break;
     }
   }
