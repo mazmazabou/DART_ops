@@ -10,6 +10,20 @@
   <link rel="stylesheet" href="/css/rideops-theme.css">
   <script src="/js/rideops-utils.js"></script>
   <script src="/campus-themes.js"></script>
+  <script>
+    // Synchronous FOUC prevention: apply campus colors before first paint
+    (function() {
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      var slug = ['usc','stanford','ucla','uci'].indexOf(parts[0]) !== -1 ? parts[0] : null;
+      if (slug && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[slug]) {
+        var ct = CAMPUS_THEMES[slug];
+        var root = document.documentElement;
+        root.style.setProperty('--color-primary', ct.primaryColor);
+        root.style.setProperty('--color-primary-rgb', hexToRgb(ct.primaryColor));
+        if (ct.headerBg) root.style.setProperty('--color-header-bg', ct.headerBg);
+      }
+    })();
+  </script>
   <script src="/demo-config.js"></script>
   <!-- Locations loaded dynamically from /api/locations -->
   <style>
@@ -267,7 +281,7 @@
         document.title = (c.orgShortName || 'RideOps') + ' Rider';
         var el = document.getElementById('org-short-name');
         if (el) el.textContent = c.orgShortName || 'RideOps';
-        if (typeof applyTenantTheme === 'function') applyTenantTheme(c);
+        // applyTenantTheme() is called by init() — no need to double-fetch here
       }).catch(function() {});
     })();
 
