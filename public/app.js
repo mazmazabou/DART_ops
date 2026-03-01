@@ -4285,10 +4285,10 @@ function renderDonutChart(containerId, distribution) {
   var offset = 0;
 
   var arcs = '';
-  items.forEach(function(item) {
+  items.forEach(function(item, idx) {
     var pct = item.value / total;
     var dashLen = pct * circumference;
-    arcs += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + item.color + '" stroke-width="' + strokeW + '" stroke-dasharray="' + dashLen + ' ' + (circumference - dashLen) + '" stroke-dashoffset="' + (-offset) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')" />';
+    arcs += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + item.color + '" stroke-width="' + strokeW + '" stroke-dasharray="' + dashLen + ' ' + (circumference - dashLen) + '" stroke-dashoffset="' + (-offset) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')" class="donut-seg" data-idx="' + idx + '" />';
     offset += dashLen;
   });
 
@@ -4301,11 +4301,29 @@ function renderDonutChart(containerId, distribution) {
     '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
       '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:200px;height:200px;">' +
         arcs +
-        '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" style="font-size:28px;font-weight:700;fill:var(--color-text);">' + total + '</text>' +
-        '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" style="font-size:12px;fill:var(--color-text-muted);">total rides</text>' +
+        '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" style="font-size:28px;font-weight:700;fill:var(--color-text);pointer-events:none;">' + total + '</text>' +
+        '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" style="font-size:12px;fill:var(--color-text-muted);pointer-events:none;">total rides</text>' +
       '</svg>' +
       '<div style="display:flex;flex-direction:column;gap:6px;">' + legend + '</div>' +
     '</div>';
+
+  // Post-render: add hover tooltips to donut segments
+  var segs = container.querySelectorAll('.donut-seg');
+  segs.forEach(function(seg) {
+    var idx = parseInt(seg.dataset.idx);
+    var item = items[idx];
+    if (!item) return;
+    var pct = (item.value / total * 100).toFixed(1);
+    seg.addEventListener('mouseenter', function(e) {
+      showChartTooltip(e, item.label + ': ' + item.value + ' rides (' + pct + '%)');
+      segs.forEach(function(s, i) { s.style.opacity = i === idx ? '1' : '0.4'; });
+    });
+    seg.addEventListener('mousemove', function(e) { positionChartTooltip(e, getChartTooltip()); });
+    seg.addEventListener('mouseleave', function() {
+      hideChartTooltip();
+      segs.forEach(function(s) { s.style.opacity = '1'; });
+    });
+  });
 }
 
 function renderPeakHoursHeatmap(containerId, data) {
