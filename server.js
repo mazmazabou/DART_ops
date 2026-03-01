@@ -116,6 +116,8 @@ pool.on('connect', (client) => {
   client.query('SET timezone = $1', [TENANT.timezone]);
 });
 
+const MIN_PASSWORD_LENGTH = 8;
+
 // Session secret validation
 const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction && !process.env.SESSION_SECRET) {
@@ -326,7 +328,30 @@ async function runMigrations() {
       mileage_at_service NUMERIC,
       performed_by TEXT REFERENCES users(id),
       created_at TIMESTAMPTZ DEFAULT NOW()
-    );`
+    );`,
+
+    // ----- Indexes (idempotent — safe to run on every startup) -----
+    `CREATE INDEX IF NOT EXISTS idx_rides_status ON rides(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_rides_requested_time ON rides(requested_time);`,
+    `CREATE INDEX IF NOT EXISTS idx_rides_rider_id ON rides(rider_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_rides_assigned_driver ON rides(assigned_driver_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_rides_rider_email ON rides(rider_email);`,
+    `CREATE INDEX IF NOT EXISTS idx_rides_vehicle_id ON rides(vehicle_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_rides_status_time ON rides(status, requested_time);`,
+    `CREATE INDEX IF NOT EXISTS idx_ride_events_ride_id ON ride_events(ride_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_shifts_employee_id ON shifts(employee_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_clock_events_employee_date ON clock_events(employee_id, event_date);`,
+    `CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);`,
+
+    // ----- Constraints -----
+    `DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'vehicles_name_unique'
+      ) THEN
+        ALTER TABLE vehicles ADD CONSTRAINT vehicles_name_unique UNIQUE (name);
+      END IF;
+    END $$;`
   ];
   for (const stmt of statements) {
     await query(stmt);
@@ -537,8 +562,9 @@ async function getRiderMissCount(email) {
   return res.rows[0]?.count || 0;
 }
 
-async function setRiderMissCount(email, count) {
-  await query(
+async function setRiderMissCount(email, count, txClient) {
+  const q = txClient || pool;
+  await q.query(
     `INSERT INTO rider_miss_counts (email, count)
      VALUES ($1, $2)
      ON CONFLICT (email) DO UPDATE SET count = EXCLUDED.count`,
@@ -593,8 +619,9 @@ function jsDateToOurDay(jsDay) {
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
-async function incrementRiderMissCount(email) {
-  const res = await query(
+async function incrementRiderMissCount(email, txClient) {
+  const q = txClient || pool;
+  const res = await q.query(
     `INSERT INTO rider_miss_counts (email, count)
      VALUES ($1, 1)
      ON CONFLICT (email) DO UPDATE SET count = rider_miss_counts.count + 1
@@ -604,8 +631,9 @@ async function incrementRiderMissCount(email) {
   return res.rows[0].count;
 }
 
-async function addRideEvent(rideId, actorUserId, type, notes, initials) {
-  await query(
+async function addRideEvent(rideId, actorUserId, type, notes, initials, txClient) {
+  const q = txClient || pool;
+  await q.query(
     `INSERT INTO ride_events (id, ride_id, actor_user_id, type, notes, initials) VALUES ($1, $2, $3, $4, $5, $6)`,
     [generateId('event'), rideId, actorUserId || null, type, notes || null, initials || null]
   );
@@ -1076,8 +1104,8 @@ app.post('/api/auth/change-password', requireAuth, wrapAsync(async (req, res) =>
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current password and new password are required' });
   }
-  if (newPassword.length < 8) {
-    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   }
   const userRes = await query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
   const user = userRes.rows[0];
@@ -1104,8 +1132,8 @@ app.post('/api/auth/signup', signupLimiter, wrapAsync(async (req, res) => {
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'A valid email is required' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   }
   if (!isValidMemberId(uscId)) {
     return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
@@ -1183,6 +1211,7 @@ app.post('/api/admin/users', requireOffice, wrapAsync(async (req, res) => {
   if (!isValidMemberId(uscId)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
   if (!isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone format' });
   if (!['rider', 'driver', 'office'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (password.length < MIN_PASSWORD_LENGTH) return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
 
   const username = reqUsername ? reqUsername.trim().toLowerCase() : email.toLowerCase().split('@')[0];
   if (!/^[a-z0-9_]+$/.test(username)) {
@@ -1311,8 +1340,8 @@ app.post('/api/admin/users/:id/reset-password', requireOffice, wrapAsync(async (
     return res.status(400).json({ error: 'Use the change password feature for your own account' });
   }
   const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 8) {
-    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   }
   const userRes = await query('SELECT id, name, email FROM users WHERE id = $1', [targetId]);
   const user = userRes.rows[0];
@@ -1667,6 +1696,18 @@ app.post('/api/shifts', requireOffice, wrapAsync(async (req, res) => {
   if (!opDays.includes(dow)) {
     return res.status(400).json({ error: 'Shifts can only be created on operating days' });
   }
+  // Check for overlapping shifts
+  const overlaps = await query(
+    `SELECT id FROM shifts
+     WHERE employee_id = $1 AND day_of_week = $2
+     AND (week_start IS NOT DISTINCT FROM $3)
+     AND start_time < $4 AND end_time > $5`,
+    [employeeId, dayOfWeek, weekStart || null, endTime, startTime]
+  );
+  if (overlaps.rows.length > 0) {
+    return res.status(409).json({ error: 'This shift overlaps with an existing shift for this driver.' });
+  }
+
   const shift = {
     id: generateId('shift'),
     employeeId,
@@ -1725,10 +1766,29 @@ app.put('/api/shifts/:id', requireOffice, wrapAsync(async (req, res) => {
     }
   }
 
-  // Check shift exists
-  const existing = await query(`SELECT id FROM shifts WHERE id = $1`, [id]);
+  // Check shift exists and get current values for overlap check
+  const existing = await query(`SELECT * FROM shifts WHERE id = $1`, [id]);
   if (!existing.rowCount) {
     return res.status(404).json({ error: 'Shift not found' });
+  }
+  const cur = existing.rows[0];
+
+  // Check for overlapping shifts (using new values or current values as fallback)
+  const checkEmpId = employeeId !== undefined ? employeeId : cur.employee_id;
+  const checkDow = dayOfWeek !== undefined ? dayOfWeek : cur.day_of_week;
+  const checkStart = startTime !== undefined ? startTime : cur.start_time;
+  const checkEnd = endTime !== undefined ? endTime : cur.end_time;
+  const checkWeek = weekStart !== undefined ? weekStart : cur.week_start;
+  const overlaps = await query(
+    `SELECT id FROM shifts
+     WHERE employee_id = $1 AND day_of_week = $2
+     AND (week_start IS NOT DISTINCT FROM $3)
+     AND start_time < $4 AND end_time > $5
+     AND id != $6`,
+    [checkEmpId, checkDow, checkWeek || null, checkEnd, checkStart, id]
+  );
+  if (overlaps.rows.length > 0) {
+    return res.status(409).json({ error: 'This shift overlaps with an existing shift for this driver.' });
   }
 
   const result = await query(
@@ -1829,13 +1889,25 @@ app.post('/api/rides/:id/approve', requireOffice, wrapAsync(async (req, res) => 
   if (!(await isWithinServiceHours(ride.requested_time))) {
     return res.status(400).json({ error: await getServiceHoursMessage() });
   }
-  const result = await query(
-    `UPDATE rides SET status = 'approved', updated_at = NOW() WHERE id = $1
-     RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
-    [ride.id]
-  );
-  await addRideEvent(ride.id, req.session.userId, 'approved');
+
+  const client = await pool.connect();
+  let result;
+  try {
+    await client.query('BEGIN');
+    result = await client.query(
+      `UPDATE rides SET status = 'approved', updated_at = NOW() WHERE id = $1
+       RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
+                 requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+      [ride.id]
+    );
+    await addRideEvent(ride.id, req.session.userId, 'approved', null, null, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   res.json(mapRide(result.rows[0]));
 
   if (ride.rider_id) {
@@ -1915,15 +1987,26 @@ app.post('/api/rides/:id/cancel', requireAuth, wrapAsync(async (req, res) => {
     }
   }
 
-  const result = await query(
-    `UPDATE rides
-     SET status = 'cancelled', assigned_driver_id = NULL, grace_start_time = NULL, cancelled_by = $2, updated_at = NOW()
-     WHERE id = $1
-     RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by, vehicle_id`,
-    [ride.id, isOffice ? 'office' : 'rider']
-  );
-  await addRideEvent(ride.id, req.session.userId, isOffice ? 'cancelled_by_office' : 'cancelled');
+  const client = await pool.connect();
+  let result;
+  try {
+    await client.query('BEGIN');
+    result = await client.query(
+      `UPDATE rides
+       SET status = 'cancelled', assigned_driver_id = NULL, grace_start_time = NULL, cancelled_by = $2, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
+                 requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, cancelled_by, vehicle_id`,
+      [ride.id, isOffice ? 'office' : 'rider']
+    );
+    await addRideEvent(ride.id, req.session.userId, isOffice ? 'cancelled_by_office' : 'cancelled', null, null, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   res.json(mapRide(result.rows[0]));
 
   if (isOffice && ride.rider_id) {
@@ -2166,16 +2249,31 @@ app.post('/api/rides/:id/claim', requireAuth, wrapAsync(async (req, res) => {
   if (!driver) return res.status(400).json({ error: 'Driver not found' });
   if (!driver.active) return res.status(400).json({ error: 'Driver must be clocked in to claim rides' });
 
-  const updated = await query(
-    `UPDATE rides
-     SET assigned_driver_id = $1, vehicle_id = $2, status = 'scheduled', updated_at = NOW()
-     WHERE id = $3 AND assigned_driver_id IS NULL AND status = 'approved'
-     RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
-    [driverId, vehicleId, ride.id]
-  );
-  if (!updated.rowCount) return res.status(400).json({ error: 'Ride already assigned' });
-  await addRideEvent(ride.id, req.session.userId, 'claimed');
+  const client = await pool.connect();
+  let updated;
+  try {
+    await client.query('BEGIN');
+    updated = await client.query(
+      `UPDATE rides
+       SET assigned_driver_id = $1, vehicle_id = $2, status = 'scheduled', updated_at = NOW()
+       WHERE id = $3 AND assigned_driver_id IS NULL AND status = 'approved'
+       RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
+                 requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+      [driverId, vehicleId, ride.id]
+    );
+    if (!updated.rowCount) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Ride already assigned' });
+    }
+    await addRideEvent(ride.id, req.session.userId, 'claimed', null, null, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   res.json(mapRide(updated.rows[0]));
 
   if (ride.rider_id) {
@@ -2265,21 +2363,32 @@ app.post('/api/rides/:id/complete', requireAuth, wrapAsync(async (req, res) => {
   if (!(await allowDriverAction(req, res, ride))) return;
   const { vehicleId } = req.body || {};
   if (vehicleId && !ride.vehicle_id) {
-    await query('UPDATE rides SET vehicle_id = $1 WHERE id = $2', [vehicleId, ride.id]);
     ride.vehicle_id = vehicleId;
   }
   if (!ride.vehicle_id) {
     return res.status(400).json({ error: 'A vehicle must be recorded before completing this ride.' });
   }
-  const result = await query(
-    `UPDATE rides SET status = 'completed', consecutive_misses = 0, updated_at = NOW()
-     WHERE id = $1
-     RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
-    [ride.id]
-  );
-  await setRiderMissCount(ride.rider_email, 0);
-  await addRideEvent(ride.id, req.session.userId, 'completed');
+
+  const client = await pool.connect();
+  let result;
+  try {
+    await client.query('BEGIN');
+    result = await client.query(
+      `UPDATE rides SET status = 'completed', consecutive_misses = 0, vehicle_id = COALESCE($2, vehicle_id), updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
+                 requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+      [ride.id, ride.vehicle_id]
+    );
+    await setRiderMissCount(ride.rider_email, 0, client);
+    await addRideEvent(ride.id, req.session.userId, 'completed', null, null, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   res.json(mapRide(result.rows[0]));
 
   if (ride.rider_id) {
@@ -2307,15 +2416,27 @@ app.post('/api/rides/:id/no-show', requireAuth, wrapAsync(async (req, res) => {
       return res.status(400).json({ error: `Grace period not elapsed. ${remaining} seconds remaining.` });
     }
   }
-  const newCount = await incrementRiderMissCount(ride.rider_email);
-  const result = await query(
-    `UPDATE rides SET status = 'no_show', consecutive_misses = $2, updated_at = NOW()
-     WHERE id = $1
-     RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
-               requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
-    [ride.id, newCount]
-  );
-  await addRideEvent(ride.id, req.session.userId, 'no_show');
+
+  const client = await pool.connect();
+  let newCount, result;
+  try {
+    await client.query('BEGIN');
+    newCount = await incrementRiderMissCount(ride.rider_email, client);
+    result = await client.query(
+      `UPDATE rides SET status = 'no_show', consecutive_misses = $2, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes,
+                 requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
+      [ride.id, newCount]
+    );
+    await addRideEvent(ride.id, req.session.userId, 'no_show', null, null, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   res.json(mapRide(result.rows[0]));
 
   // Fire-and-forget: no-show notifications
@@ -2451,6 +2572,8 @@ app.get('/api/vehicles', requireStaff, wrapAsync(async (req, res) => {
 app.post('/api/vehicles', requireOffice, wrapAsync(async (req, res) => {
   const { name, type, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Vehicle name is required' });
+  const dup = await query('SELECT id FROM vehicles WHERE name = $1', [name]);
+  if (dup.rowCount) return res.status(409).json({ error: 'A vehicle with this name already exists' });
   const id = generateId('veh');
   await query(
     `INSERT INTO vehicles (id, name, type, notes) VALUES ($1, $2, $3, $4)`,
@@ -2462,6 +2585,10 @@ app.post('/api/vehicles', requireOffice, wrapAsync(async (req, res) => {
 
 app.put('/api/vehicles/:id', requireOffice, wrapAsync(async (req, res) => {
   const { name, type, status, notes, totalMiles } = req.body;
+  if (name) {
+    const dup = await query('SELECT id FROM vehicles WHERE name = $1 AND id != $2', [name, req.params.id]);
+    if (dup.rowCount) return res.status(409).json({ error: 'A vehicle with this name already exists' });
+  }
   const result = await query(
     `UPDATE vehicles SET
        name = COALESCE($1, name),
