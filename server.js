@@ -5082,8 +5082,13 @@ let server;
   }
 
   if (DEMO_MODE) {
-    const { seedDemoData } = require('./demo-seed');
-    await seedDemoData(pool).then(() => console.log('Demo data seeded')).catch(console.error);
+    const { rows } = await query('SELECT COUNT(*) as count FROM rides');
+    if (parseInt(rows[0].count) < 10) {
+      const { seedDemoData } = require('./demo-seed');
+      await seedDemoData(pool).then(() => console.log('Demo data seeded')).catch(console.error);
+    } else {
+      console.log(`[STARTUP] Demo data already present (${rows[0].count} rides), skipping seed`);
+    }
   }
 
   server = app.listen(PORT, () => {
