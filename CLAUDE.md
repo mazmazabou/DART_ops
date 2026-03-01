@@ -17,12 +17,13 @@ RideOps is an accessible campus transportation operations platform. It provides 
 | UCI | `uci` | UCI AnteaterExpress | #0064A4 | uci-locations.js (25) |
 
 ### Org-Scoped URL Routing
-- Routes registered for each slug: `/:slug`, `/:slug/driver`, `/:slug/rider`, `/:slug/signup`
+- Routes registered for each slug: `/:slug`, `/:slug/login`, `/:slug/driver`, `/:slug/rider`, `/:slug/signup`
+- `/login` (no slug) shows neutral campus selector — each card links to `/:slug/login`
+- `/:slug/login` shows campus-branded login form; post-login redirects to `/:slug`, `/:slug/driver`, or `/:slug/rider` based on user role
 - Session stores `campus` slug for context
 - `GET /api/tenant-config?campus=usc` merges campus config with defaults
 - Frontend detects campus from URL path and applies dynamic CSS vars
-- Login redirects to org-scoped URLs (e.g., `/usc/driver`)
-- Legacy routes (`/office`, `/driver`, `/rider`, `/login`) still work with default branding
+- Legacy routes (`/office`, `/driver`, `/rider`) still work with default branding
 
 ### Campus Themes (public/campus-themes.js)
 - `CAMPUS_THEMES` object defines per-campus color palettes (8-14 hex colors each)
@@ -132,7 +133,7 @@ Default login credentials (password: `demo123`):
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
 - `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~97 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization
 - `tests/uat.spec.js` — User acceptance tests (4 tests): office login, rider booking flow, office approval, driver clock-in
-- `public/login.html` / `signup.html` — Auth pages with org-scoped URL support. `/login` (no slug) shows campus selector above login form; `/:slug` (with slug) shows branded login form only
+- `public/login.html` / `signup.html` — Auth pages with org-scoped URL support. `/login` shows campus selector (no login form); `/:slug/login` shows campus-branded login form
 - `public/demo.html` — Demo mode role picker with campus-specific links
 - `tenants/campus-configs.js` — Server-side campus branding configs for all 4 campuses
 - `tenants/usc-dart.json` — USC DART tenant configuration
