@@ -445,6 +445,8 @@ All analytics endpoints support `?from=&to=` date params (default: last 7 days).
 - **Empty states:** Use `showEmptyState()` with Tabler icon names (`ti ti-*`)
 - **Polling:** All polling intervals must pause via `visibilitychange` listener when tab is backgrounded
 - **URL references:** Use extensionless paths (`/login` not `/login.html`)
+- **Fetch response checks:** All `fetch()` calls MUST check `res.ok` before showing success feedback. Always handle error responses with `showToastNew(data.error, 'error')`
+- **FOUC prevention:** Synchronous IIFEs in `<head>` set both CSS custom properties AND `document.title` from campus slug before first paint
 
 ## UI Redesign Architecture
 

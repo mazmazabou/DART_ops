@@ -708,6 +708,9 @@ async function normalizeDays(days) {
 
 function generateRecurringDates(startDate, endDate, days) {
   // days uses 0=Mon...6=Sun convention
+  // NOTE: Day-of-week calculation uses TENANT.timezone to avoid midnight-boundary drift
+  // between server timezone and campus timezone. The toLocaleString conversion ensures
+  // that e.g. a Sunday-night UTC time is correctly identified as Monday in Pacific time.
   const result = [];
   const current = new Date(startDate);
   const end = new Date(endDate);
@@ -2634,7 +2637,7 @@ app.get('/api/vehicles', requireStaff, wrapAsync(async (req, res) => {
 app.post('/api/vehicles', requireOffice, wrapAsync(async (req, res) => {
   const { name, type, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Vehicle name is required' });
-  const dup = await query('SELECT id FROM vehicles WHERE name = $1', [name]);
+  const dup = await query('SELECT id FROM vehicles WHERE LOWER(name) = LOWER($1)', [name]);
   if (dup.rowCount) return res.status(409).json({ error: 'A vehicle with this name already exists' });
   const id = generateId('veh');
   await query(
@@ -2648,7 +2651,7 @@ app.post('/api/vehicles', requireOffice, wrapAsync(async (req, res) => {
 app.put('/api/vehicles/:id', requireOffice, wrapAsync(async (req, res) => {
   const { name, type, status, notes, totalMiles } = req.body;
   if (name) {
-    const dup = await query('SELECT id FROM vehicles WHERE name = $1 AND id != $2', [name, req.params.id]);
+    const dup = await query('SELECT id FROM vehicles WHERE LOWER(name) = LOWER($1) AND id != $2', [name, req.params.id]);
     if (dup.rowCount) return res.status(409).json({ error: 'A vehicle with this name already exists' });
   }
   const result = await query(

@@ -1214,11 +1214,16 @@ async function onCalendarSelect(info) {
 
   const weekStart = formatDateInputLocal(getMondayOfWeek(info.start));
   try {
-    await fetch('/api/shifts', {
+    const res = await fetch('/api/shifts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ employeeId: empId, dayOfWeek, startTime, endTime, weekStart })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToastNew(err.error || 'Failed to add shift', 'error');
+      return;
+    }
     await loadShifts();
     if (shiftCalendar) shiftCalendar.refetchEvents();
     showToastNew('Shift added', 'success');
@@ -1373,7 +1378,12 @@ function onShiftEventClick(info) {
       type: 'danger'
     });
     if (!confirmed) return;
-    await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToastNew(err.error || 'Failed to delete shift', 'error');
+      return;
+    }
     await loadShifts();
     showToastNew('Shift deleted', 'success');
   };
@@ -1484,7 +1494,12 @@ function showShiftContextMenu(e, calEvent, eventEl) {
       type: 'danger'
     });
     if (!confirmed) return;
-    await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToastNew(err.error || 'Failed to delete shift', 'error');
+      return;
+    }
     await loadShifts();
     showToastNew('Shift deleted', 'success');
   };

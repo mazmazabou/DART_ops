@@ -11,10 +11,14 @@
   <script src="/js/rideops-utils.js"></script>
   <script src="/campus-themes.js"></script>
   <script>
-    // Synchronous FOUC prevention: apply campus colors before first paint
+    // Synchronous FOUC prevention: apply campus colors and title before first paint
     (function() {
       var parts = window.location.pathname.split('/').filter(Boolean);
       var slug = ['usc','stanford','ucla','uci'].indexOf(parts[0]) !== -1 ? parts[0] : null;
+      if (slug) {
+        var titles = { usc: 'USC DART', stanford: 'Stanford ATS', ucla: 'UCLA BruinAccess', uci: 'UCI AnteaterExpress' };
+        if (titles[slug]) document.title = titles[slug] + ' Driver';
+      }
       if (slug && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[slug]) {
         var ct = CAMPUS_THEMES[slug];
         var root = document.documentElement;
