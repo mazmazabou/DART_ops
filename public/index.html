@@ -30,6 +30,13 @@
           root.style.setProperty('--color-primary-rgb', hexToRgb(ct.primaryColor));
           if (ct.headerBg) root.style.setProperty('--color-header-bg', ct.headerBg);
           if (ct.sidebarBg) root.style.setProperty('--color-sidebar-bg', ct.sidebarBg);
+          if (ct.sidebarText) root.style.setProperty('--color-sidebar-text', ct.sidebarText);
+          if (ct.sidebarActiveBg) root.style.setProperty('--color-sidebar-active-bg', ct.sidebarActiveBg);
+          if (ct.sidebarHover) root.style.setProperty('--color-sidebar-hover', ct.sidebarHover);
+          if (ct.sidebarBorder) root.style.setProperty('--color-sidebar-border', ct.sidebarBorder);
+          if (ct.primaryColor) root.style.setProperty('--color-sidebar-active', ct.primaryColor);
+          if (ct.secondaryColor) root.style.setProperty('--color-secondary', ct.secondaryColor);
+          if (ct.secondaryColor) root.style.setProperty('--color-accent', ct.secondaryColor);
         }
       } catch(e) {}
     })();

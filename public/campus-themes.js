@@ -19,7 +19,7 @@ var CAMPUS_THEMES = {
     orgName: 'Stanford ATS', orgShortName: 'ATS',
     orgTagline: 'Accessible Transportation Service', orgInitials: 'AT',
     primaryColor: '#8C1515', primaryLight: '#B83A4B', primaryDark: '#820000',
-    secondaryColor: '#FFFFFF', secondaryTextColor: '#8C1515',
+    secondaryColor: '#B6B1A9', secondaryTextColor: '#8C1515',
     sidebarBg: '#1A0505', sidebarText: '#C4A8A8',
     sidebarActiveBg: 'rgba(140,21,21,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://campus-map.stanford.edu/', campusKey: 'stanford',
@@ -38,10 +38,10 @@ var CAMPUS_THEMES = {
   uci: {
     orgName: 'UCI AnteaterExpress', orgShortName: 'AntExpress',
     orgTagline: 'Accessible Campus Transportation', orgInitials: 'AE',
-    primaryColor: '#255799', primaryLight: '#5580BB', primaryDark: '#1A3D70',
-    secondaryColor: '#FECC07', secondaryTextColor: '#255799',
+    primaryColor: '#0064A4', primaryLight: '#3388C0', primaryDark: '#004B7A',
+    secondaryColor: '#FFD200', secondaryTextColor: '#255799',
     sidebarBg: '#001A2E', sidebarText: '#7BAAC4',
-    sidebarActiveBg: 'rgba(37,87,153,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
+    sidebarActiveBg: 'rgba(0,100,164,0.25)', sidebarHover: 'rgba(255,255,255,0.06)',
     sidebarBorder: 'rgba(255,255,255,0.08)', mapUrl: 'https://map.uci.edu/', campusKey: 'uci',
     headerBg: '#D0DEF0'  // UCI Blue 20% tint — richer blue, better contrast
   }

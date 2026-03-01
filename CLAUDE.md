@@ -48,7 +48,7 @@ RideOps is an accessible campus transportation operations platform. It provides 
 ```
 
 ### Server-Side Campus Configs (tenants/campus-configs.js)
-Defines branding overrides per campus: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, sidebarBg, sidebarText, headerTint, mapUrl, locationsFile, idFieldLabel/Pattern/MaxLength.
+Defines complete per-campus overrides merged into `/api/tenant-config` response: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, secondaryTextColor, sidebarBg, sidebarText, sidebarActiveBg, sidebarHover, sidebarBorder, headerBg, mapUrl, campusKey, locationsKey, idFieldLabel, idFieldPattern, idFieldMaxLength, idFieldPlaceholder, serviceScopeText, timezone, rules. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding).
 
 ## Tech Stack
 - **Backend:** Node.js (>=18) + Express + express-session + bcryptjs
@@ -108,6 +108,7 @@ Default login credentials (password: `demo123`):
 - **Demo mode:** `DEMO_MODE=true` seeds 650+ rides on startup, enables demo role picker at `/demo`
 - **Deploys:** Automatic on push to `main` branch (Railway watches GitHub repo)
 - **Deploy exclusions:** `.railwayignore` excludes screenshots/, docs/, tests/, scripts/ to reduce image size
+- **No TENANT_FILE needed:** Multi-campus routing handled entirely by `campus-configs.js` + org-scoped URLs. Do NOT set `TENANT_FILE` env var.
 
 ### Marketing Site (Separate)
 - **URL:** https://ride-ops.com
@@ -145,11 +146,6 @@ Default login credentials (password: `demo123`):
 - `db/schema.sql` — PostgreSQL schema reference
 - `docs/reference/AUDIT_REPORT.md` — Pre-demo platform audit (2026-03-01)
 - `docs/reference/SECURITY.md` — Security posture overview for university IT evaluators
-- `docs/reference/school-themes.md` — Campus color palette specifications
-- `.nvmrc` — Node.js version pin (18)
-- `railway.json` — Railway deployment config (health check, restart policy, Nixpacks builder)
-- `.env.example` — Environment variable documentation for local dev and Railway
-- `.railwayignore` — Files excluded from Railway deploy (screenshots, docs, tests)
 
 ## Project Structure
 
@@ -170,25 +166,14 @@ Default login credentials (password: `demo123`):
 ## Architecture
 
 ### Backend Architecture
-- All routes defined in `server.js`
-- Tenant configuration: `loadTenantConfig()` reads `TENANT_FILE` env var, merges with `DEFAULT_TENANT`
-- Campus configurations: `tenants/campus-configs.js` provides per-campus overrides
-- Org-scoped routes dynamically registered for `VALID_ORG_SLUGS: ['usc', 'stanford', 'ucla', 'uci']`
-- Campus locations loaded from tenant's `locationsFile` or `./tenants/default-locations`
-- Database initialization runs on startup (`initDb()` function):
-  - Creates tables if they don't exist
-  - Runs migrations (including `usc_id` → `member_id` rename)
-  - Seeds default users (drivers, office, sample riders)
-  - Seeds default vehicles (3 standard + 1 accessible)
-  - Seeds default tenant settings (14+ configurable keys)
-- Session store: `connect-pg-simple` using existing pg pool (auto-creates `session` table)
-- Rate limiting: `express-rate-limit` on `/api/auth/login` (10/15min) and `/api/auth/signup` (5/15min)
-- Async error handling: All async routes wrapped with `wrapAsync()`, global error middleware returns 500 JSON
-- Health check: `GET /health` returns DB connectivity status (unauthenticated)
+- All routes in `server.js`. Tenant config: `loadTenantConfig()` reads `TENANT_FILE`, merges with `DEFAULT_TENANT`
+- Org-scoped routes for `VALID_ORG_SLUGS: ['usc', 'stanford', 'ucla', 'uci']`
+- `initDb()` on startup: creates tables, runs migrations, seeds users/vehicles/settings
+- Async error handling: `wrapAsync()` wrapper, global error middleware returns 500 JSON
 - Graceful shutdown: SIGTERM/SIGINT handlers drain connections with 15s timeout
-- Role-based access control via middleware: `requireAuth`, `requireOffice`, `requireStaff`, `requireRider`
-- Database helpers: `query()`, `generateId()`, `addRideEvent()`, `mapRide()`, `getSetting()`
-- Startup recovery: `recoverStuckRides` reverts `driver_on_the_way`/`driver_arrived_grace` rides to `scheduled`. Resets all driver `active` states. Logs `system_recovery` ride events.
+- Role middleware: `requireAuth`, `requireOffice`, `requireStaff`, `requireRider`
+- DB helpers: `query()`, `generateId()`, `addRideEvent()`, `mapRide()`, `getSetting()`
+- Startup recovery: `recoverStuckRides` reverts in-progress rides to `scheduled`, resets driver `active` states
 
 ### Frontend Architecture
 - Frontend uses vanilla JS with `fetch()` to call REST API
@@ -203,7 +188,6 @@ Default login credentials (password: `demo123`):
   - Office console: rides refresh every 5s
   - Driver console: data refresh every 3s, grace timers update every 1s
   - Rider console: rides refresh every 5s
-- Ride checkbox selections persist across poll re-renders (not reset on table refresh)
 
 ### Office Console Panel IDs (index.html)
 Default active tab is `dispatch-panel`. Navigation buttons use `data-target` attribute.
@@ -351,134 +335,74 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 
 ## API Endpoints Overview
 
-### Infrastructure
-- `GET /health` — Health check with DB connectivity status (unauthenticated)
+### Infrastructure & Auth
+- `GET /health` — Health check (unauthenticated)
+- `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
+- `POST /api/auth/signup` — Rider signup (if enabled), `GET /api/auth/signup-allowed`
+- `POST /api/auth/change-password`
 
-### Authentication
-- `POST /api/auth/login` — Login with username/password
-- `POST /api/auth/logout` — Logout and destroy session
-- `GET /api/auth/me` — Get current user session
-- `POST /api/auth/signup` — Rider self-service signup (if enabled)
-- `GET /api/auth/signup-allowed` — Check if signup is enabled
-- `POST /api/auth/change-password` — Change own password
+### Configuration (public)
+- `GET /api/tenant-config?campus=slug` — Tenant branding, includes `grace_period_minutes` and `academic_period_label`
+- `GET /api/client-config` — isDev flag
 
-### Configuration
-- `GET /api/tenant-config` — Get tenant branding config (public, accepts `?campus=slug`). Includes `grace_period_minutes` (from tenant_settings DB via SQL query) and `academic_period_label` from tenant_settings.
-- `GET /api/client-config` — Get isDev flag (public)
+### User Management (requireOffice)
+- `GET /api/admin/users`, `POST /api/admin/users`, `PUT /api/admin/users/:id`, `DELETE /api/admin/users/:id`
+- `GET /api/admin/users/search?member_id=...`, `GET /api/admin/users/:id/profile`
+- `POST /api/admin/users/:id/reset-miss-count`, `POST /api/admin/users/:id/reset-password`
+- `GET /api/admin/email-status`
 
-### User Management (Office only)
-- `GET /api/admin/users` — List all users
-- `GET /api/admin/users/search?member_id=...` — Search by member ID
-- `POST /api/admin/users` — Create new user
-- `PUT /api/admin/users/:id` — Update user
-- `DELETE /api/admin/users/:id` — Delete user
-- `GET /api/admin/users/:id/profile` — Get user profile with rides
-- `POST /api/admin/users/:id/reset-miss-count` — Reset rider's no-show count
-- `POST /api/admin/users/:id/reset-password` — Force password reset on next login
-- `GET /api/admin/email-status` — Check if email service is configured
+### Profile (self-service)
+- `GET /api/me`, `PUT /api/me` — Own name/phone
 
-### Profile (Self-service)
-- `GET /api/me` — Get own profile
-- `PUT /api/me` — Update own name/phone
+### Employees (requireStaff)
+- `GET /api/employees`, `POST /api/employees/clock-in`, `POST /api/employees/clock-out`
+- `GET /api/employees/today-status`, `GET /api/employees/:id/tardiness` (`?from=&to=`)
 
-### Employees (Staff only)
-- `GET /api/employees` — List all drivers
-- `POST /api/employees/clock-in` — Clock in driver
-- `POST /api/employees/clock-out` — Clock out driver
-- `GET /api/employees/today-status` — Get all drivers with today's clock events and shifts
-- `GET /api/employees/:id/tardiness` — Get driver tardiness history and summary (optional `?from=&to=`)
-
-### Shifts (Office only)
-- `GET /api/shifts` — List all shifts
-- `POST /api/shifts` — Create shift
-- `PUT /api/shifts/:id` — Update shift (office only)
-- `DELETE /api/shifts/:id` — Delete shift
+### Shifts (requireOffice)
+- `GET /api/shifts`, `POST /api/shifts`, `PUT /api/shifts/:id`, `DELETE /api/shifts/:id`
 
 ### Rides
-- `GET /api/rides` — List all rides (staff only, optional status filter)
-- `POST /api/rides` — Create ride request (authenticated users)
-- `GET /api/my-rides` — Get own rides (rider only)
-- `GET /api/locations` — Get campus location list
-- `POST /api/rides/:id/approve` — Approve ride (office only)
-- `POST /api/rides/:id/deny` — Deny ride (office only)
-- `POST /api/rides/:id/claim` — Claim ride (driver/office)
-- `POST /api/rides/:id/on-the-way` — Mark on the way (driver/office)
-- `POST /api/rides/:id/here` — Mark arrived, start grace (driver/office)
-- `POST /api/rides/:id/complete` — Mark completed (driver/office)
-- `POST /api/rides/:id/no-show` — Mark no-show (driver/office, after grace)
-- `POST /api/rides/:id/cancel` — Cancel ride (rider: own pending/approved; office: any non-terminal ride)
-- `POST /api/rides/:id/unassign` — Remove driver, revert to approved (office only)
-- `POST /api/rides/:id/reassign` — Transfer ride to different driver (office only, accepts `{ driverId }`)
-- `POST /api/rides/:id/set-vehicle` — Assign vehicle to ride (staff only)
-- `PATCH /api/rides/:id/vehicle` — Per-ride vehicle assignment (requireStaff: drivers + office, accepts `{ vehicle_id }`)
-- `PUT /api/rides/:id` — Edit ride details with change notes (office only)
-- `POST /api/rides/bulk-delete` — Delete multiple rides (office only, accepts `{ ids: [...] }`)
-- `POST /api/rides/purge-old` — Purge terminal rides older than retention period (office only)
+- `GET /api/rides` — List (requireStaff, optional `?status=`), `POST /api/rides` — Create (requireAuth)
+- `GET /api/my-rides` — Rider's own, `GET /api/locations` — Campus locations
+- Lifecycle: `POST /api/rides/:id/` + `approve|deny|claim|on-the-way|here|complete|no-show|cancel`
+- `POST /api/rides/:id/unassign`, `POST /api/rides/:id/reassign` (`{ driverId }`)
+- `POST /api/rides/:id/set-vehicle`, `PATCH /api/rides/:id/vehicle` (`{ vehicle_id }`, requireStaff)
+- `PUT /api/rides/:id` — Edit with change notes (requireOffice)
+- `POST /api/rides/bulk-delete` (`{ ids: [...] }`), `POST /api/rides/purge-old` (requireOffice)
 
-### Recurring Rides
-- `POST /api/recurring-rides` — Create recurring ride series (rider only)
-- `GET /api/recurring-rides/my` — Get own recurring rides (rider only)
-- `PATCH /api/recurring-rides/:id` — Update recurring ride status (rider only)
+### Recurring Rides (requireRider)
+- `POST /api/recurring-rides`, `GET /api/recurring-rides/my`, `PATCH /api/recurring-rides/:id`
 
-### Vehicles (Staff/Office)
-- `GET /api/vehicles` — List all vehicles (optional `?includeRetired=true`)
-- `POST /api/vehicles` — Create vehicle (office only)
-- `PUT /api/vehicles/:id` — Update vehicle (office only)
-- `DELETE /api/vehicles/:id` — Delete vehicle (office only)
-- `POST /api/vehicles/:id/retire` — Mark vehicle as retired (office only)
-- `POST /api/vehicles/:id/maintenance` — Log maintenance event (office only)
-- `GET /api/vehicles/:id/maintenance` — Get maintenance history (staff only)
+### Vehicles
+- `GET /api/vehicles` (`?includeRetired=true`), `POST`, `PUT /:id`, `DELETE /:id` (requireOffice)
+- `POST /api/vehicles/:id/retire`, `POST /api/vehicles/:id/maintenance` (requireOffice)
+- `GET /api/vehicles/:id/maintenance` (requireStaff)
 
-### Analytics (Office only)
-All analytics endpoints support `?from=&to=` date params (default: last 7 days).
-- `GET /api/analytics/summary` — Aggregate ride stats (totals, rates, unique riders/drivers)
-- `GET /api/analytics/hotspots` — Pickup/dropoff frequency heatmap
-- `GET /api/analytics/frequency` — Route frequency, DOW/hour/daily breakdown, top riders/drivers
-- `GET /api/analytics/vehicles` — Vehicle usage metrics
-- `GET /api/analytics/milestones` — Milestone badges (cumulative, no date filter)
-- `GET /api/analytics/semester-report` — Long-form semester comparison
-- `GET /api/analytics/tardiness` — Tardiness stats, by-driver, by-DOW, daily trend, distribution
-- `GET /api/analytics/ride-volume` — Rides per day/week/month with rates (`?granularity=day|week|month`)
-- `GET /api/analytics/ride-outcomes` — Terminal status distribution + weekly trend
-- `GET /api/analytics/peak-hours` — DOW × Hour heatmap grid (ISODOW 1-5 × operating hours)
-- `GET /api/analytics/routes` — Top N routes by frequency with completion rate (`?limit=20`)
-- `GET /api/analytics/driver-performance` — Per-driver scorecard (rides, tardiness, punctuality, hours)
-- `GET /api/analytics/driver-utilization` — Per-driver shift time vs active ride time
-- `GET /api/analytics/rider-cohorts` — Active/new/returning/churned/at-risk/terminated classification
-- `GET /api/analytics/rider-no-shows` — No-show rate by rider + strike distribution histogram
-- `GET /api/analytics/fleet-utilization` — Per-vehicle rides + maintenance in period
-- `GET /api/analytics/vehicle-demand` — Standard vs accessible demand ratio + weekly trend
-- `GET /api/analytics/shift-coverage` — Scheduled vs actual driver-hours, day-by-day gap analysis
-- `GET /api/analytics/export-report` — Multi-sheet Excel workbook (.xlsx) download via exceljs
+### Analytics (requireOffice, all support `?from=&to=`)
+- `summary`, `hotspots`, `frequency`, `vehicles`, `milestones` (no date filter), `semester-report`
+- `tardiness`, `ride-volume` (`?granularity=day|week|month`), `ride-outcomes`, `peak-hours`
+- `routes` (`?limit=20`), `driver-performance`, `driver-utilization`
+- `rider-cohorts`, `rider-no-shows`, `fleet-utilization`, `vehicle-demand`, `shift-coverage`
+- `export-report` — Multi-sheet Excel (.xlsx) download
 
-### Settings (Office only)
-- `GET /api/settings` — Get all tenant settings
-- `PUT /api/settings` — Bulk-update settings (body: array of `[{ key, value }, ...]`, NOT a plain object)
-- `GET /api/settings/public/operations` — Public operations settings (unauthenticated)
-- `GET /api/settings/:key` — Get single setting
+### Settings (requireOffice)
+- `GET /api/settings`, `PUT /api/settings` (body: `[{ key, value }, ...]`, NOT a plain object)
+- `GET /api/settings/public/operations` (unauthenticated), `GET /api/settings/:key`
 
 ### Notifications
-- `GET /api/notifications` — List notifications (paginated, returns `totalCount`)
-- `PUT /api/notifications/read-all` — Mark all as read
-- `PUT /api/notifications/:id/read` — Mark single as read
-- `POST /api/notifications/bulk-delete` — Delete multiple notifications
-- `DELETE /api/notifications/all` — Delete all notifications
-- `DELETE /api/notifications/:id` — Delete single notification
+- `GET /api/notifications` (paginated, returns `totalCount`)
+- `PUT /api/notifications/read-all`, `PUT /api/notifications/:id/read`
+- `POST /api/notifications/bulk-delete`, `DELETE /api/notifications/all`, `DELETE /api/notifications/:id`
 
-### Notification Preferences (Office only)
-- `GET /api/notification-preferences` — Get preferences (lazy-seeds defaults)
-- `PUT /api/notification-preferences` — Bulk-update preferences
+### Notification Preferences (requireOffice)
+- `GET /api/notification-preferences` (lazy-seeds defaults), `PUT /api/notification-preferences`
 
 ### Program Content
-- `GET /api/program-rules` — Get editable rules/guidelines (public)
-- `PUT /api/program-rules` — Update rules/guidelines (office only)
+- `GET /api/program-rules` (public), `PUT /api/program-rules` (requireOffice)
 
-### Constants
-- `NOTIFICATION_EVENT_TYPES` — 6 event types: driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request
-
-### Dev Tools
-- `POST /api/dev/seed-rides` — Seed sample rides (office only, disabled in production)
-- `POST /api/dev/reseed` — Manually reseed demo data (office + DEMO_MODE only). Replaces automatic hourly interval.
+### Constants & Dev Tools
+- `NOTIFICATION_EVENT_TYPES`: driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request
+- `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
 
 ## Code Conventions
 
@@ -500,7 +424,6 @@ All analytics endpoints support `?from=&to=` date params (default: last 7 days).
 - **Polling:** All polling intervals must pause via `visibilitychange` listener when tab is backgrounded
 - **URL references:** Use extensionless paths (`/login` not `/login.html`)
 - **Fetch response checks:** All `fetch()` calls MUST check `res.ok` before showing success feedback. Always handle error responses with `showToastNew(data.error, 'error')`
-- **FOUC prevention:** Synchronous IIFEs in `<head>` set both CSS custom properties AND `document.title` from campus slug before first paint
 
 ## Testing
 
@@ -546,9 +469,6 @@ rideops-theme.css contains these rules that make navigation work:
 .sub-panel.active { display: block; }
 ```
 
-### Icon System
-Use Tabler Icons (`ti ti-{name}`), NOT Material Symbols.
-
 ### Profile Cards & Avatars
 - Profile cards use `.profile-card`, `.profile-avatar` classes from rideops-theme.css (Section 26)
 - Avatar picker (`.avatar-picker`, `.avatar-option`) and helper functions in rideops-utils.js
@@ -584,34 +504,8 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 
 ## Known Issues & Tech Debt
 
-*Identified during pre-demo audit on 2026-03-01. See `docs/reference/AUDIT_REPORT.md` for full details.*
+All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 
-### Critical (Must Fix Before Production)
-- ~~**Session security:**~~ **RESOLVED** — `connect-pg-simple` store, `SESSION_SECRET` validation, secure cookies, `trust proxy`.
-- ~~**SQL injection:**~~ **RESOLVED** — Parameterized query for timezone setting.
-- ~~**No rate limiting:**~~ **RESOLVED** — `express-rate-limit` on login (10/15min) and signup (5/15min).
-- ~~**No graceful shutdown:**~~ **RESOLVED** — SIGTERM/SIGINT handlers with 15s timeout.
-
-### High Priority
-- ~~**Missing DB indexes:**~~ **RESOLVED** — 13 indexes added across rides, ride_events, shifts, clock_events, notifications.
-- ~~**No transactions:**~~ **RESOLVED** — No-show, completion, cancellation, approval, and claim wrapped in BEGIN/COMMIT/ROLLBACK.
-- ~~**Stored XSS:**~~ **RESOLVED** — Sanitizer now strips `on*` event handlers and `javascript:` URLs.
-- ~~**Sync bcrypt:**~~ **RESOLVED** — All `hashSync`/`compareSync` replaced with async equivalents.
-- ~~**Missing error handling:**~~ **RESOLVED** — All async routes wrapped with `wrapAsync()`, global error middleware added.
-- ~~**No `/health` endpoint:**~~ **RESOLVED** — `GET /health` with DB connectivity check.
-- ~~**Phantom notification events:**~~ **RESOLVED** — Removed `driver_no_clock_in`, `daily_summary`, and `ride_completed` from NOTIFICATION_EVENT_TYPES (6 active types remain).
-- ~~**`uscId` field name:**~~ **RESOLVED** — Renamed to `memberId` across all API handlers, frontend forms, and tests.
-- ~~**Office grace timer hardcoded:**~~ **RESOLVED** — `buildGraceInfo()` reads `tenantConfig.grace_period_minutes` dynamically.
-- ~~**`auto_deny_outside_hours` setting:**~~ **RESOLVED** — All 4 service-hours checks gated by `getSetting('auto_deny_outside_hours')`. Defaults to `false` in demo mode.
-
-### Medium Priority
+### Open Issues
 - **No pagination on rides API:** Returns all rides every 5 seconds.
 - **Railway custom domain:** `app.ride-ops.com` CNAME configured in Squarespace DNS pointing to Railway service.
-- ~~**Demo re-seed interval:**~~ **RESOLVED** — Removed automatic hourly reseed. Manual `POST /api/dev/reseed` endpoint (office + DEMO_MODE only).
-- ~~**Polling ignores tab visibility:**~~ **RESOLVED** — All 3 views (office, driver, rider) pause polling via `visibilitychange` and resume with immediate data refresh.
-- ~~**Two toast systems + two modal systems:**~~ **RESOLVED** — `showToast`/`showConfirmModal` removed from utils.js; all code uses `showToastNew`/`showModalNew` from rideops-utils.js.
-- ~~**`utils.js:158`:**~~ **RESOLVED** — `showEmptyState()` uses Tabler Icons (`ti ti-*`) instead of Material Symbols.
-- ~~**Password minimum inconsistency:**~~ **RESOLVED** — Standardized to 8 characters (`MIN_PASSWORD_LENGTH` constant).
-- ~~**Email env var mismatch:**~~ **RESOLVED** — `email.js` reads `NOTIFICATION_FROM_NAME`/`NOTIFICATION_FROM` (with `FROM_NAME`/`FROM_EMAIL` as legacy fallback).
-- ~~**Notification emails hardcode "RideOps":**~~ **RESOLVED** — `notification-service.js` uses `setTenantConfig()` to inject org name and primary color into email templates.
-- ~~**`db/schema.sql` stale:**~~ **RESOLVED** — Regenerated with all 13 tables, columns, indexes, and constraints.
