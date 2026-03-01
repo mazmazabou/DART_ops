@@ -4809,8 +4809,16 @@ initDb()
         `, [cutoff.toISOString()]);
 
         for (const ride of staleRides.rows) {
+          // Only notify once per stale ride — skip if notification already exists for this ride
+          const existing = await query(
+            `SELECT 1 FROM notifications WHERE event_type = 'ride_pending_stale' AND metadata->>'rideId' = $1 LIMIT 1`,
+            [ride.id]
+          );
+          if (existing.rowCount > 0) continue;
+
           const minutesPending = Math.round((Date.now() - new Date(ride.created_at).getTime()) / 60000);
           dispatchNotification('ride_pending_stale', {
+            rideId: ride.id,
             riderName: ride.rider_display_name || ride.rider_name || 'Unknown',
             pickup: ride.pickup_location,
             dropoff: ride.dropoff_location,
