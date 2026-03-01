@@ -4634,18 +4634,39 @@ async function loadAllAnalytics() {
 }
 
 function logVehicleMaintenance(vehicleId) {
-  const formHtml =
-    '<div style="margin-bottom:12px;">' +
-    '<label class="ro-label">What was serviced? <span style="color:var(--status-no-show)">*</span></label>' +
-    '<textarea class="ro-input" id="maintenance-notes" rows="3" placeholder="e.g. Oil change, brake inspection, tire rotation..."></textarea>' +
-    '</div>' +
-    '<div>' +
-    '<label class="ro-label">Mileage at service (optional)</label>' +
-    '<input type="number" class="ro-input" id="maintenance-mileage" placeholder="e.g. 12450">' +
-    '</div>';
+  var formEl = document.createElement('div');
+  var group1 = document.createElement('div');
+  group1.style.marginBottom = '12px';
+  var label1 = document.createElement('label');
+  label1.className = 'ro-label';
+  label1.textContent = 'What was serviced? ';
+  var req = document.createElement('span');
+  req.style.color = 'var(--status-no-show)';
+  req.textContent = '*';
+  label1.appendChild(req);
+  var textarea = document.createElement('textarea');
+  textarea.className = 'ro-input';
+  textarea.id = 'maintenance-notes';
+  textarea.rows = 3;
+  textarea.placeholder = 'e.g. Oil change, brake inspection, tire rotation...';
+  group1.appendChild(label1);
+  group1.appendChild(textarea);
+  var group2 = document.createElement('div');
+  var label2 = document.createElement('label');
+  label2.className = 'ro-label';
+  label2.textContent = 'Mileage at service (optional)';
+  var mileageInput = document.createElement('input');
+  mileageInput.type = 'number';
+  mileageInput.className = 'ro-input';
+  mileageInput.id = 'maintenance-mileage';
+  mileageInput.placeholder = 'e.g. 12450';
+  group2.appendChild(label2);
+  group2.appendChild(mileageInput);
+  formEl.appendChild(group1);
+  formEl.appendChild(group2);
   showModalNew({
     title: 'Log Maintenance',
-    body: formHtml,
+    body: formEl,
     confirmLabel: 'Log Maintenance',
     confirmClass: 'ro-btn--primary',
     onConfirm: async function() {
@@ -4715,14 +4736,31 @@ async function retireVehicle(vehicleId, vehicleName) {
 }
 
 function showFleetStatusInfo() {
+  var infoEl = document.createElement('div');
+  infoEl.style.cssText = 'font-size:13px;line-height:1.7;';
+  var statuses = [
+    ['Active', 'in service and available for assignment.'],
+    ['Retired', 'removed from service, ride history preserved.'],
+    ['Maintenance', 'temporarily unavailable for assignment.']
+  ];
+  statuses.forEach(function(s) {
+    var b = document.createElement('strong');
+    b.textContent = s[0];
+    infoEl.appendChild(b);
+    infoEl.appendChild(document.createTextNode(' \u2014 ' + s[1]));
+    infoEl.appendChild(document.createElement('br'));
+  });
+  infoEl.appendChild(document.createElement('br'));
+  var note = document.createElement('span');
+  note.textContent = 'Use ';
+  var bold = document.createElement('strong');
+  bold.textContent = 'Delete';
+  note.appendChild(bold);
+  note.appendChild(document.createTextNode(' only to remove incorrectly entered vehicles.'));
+  infoEl.appendChild(note);
   showModalNew({
     title: 'Vehicle Statuses',
-    body: '<div style="font-size:13px; line-height:1.7;">' +
-      '<strong>Active</strong> — in service and available for assignment.<br>' +
-      '<strong>Retired</strong> — removed from service, ride history preserved.<br>' +
-      '<strong>Maintenance</strong> — temporarily unavailable for assignment.<br><br>' +
-      'Use <strong>Delete</strong> only to remove incorrectly entered vehicles.' +
-      '</div>',
+    body: infoEl,
     confirmLabel: 'Got it',
     confirmClass: 'ro-btn--primary',
   });

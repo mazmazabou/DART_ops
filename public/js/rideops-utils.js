@@ -176,7 +176,11 @@ function showModalNew(opts) {
 
   var bodyEl = document.createElement('div');
   bodyEl.className = 'ro-modal__body';
-  bodyEl.textContent = body;
+  if (body instanceof HTMLElement) {
+    bodyEl.appendChild(body);
+  } else {
+    bodyEl.textContent = body;
+  }
   modal.appendChild(bodyEl);
 
   var actions = document.createElement('div');
