@@ -103,8 +103,8 @@ Default login credentials (password: `demo123`):
 - `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, DEFAULT_WIDGET_LAYOUT)
 - `public/js/widget-system.js` — Widget dashboard runtime: layout persistence, grid rendering, edit mode, SortableJS integration
 - `public/demo-config.js` — Demo mode configuration
-- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector)
-- `public/rider.html` — Rider request form and ride history (self-contained with inline JS/CSS, campus-themed header)
+- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector)
+- `public/rider.html` — Rider request form and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention)
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
 - `public/login.html` / `signup.html` — Auth pages with org-scoped URL support
 - `public/demo.html` — Demo mode role picker with campus-specific links
@@ -158,7 +158,7 @@ Default login credentials (password: `demo123`):
 - **Widget System:** Customizable dashboard with drag-and-drop widget cards (SortableJS CDN). 16 registered widgets across 8 categories. Users can add/remove/resize/reorder widgets. Layout persisted per-user in localStorage with versioned schema (`WIDGET_LAYOUT_VERSION`).
 - **Widget Files:** `widget-registry.js` (static metadata), `widget-system.js` (runtime). Widget loaders registered in `app.js` DOMContentLoaded via `registerWidgetLoader()`.
 - **Widget Container IDs:** Dashboard widgets use IDs from `WIDGET_REGISTRY.containerId`. Hotspot/milestone widgets use `w-` prefix (`w-hotspot-pickups`) to avoid duplicate IDs with sub-tab containers.
-- **Date Range Picker:** Quick-select buttons (Today, Week, 30 Days, Month, [Academic Period]) + manual from/to inputs. Last preset label driven by `academic_period_label` tenant_setting (Semester/Quarter/Trimester).
+- **Date Range Picker:** Quick-select buttons (Today, Week, Month, [Academic Period]) + manual from/to inputs. Last preset label driven by `academic_period_label` tenant_setting (Semester/Quarter/Trimester). Date ranges adapt per period type: Semester (Jan/May/Aug), Quarter (Jan/Mar/Jun/Sep), Trimester (Jan/May/Aug).
 - **Default Range:** Last 7 days (set on page load, persists across sub-tab switches within session)
 - **Reports Sub-Tab:** Excel export with report type selector (Full/Rides/Drivers/Riders/Fleet) + semester report + wrapped
 - **Excel Export:** 8-sheet workbook via exceljs: Summary, Daily Volume, Routes, Driver Performance, Rider Analysis, Fleet, Shift Coverage, Peak Hours — all with conditional formatting
@@ -407,6 +407,7 @@ The frontend uses a Tabler-based design system.
 - **Layer 1 — Platform defaults** (in rideops-theme.css :root): SteelBlue #4682B4 primary, Tan #D2B48C accent
 - **Layer 2 — Tenant override** (injected by JS from /api/tenant-config): primaryColor, secondaryColor
 - **Layer 3 — Campus palette** (campus-themes.js): Per-campus color arrays for charts, dispatch grid, analytics
+- **FOUC Prevention:** driver.html and rider.html include synchronous `<script>` in `<head>` that reads `CAMPUS_THEMES[slug]` and sets `--color-primary`, `--color-primary-rgb`, `--color-header-bg` before first paint
 - **Status colors are semantic and universal** — never overridden per tenant
 
 ### CRITICAL: Panel Visibility
