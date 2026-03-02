@@ -3143,9 +3143,11 @@ function setAnalyticsQuickRange(preset) {
       fromStr = d7.getFullYear() + '-' + String(d7.getMonth() + 1).padStart(2, '0') + '-' + String(d7.getDate()).padStart(2, '0');
       break;
     }
-    case 'this-month':
-      fromStr = todayStr.slice(0, 8) + '01';
+    case 'this-month': {
+      var d30 = new Date(_today.getTime() - 29 * 86400000);
+      fromStr = d30.getFullYear() + '-' + String(d30.getMonth() + 1).padStart(2, '0') + '-' + String(d30.getDate()).padStart(2, '0');
       break;
+    }
     case 'semester': {
       var month = _today.getMonth(); // 0-indexed
       var year = _today.getFullYear();
