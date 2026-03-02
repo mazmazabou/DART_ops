@@ -31,7 +31,7 @@ function createWidgetInstance(tabId, config) {
   //   defaultLayout: array    -- default widget layout for this tab [{id, x, y, w, h}]
   //   allowedWidgets: array|null  -- widget IDs allowed on this tab (null = all)
   //   containerOverrides: object|null -- { widgetId: 'alt-container-id' }
-  //   toolbarIds: { customize, toolbar, done, add, reset }
+  //   toolbarIds: { customize, toolbar, done, setDefault, add, reset }
   // }
   var instance = {
     tabId: tabId,
@@ -95,6 +95,39 @@ function saveWidgetLayout(storagePrefix, userId, gridStackItems) {
   }
 }
 
+// -- Custom Default Persistence --
+
+function getCustomDefaultKey(storagePrefix, userId) {
+  return 'rideops_widget_custom_default_' + storagePrefix + '_' + (userId || 'default');
+}
+
+function loadCustomDefault(storagePrefix, userId) {
+  try {
+    var raw = localStorage.getItem(getCustomDefaultKey(storagePrefix, userId));
+    if (!raw) return null;
+    var saved = JSON.parse(raw);
+    if (!saved || saved.version !== WIDGET_LAYOUT_VERSION || !Array.isArray(saved.widgets)) return null;
+    saved.widgets = saved.widgets.filter(function(w) { return WIDGET_REGISTRY[w.id]; });
+    return saved.widgets;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveCustomDefault(storagePrefix, userId, layoutItems) {
+  try {
+    var widgets = layoutItems.map(function(item) {
+      return { id: item.id, x: item.x, y: item.y, w: item.w, h: item.h };
+    });
+    localStorage.setItem(getCustomDefaultKey(storagePrefix, userId), JSON.stringify({
+      version: WIDGET_LAYOUT_VERSION,
+      widgets: widgets
+    }));
+  } catch (e) {
+    console.warn('Failed to save custom default:', e);
+  }
+}
+
 // -- Widget Content Builder (inner HTML for grid-stack-item-content) --
 // Widget card HTML is constructed from developer-defined registry data (title, icon,
 // description) -- not user input. Safe for innerHTML construction.
@@ -154,30 +187,41 @@ function renderWidgetGrid(tabId) {
     return;
   }
 
-  // Build GridStack children items
+  // Pre-build DOM elements with gs-* attributes, then let GridStack.init() discover them.
+  // This avoids the v12 content-escaping issue and the deprecated addWidget(el, opts) API.
   var overrides = inst.config.containerOverrides || null;
-  var children = [];
   inst.layout.forEach(function(w) {
     var def = WIDGET_REGISTRY[w.id];
     if (!def) return;
     var containerId = _resolveContainerId(w.id, overrides);
-    children.push({
-      id: w.id,
-      x: w.x,
-      y: w.y,
-      w: w.w,
-      h: w.h,
-      minW: def.minW,
-      maxW: def.maxW,
-      minH: def.minH,
-      maxH: def.maxH,
-      noResize: def.noResize || false,
-      noMove: def.noResize || false,
-      content: buildGridStackItemContent(w.id, containerId)
-    });
+
+    var itemEl = document.createElement('div');
+    itemEl.className = 'grid-stack-item';
+    // GridStack reads gs-* attributes on existing children during init
+    itemEl.setAttribute('gs-id', w.id);
+    itemEl.setAttribute('gs-x', w.x);
+    itemEl.setAttribute('gs-y', w.y);
+    itemEl.setAttribute('gs-w', w.w);
+    itemEl.setAttribute('gs-h', w.h);
+    if (def.minW) itemEl.setAttribute('gs-min-w', def.minW);
+    if (def.maxW) itemEl.setAttribute('gs-max-w', def.maxW);
+    if (def.minH) itemEl.setAttribute('gs-min-h', def.minH);
+    if (def.maxH) itemEl.setAttribute('gs-max-h', def.maxH);
+    if (def.noResize) {
+      itemEl.setAttribute('gs-no-resize', 'true');
+      itemEl.setAttribute('gs-no-move', 'true');
+    }
+    itemEl.setAttribute('data-logical-size', getLogicalSize(w.w));
+
+    var contentEl = document.createElement('div');
+    contentEl.className = 'grid-stack-item-content';
+    contentEl.innerHTML = buildGridStackItemContent(w.id, containerId);
+    itemEl.appendChild(contentEl);
+
+    gridEl.appendChild(itemEl);
   });
 
-  // Initialize GridStack
+  // Initialize GridStack — it auto-discovers the child elements we just added
   var grid = GridStack.init({
     column: 12,
     cellHeight: 80,
@@ -197,20 +241,12 @@ function renderWidgetGrid(tabId) {
         { c: 1,  w: 480 }
       ],
       layout: 'list'
-    },
-    children: children
+    }
   }, '#' + inst.config.gridId);
 
   inst.grid = grid;
 
-  // Set data-logical-size attribute on each item
-  gridEl.querySelectorAll('.grid-stack-item').forEach(function(el) {
-    if (el.gridstackNode) {
-      el.setAttribute('data-logical-size', getLogicalSize(el.gridstackNode.w));
-    }
-  });
-
-  // Bind remove buttons
+  // Bind remove buttons on all widget items
   gridEl.querySelectorAll('.widget-action--remove').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var gsItem = btn.closest('.grid-stack-item');
@@ -387,31 +423,39 @@ function addWidget(tabId, widgetId) {
   var overrides = inst.config.containerOverrides || {};
   var containerId = _resolveContainerId(widgetId, overrides);
 
-  var widgetOpts = {
-    id: widgetId,
-    w: w,
-    h: h,
-    minW: def.minW,
-    maxW: def.maxW,
-    minH: def.minH,
-    maxH: def.maxH,
-    noResize: def.noResize || false,
-    noMove: def.noResize || false,
-    content: buildGridStackItemContent(widgetId, containerId)
-  };
+  // Build DOM element with gs-* attributes, append to grid, then makeWidget()
+  var gridEl = document.getElementById(inst.config.gridId);
+  if (!gridEl) return;
 
-  var el = inst.grid.addWidget(widgetOpts);
+  var itemEl = document.createElement('div');
+  itemEl.className = 'grid-stack-item';
+  itemEl.setAttribute('gs-id', widgetId);
+  itemEl.setAttribute('gs-w', w);
+  itemEl.setAttribute('gs-h', h);
+  if (def.minW) itemEl.setAttribute('gs-min-w', def.minW);
+  if (def.maxW) itemEl.setAttribute('gs-max-w', def.maxW);
+  if (def.minH) itemEl.setAttribute('gs-min-h', def.minH);
+  if (def.maxH) itemEl.setAttribute('gs-max-h', def.maxH);
+  if (def.noResize) {
+    itemEl.setAttribute('gs-no-resize', 'true');
+    itemEl.setAttribute('gs-no-move', 'true');
+  }
+  itemEl.setAttribute('data-logical-size', getLogicalSize(w));
 
-  // Set logical size attribute
-  if (el) {
-    el.setAttribute('data-logical-size', getLogicalSize(w));
-    // Bind remove button on the new widget
-    var removeBtn = el.querySelector('.widget-action--remove');
-    if (removeBtn) {
-      removeBtn.addEventListener('click', function() {
-        removeWidget(tabId, widgetId);
-      });
-    }
+  var contentEl = document.createElement('div');
+  contentEl.className = 'grid-stack-item-content';
+  contentEl.innerHTML = buildGridStackItemContent(widgetId, containerId);
+  itemEl.appendChild(contentEl);
+
+  gridEl.appendChild(itemEl);
+  inst.grid.makeWidget(itemEl);
+
+  // Bind remove button
+  var removeBtn = contentEl.querySelector('.widget-action--remove');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', function() {
+      removeWidget(tabId, widgetId);
+    });
   }
 
   // Update in-memory layout and save
@@ -444,18 +488,46 @@ function removeWidget(tabId, widgetId) {
   renderWidgetLibrary(tabId);
 }
 
+function setDefaultLayout(tabId) {
+  tabId = tabId || 'dashboard';
+  var inst = _widgetInstances[tabId];
+  if (!inst || !inst.grid) return;
+  if (typeof showModalNew === 'function') {
+    showModalNew({
+      title: 'Set as Default',
+      body: 'Save the current layout as your default for this tab? "Reset" will restore to this layout.',
+      confirmLabel: 'Set Default',
+      onConfirm: function() {
+        var items = inst.grid.save(false);
+        if (Array.isArray(items)) {
+          saveCustomDefault(inst.config.storagePrefix, inst.userId, items);
+          if (typeof showToastNew === 'function') showToastNew('Default layout saved', 'success');
+        }
+      }
+    });
+  } else {
+    var items = inst.grid.save(false);
+    if (Array.isArray(items)) {
+      saveCustomDefault(inst.config.storagePrefix, inst.userId, items);
+    }
+  }
+}
+
 function resetWidgetLayout(tabId) {
   tabId = tabId || 'dashboard';
   var inst = _widgetInstances[tabId];
   if (!inst) return;
+  var customDefault = loadCustomDefault(inst.config.storagePrefix, inst.userId);
+  var resetTarget = customDefault || inst.config.defaultLayout;
+  var label = customDefault ? 'your saved default' : 'the built-in default';
   if (typeof showModalNew === 'function') {
     showModalNew({
       title: 'Reset Layout',
-      body: 'Reset this tab to the default layout? Your customizations will be lost.',
+      body: 'Reset this tab to ' + label + ' layout? Your current customizations will be lost.',
       confirmLabel: 'Reset',
       confirmClass: 'ro-btn--danger',
       onConfirm: function() {
-        inst.layout = JSON.parse(JSON.stringify(inst.config.defaultLayout));
+        inst.layout = JSON.parse(JSON.stringify(resetTarget));
         saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
         renderWidgetGrid(tabId);
         renderWidgetLibrary(tabId);
@@ -464,7 +536,7 @@ function resetWidgetLayout(tabId) {
       }
     });
   } else {
-    inst.layout = JSON.parse(JSON.stringify(inst.config.defaultLayout));
+    inst.layout = JSON.parse(JSON.stringify(resetTarget));
     saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
     renderWidgetGrid(tabId);
     renderWidgetLibrary(tabId);
@@ -587,6 +659,13 @@ function initTabWidgets(tabId, userId) {
     newDone.addEventListener('click', function() { toggleWidgetEditMode(tabId); });
   }
 
+  var setDefaultBtn = ids.setDefault ? document.getElementById(ids.setDefault) : null;
+  if (setDefaultBtn) {
+    var newSetDefault = setDefaultBtn.cloneNode(true);
+    setDefaultBtn.parentNode.replaceChild(newSetDefault, setDefaultBtn);
+    newSetDefault.addEventListener('click', function() { setDefaultLayout(tabId); });
+  }
+
   var addBtn = document.getElementById(ids.add);
   if (addBtn) {
     var newAdd = addBtn.cloneNode(true);
@@ -616,6 +695,7 @@ function initWidgetSystem(userId) {
         customize: 'widget-customize-btn',
         toolbar: 'widget-toolbar',
         done: 'widget-done-btn',
+        setDefault: 'widget-setdefault-btn',
         add: 'widget-add-btn',
         reset: 'widget-reset-btn'
       }

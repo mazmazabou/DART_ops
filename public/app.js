@@ -5832,6 +5832,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         customize: 'ht-customize-btn',
         toolbar: 'ht-toolbar',
         done: 'ht-done-btn',
+        setDefault: 'ht-setdefault-btn',
         add: 'ht-add-btn',
         reset: 'ht-reset-btn'
       }
@@ -5850,6 +5851,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         customize: 'ms-customize-btn',
         toolbar: 'ms-toolbar',
         done: 'ms-done-btn',
+        setDefault: 'ms-setdefault-btn',
         add: 'ms-add-btn',
         reset: 'ms-reset-btn'
       }
@@ -5865,6 +5867,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         customize: 'att-customize-btn',
         toolbar: 'att-toolbar',
         done: 'att-done-btn',
+        setDefault: 'att-setdefault-btn',
         add: 'att-add-btn',
         reset: 'att-reset-btn'
       }
