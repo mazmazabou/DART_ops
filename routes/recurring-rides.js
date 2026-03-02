@@ -1,0 +1,110 @@
+'use strict';
+
+module.exports = function(app, ctx) {
+  const {
+    query,
+    wrapAsync,
+    requireRider,
+    generateId,
+    normalizeDays,
+    generateRecurringDates,
+    addRideEvent,
+    getSetting,
+    isWithinServiceHours,
+    getRiderMissCount
+  } = ctx;
+
+  // ----- Recurring rides -----
+  app.post('/api/recurring-rides', requireRider, wrapAsync(async (req, res) => {
+    const { pickupLocation, dropoffLocation, timeOfDay, startDate, endDate, daysOfWeek, notes, riderPhone } = req.body;
+    if (!pickupLocation || !dropoffLocation || !timeOfDay || !startDate || !endDate) {
+      return res.status(400).json({ error: 'Pickup, dropoff, start/end date, and time are required' });
+    }
+    const days = await normalizeDays(daysOfWeek);
+    if (!days.length) return res.status(400).json({ error: 'Choose at least one operating day' });
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start) || isNaN(end) || start > end) return res.status(400).json({ error: 'Invalid date range' });
+    const [hourStr, minuteStr] = String(timeOfDay).split(':');
+    const hour = Number(hourStr);
+    const minute = Number(minuteStr || 0);
+    const minutesTotal = hour * 60 + minute;
+    const svcStart = await getSetting('service_hours_start', '08:00');
+    const svcEnd = await getSetting('service_hours_end', '19:00');
+    const [sH, sM] = String(svcStart).split(':').map(Number);
+    const [eH, eM] = String(svcEnd).split(':').map(Number);
+    if (minutesTotal < (sH * 60 + (sM || 0)) || minutesTotal > (eH * 60 + (eM || 0))) {
+      return res.status(400).json({ error: `Time must be between ${svcStart} and ${svcEnd}` });
+    }
+
+    const recurId = generateId('recur');
+    await query(
+      `INSERT INTO recurring_rides (id, rider_id, pickup_location, dropoff_location, time_of_day, days_of_week, start_date, end_date, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')`,
+      [recurId, req.session.userId, pickupLocation, dropoffLocation, `${hourStr.padStart(2, '0')}:${String(minute).padStart(2, '0')}`, days, start, end]
+    );
+
+    const dates = generateRecurringDates(start, end, days);
+    const autoDenyRecurring = await getSetting('auto_deny_outside_hours', true);
+    let created = 0;
+    for (const date of dates) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const requestedTime = `${y}-${m}-${d}T${hourStr.padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+      if (autoDenyRecurring && !(await isWithinServiceHours(requestedTime))) continue;
+      const rideId = generateId('ride');
+      const missCount = await getRiderMissCount(req.session.email);
+      await query(
+        `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, vehicle_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10, $11, NULL)`,
+        [rideId, req.session.userId, req.session.name, req.session.email, riderPhone || null, pickupLocation, dropoffLocation, notes || '', requestedTime, missCount, recurId]
+      );
+      await addRideEvent(rideId, req.session.userId, 'requested');
+      created++;
+    }
+
+    res.json({ recurringId: recurId, createdRides: created });
+  }));
+
+  app.get('/api/recurring-rides/my', requireRider, wrapAsync(async (req, res) => {
+    const result = await query(
+      `SELECT id, pickup_location, dropoff_location, time_of_day, days_of_week, start_date, end_date, status
+       FROM recurring_rides WHERE rider_id = $1 ORDER BY created_at DESC`,
+      [req.session.userId]
+    );
+    const rows = result.rows;
+    const withCounts = [];
+    for (const row of rows) {
+      const countRes = await query(
+        `SELECT COUNT(*) FROM rides WHERE recurring_id = $1 AND requested_time >= NOW()`,
+        [row.id]
+      );
+      withCounts.push({ ...row, upcomingCount: Number(countRes.rows[0].count) });
+    }
+    res.json(withCounts);
+  }));
+
+  app.patch('/api/recurring-rides/:id', requireRider, wrapAsync(async (req, res) => {
+    const { status } = req.body;
+    if (!['active', 'paused', 'cancelled'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const recurRes = await query(`SELECT * FROM recurring_rides WHERE id = $1 AND rider_id = $2`, [req.params.id, req.session.userId]);
+    if (!recurRes.rowCount) return res.status(404).json({ error: 'Recurring ride not found' });
+
+    await query(
+      `UPDATE recurring_rides SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [status, req.params.id]
+    );
+    if (status === 'cancelled' || status === 'paused') {
+      await query(
+        `UPDATE rides SET status = 'cancelled', updated_at = NOW()
+         WHERE recurring_id = $1 AND requested_time >= NOW()
+           AND status IN ('pending','approved','scheduled','driver_on_the_way','driver_arrived_grace')`,
+        [req.params.id]
+      );
+    }
+    res.json({ success: true });
+  }));
+};

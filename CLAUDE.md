@@ -120,14 +120,35 @@ Default login credentials (password: `demo123`):
 
 ## Key Files
 
-- `server.js` — Express server, all API routes, DB schema init, auth middleware, tenant loading, business logic
-- `public/app.js` — Main frontend logic for office/admin console (~5000 lines)
+- `server.js` — Thin orchestrator (~310 lines): wires lib/ modules, builds shared ctx, registers route modules, runs startup/shutdown
+- `lib/config.js` — Constants & tenant config: DEFAULT_TENANT, loadTenantConfig, NOTIFICATION_EVENT_TYPES, VALID_ORG_SLUGS, SETTING_DEFAULTS, SETTING_TYPES, MIN_PASSWORD_LENGTH
+- `lib/db.js` — Database layer: createDb(pool, deps) → query, initDb, seedNotificationPreferences. Contains schema creation, migrations, all seed functions
+- `lib/helpers.js` — Business logic helpers: createHelpers(pool, query, TENANT, ...) → generateId, mapRide, addRideEvent, getSetting, validators, service hours, miss counts, recurring ride helpers
+- `lib/auth-middleware.js` — Auth: wrapAsync, createAuthMiddleware(query) → requireAuth/Office/Staff/Rider, createRateLimiters(isProduction)
+- `routes/auth.js` — Login, logout, signup, change-password, tenant-config, client-config
+- `routes/rides.js` — Ride CRUD, approve/deny, cancel, bulk-delete, unassign, reassign, edit, locations
+- `routes/driver-actions.js` — claim, on-the-way, here, complete, no-show, vehicle assignment
+- `routes/analytics.js` — All 19 analytics API endpoints + export-report (~2,100 lines)
+- `routes/admin-users.js` — 9 admin user management endpoints
+- `routes/employees.js` — Clock in/out, today-status, tardiness
+- `routes/shifts.js` — Shift CRUD
+- `routes/vehicles.js` — Vehicle CRUD, retire, maintenance
+- `routes/notifications.js` — In-app notifications, preferences, purge, dev routes
+- `routes/recurring-rides.js` — Recurring ride templates
+- `routes/settings.js` — GET/PUT settings, public/operations
+- `routes/profile.js` — GET/PUT /api/me
+- `routes/content.js` — Program rules
+- `routes/academic-terms.js` — Academic term CRUD
+- `routes/pages.js` — Org-scoped routes, generic pages, demo routes, static files
+- `public/app.js` — Main frontend logic for office/admin console (~4,800 lines)
 - `public/utils.js` — Shared UI utilities: empty state, dev-mode detection, toast icon helper (toast/modal functions moved to rideops-utils.js)
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
 - `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, 22 widgets, 9 categories, per-tab default layouts: DEFAULT_WIDGET_LAYOUT, DEFAULT_HOTSPOTS_LAYOUT, DEFAULT_MILESTONES_LAYOUT, DEFAULT_ATTENDANCE_LAYOUT)
 - `public/js/widget-system.js` — Widget dashboard runtime: multi-instance architecture (createWidgetInstance), GridStack.js 12-column grid, layout persistence, edit mode (drag/resize/add/remove/set-default/reset)
+- `public/js/chart-utils.js` — Chart.js instance registry (_chartInstances, destroyChart), resolveColor, showAnalyticsSkeleton, makeSortable
+- `public/js/analytics.js` — All analytics renderers, loaders, caches, widget orchestrators (~1,800 lines). Extracted from app.js
 - `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector). All content dynamically rendered into `#home-content` — no static clock button or ride list elements.
 - `public/rider.html` — Rider 3-step booking wizard and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention). Step 1: Where (pickup/dropoff), Step 2: When (date chips + time), Step 3: Confirm + optional recurring toggle. Auto-switches to My Rides tab on load if active rides exist.
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
@@ -169,7 +190,11 @@ Default login credentials (password: `demo123`):
 ## Architecture
 
 ### Backend Architecture
-- All routes in `server.js`. Tenant config: `loadTenantConfig()` reads `TENANT_FILE`, merges with `DEFAULT_TENANT`
+- **Modular structure:** `server.js` (~310 lines) is a thin orchestrator. Business logic lives in `lib/` (4 modules) and `routes/` (15 modules)
+- **Shared context pattern:** Each route module exports `function(app, ctx)`. The `ctx` object bundles all shared dependencies (pool, query, helpers, middleware, constants, external modules). Route modules destructure only what they need
+- **Lib modules:** `lib/config.js` (pure constants), `lib/db.js` (factory: pool → query/initDb), `lib/helpers.js` (factory: pool/query/TENANT → 21 helpers), `lib/auth-middleware.js` (factory: query → middleware)
+- **Route modules (15):** auth, content, settings, profile, admin-users, pages, employees, shifts, rides, recurring-rides, driver-actions, vehicles, analytics, academic-terms, notifications
+- **Route registration order matters:** specific routes before parameterized routes, pages before static files
 - Org-scoped routes for `VALID_ORG_SLUGS: ['usc', 'stanford', 'ucla', 'uci']`
 - `initDb()` on startup: creates tables, runs migrations, seeds users/vehicles/settings
 - Async error handling: `wrapAsync()` wrapper, global error middleware returns 500 JSON
@@ -182,9 +207,10 @@ Default login credentials (password: `demo123`):
 - Frontend uses vanilla JS with `fetch()` to call REST API
 - No SPA router — navigation via buttons that show/hide `.tab-panel` sections
 - Each HTML page is self-contained:
-  - `index.html` loads `app.js` for office console logic
+  - `index.html` loads chart-utils.js → analytics.js → app.js for office console logic
   - `driver.html` has inline `<script>` for driver interface
   - `rider.html` has inline `<script>` for rider interface
+- **Script loading order** (index.html): utils.js → rideops-utils.js → widget-registry.js → widget-system.js → chart-utils.js → analytics.js → app.js. All are plain `<script>` globals (no module system)
 - Tenant theming: pages fetch `/api/tenant-config` and apply dynamic branding
 - Campus detection: URL path parsing (`/usc/office` → campus=usc) + session fallback
 - Polling intervals (all pause via `visibilitychange` when tab is backgrounded):
