@@ -1518,10 +1518,10 @@ input[type="checkbox"]:disabled {
   color: var(--color-text) !important;
 }
 
-/* Event chips: primary bg, secondary text */
+/* Event chips: primary bg fallback, inline styles take precedence for per-driver colors */
 .fc-event {
-  background-color: var(--color-primary) !important;
-  border-color: var(--color-primary-dark, #36648B) !important;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary-dark, #36648B);
 }
 .fc-event .fc-event-title,
 .fc-event .fc-event-time {
