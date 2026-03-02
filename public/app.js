@@ -1085,8 +1085,39 @@ async function initShiftCalendar() {
     eventDrop: onShiftEventDrop,
     eventResize: onShiftEventResize,
     eventDidMount: onShiftEventMount,
+    eventsSet: renderShiftCalendarLegend,
   });
   shiftCalendar.render();
+  renderShiftCalendarLegend();
+}
+
+/**
+ * Render a compact driver color legend below the shift calendar.
+ * Shows each driver as a colored dot + name, using the deterministic color map.
+ */
+function renderShiftCalendarLegend() {
+  const container = document.getElementById('shift-calendar-legend');
+  if (!container) return;
+  const colorMap = buildDriverColorMap();
+  const drivers = employees.filter(e => e.id && colorMap[e.id]);
+  if (!drivers.length) {
+    container.textContent = '';
+    return;
+  }
+  // Sort drivers by ID to match the deterministic color assignment order
+  const sorted = [...drivers].sort((a, b) => a.id.localeCompare(b.id));
+  // Build legend using DOM methods to avoid innerHTML
+  container.textContent = '';
+  sorted.forEach(d => {
+    const item = document.createElement('span');
+    item.className = 'shift-legend__item';
+    const dot = document.createElement('span');
+    dot.className = 'shift-legend__dot';
+    dot.style.background = colorMap[d.id];
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(d.name));
+    container.appendChild(item);
+  });
 }
 
 async function refreshCalendarSettings() {
@@ -1117,6 +1148,25 @@ function getDriverColors() {
   return getCurrentCampusPalette();
 }
 
+/**
+ * Build a deterministic driver ID -> hex color map.
+ * Driver IDs are sorted alphabetically so the same driver always gets the
+ * same palette slot regardless of the order the API returns employees.
+ * @returns {{ [driverId: string]: string }}
+ */
+function buildDriverColorMap() {
+  const palette = getCurrentCampusPalette();
+  const driverIds = employees
+    .filter(e => e.id)
+    .map(e => e.id)
+    .sort(); // alphabetical sort for deterministic ordering
+  const map = {};
+  driverIds.forEach((id, i) => {
+    map[id] = palette[i % palette.length];
+  });
+  return map;
+}
+
 function getMondayOfWeek(date) {
   const d = new Date(date);
   const dayOfWeek = d.getDay();
@@ -1129,13 +1179,12 @@ function getMondayOfWeek(date) {
 function mapShiftsToCalEvents(shiftList, viewStart) {
   const events = [];
   const monday = getMondayOfWeek(viewStart || new Date());
+  const colorMap = buildDriverColorMap();
 
   shiftList.forEach(s => {
     const emp = employees.find(e => e.id === s.employeeId);
     const name = emp?.name || 'Unknown';
-    const employeeIndex = employees.findIndex(e => e.id === s.employeeId);
-    const driverColors = getDriverColors();
-    const color = employeeIndex >= 0 ? driverColors[employeeIndex % driverColors.length] : '#94A3B8';
+    const color = colorMap[s.employeeId] || '#94A3B8';
     // Map dayOfWeek (0=Mon) to date
     const eventDate = new Date(monday);
     eventDate.setDate(monday.getDate() + s.dayOfWeek);
@@ -2454,10 +2503,13 @@ async function renderDispatchGrid() {
   }
   html += '</div>';
 
-  // Assign each active driver a color from the campus palette for visual identification
-  const campusPal = getCurrentCampusPalette();
-  activeDrivers.forEach((driver, idx) => {
-    driver._paletteColor = campusPal[idx % campusPal.length];
+  // Assign each driver a deterministic color from the campus palette
+  const driverColorMap = buildDriverColorMap();
+  activeDrivers.forEach(driver => {
+    driver._paletteColor = driverColorMap[driver.id] || '#94A3B8';
+  });
+  inactiveDrivers.forEach(driver => {
+    driver._paletteColor = driverColorMap[driver.id] || '#94A3B8';
   });
 
   // Active drivers

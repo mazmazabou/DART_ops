@@ -365,6 +365,11 @@ input[type="checkbox"]:disabled {
 .emp-action-btn.clock-out { border-color: var(--status-no-show); color: var(--status-no-show); }
 .emp-action-btn:hover { opacity: 0.8; }
 
+/* ── Section 25b: Shift calendar legend ── */
+.shift-calendar-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 10px 0 2px; }
+.shift-legend__item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); white-space: nowrap; }
+.shift-legend__dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
 /* ── Section 26: Vehicle cards ── */
 .vehicles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .vehicle-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px; cursor: pointer; transition: border-color 0.15s; }
