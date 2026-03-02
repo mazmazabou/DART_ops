@@ -4387,13 +4387,15 @@ function renderDonutChart(containerId, distribution) {
   }).join('');
 
   container.innerHTML =
-    '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:200px;height:200px;">' +
-        arcs +
-        '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" style="font-size:28px;font-weight:700;fill:var(--color-text);pointer-events:none;">' + total + '</text>' +
-        '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" style="font-size:12px;fill:var(--color-text-muted);pointer-events:none;">total rides</text>' +
-      '</svg>' +
-      '<div style="display:flex;flex-direction:column;gap:6px;">' + legend + '</div>' +
+    '<div class="donut-wrap">' +
+      '<div class="donut-svg-wrap">' +
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:200px;height:200px;">' +
+          arcs +
+          '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" style="font-size:28px;font-weight:700;fill:var(--color-text);pointer-events:none;">' + total + '</text>' +
+          '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" style="font-size:12px;fill:var(--color-text-muted);pointer-events:none;">total rides</text>' +
+        '</svg>' +
+      '</div>' +
+      '<div class="donut-legend" style="display:flex;flex-direction:column;gap:6px;">' + legend + '</div>' +
     '</div>';
 
   // Post-render: add hover tooltips to donut segments

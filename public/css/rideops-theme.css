@@ -1202,6 +1202,8 @@ input[type="checkbox"]:disabled {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   transition: box-shadow 0.2s ease, border-color 0.2s ease, border-style 0.2s ease, max-height 0.3s ease;
 }
@@ -1214,26 +1216,25 @@ input[type="checkbox"]:disabled {
   grid-column: span 1;
   max-height: 280px;
 }
-.widget-card--xs .widget-card__header { padding: 6px 10px; font-size: 11px; }
-.widget-card--xs .widget-card__body { padding: 6px 10px 10px; overflow-y: auto; }
+.widget-card--xs .widget-card__header { padding: 6px 10px; font-size: 11px; flex-shrink: 0; }
+.widget-card--xs .widget-card__body { padding: 6px 10px 10px; overflow-y: auto; flex: 1; min-height: 0; }
 .widget-card--xs .widget-card__title { font-size: 11px; }
 .widget-card--xs .widget-card__title i { font-size: 12px; }
-/* xs donut: hide legend, expand SVG to fill ~90% of card body */
-.widget-card--xs .donut-wrap { flex-direction: column; align-items: center; gap: 0; }
+/* xs donut: hide legend, expand SVG to fill card body */
+.widget-card--xs .donut-wrap { flex-direction: column; align-items: center; gap: 0; justify-content: center; }
 .widget-card--xs .donut-legend { display: none; }
-.widget-card--xs .donut-svg-wrap { width: 90%; max-width: 200px; aspect-ratio: 1; height: auto; }
-/* xs: inline-styled SVGs (ride-outcomes donut) — override fixed dimensions */
-.widget-card--xs .widget-card__body svg[viewBox] { max-width: 90%; max-height: 180px; }
-/* xs chart: reduce SVG height */
+.widget-card--xs .donut-svg-wrap { width: 100%; display: flex; justify-content: center; position: relative; }
+.widget-card--xs .donut-svg-wrap svg { width: 160px !important; height: 160px !important; }
+/* xs chart: reduce SVG height for sparkline-style rendering */
 .widget-card--xs svg.analytics-chart { max-height: 200px; }
 
 /* ── Size: sm (Small) — span 2 of 4 ── */
 .widget-card--sm {
   grid-column: span 2;
-  max-height: 320px;
+  max-height: 336px;
 }
-.widget-card--sm .widget-card__header { padding: 8px 12px; font-size: 12px; }
-.widget-card--sm .widget-card__body { padding: 10px 12px 14px; overflow-y: auto; }
+.widget-card--sm .widget-card__header { padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
+.widget-card--sm .widget-card__body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 0; }
 .widget-card--sm .widget-card__title { font-size: 12px; }
 .widget-card--sm .widget-card__title i { font-size: 13px; }
 
@@ -1246,8 +1247,9 @@ input[type="checkbox"]:disabled {
 /* ── Size: lg (Full) — span 4 of 4 ── */
 .widget-card--lg {
   grid-column: 1 / -1;
-  min-height: 280px;
 }
+/* lg KPI bar: remove excessive min-height, let content dictate height */
+.widget-card--lg .kpi-bar { padding: 4px 0; }
 
 .widget-card__header {
   background: var(--color-primary);
@@ -1259,6 +1261,7 @@ input[type="checkbox"]:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 .widget-card__title {
   color: inherit;
@@ -1268,7 +1271,7 @@ input[type="checkbox"]:disabled {
   flex: 1;
 }
 .widget-card__title i { margin-right: 4px; color: inherit; opacity: 0.8; }
-.widget-card__body { padding: 12px 16px 16px; }
+.widget-card__body { padding: 12px 16px 16px; flex: 1; min-height: 0; }
 
 /* Drag handle and action buttons — hidden by default, shown in edit mode */
 .widget-card__drag-handle {

@@ -216,7 +216,7 @@ var WIDGET_REGISTRY = {
     title: 'Tardiness Trend',
     icon: 'ti-trending-up',
     defaultSize: 'lg',
-    allowedSizes: ['sm', 'md', 'lg'],
+    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'att-trend',
     category: 'attendance',
     description: 'Area chart showing daily tardiness trend over the selected period.'
