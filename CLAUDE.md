@@ -127,7 +127,7 @@ Default login credentials (password: `demo123`):
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
 - `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, 22 widgets, 9 categories, per-tab default layouts: DEFAULT_WIDGET_LAYOUT, DEFAULT_HOTSPOTS_LAYOUT, DEFAULT_MILESTONES_LAYOUT, DEFAULT_ATTENDANCE_LAYOUT)
-- `public/js/widget-system.js` — Widget dashboard runtime: multi-instance architecture (createWidgetInstance), 4-size system (xs/sm/md/lg), layout persistence, grid rendering, edit mode, SortableJS integration
+- `public/js/widget-system.js` — Widget dashboard runtime: multi-instance architecture (createWidgetInstance), GridStack.js 12-column grid, layout persistence, edit mode (drag/resize/add/remove/set-default/reset)
 - `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector). All content dynamically rendered into `#home-content` — no static clock button or ride list elements.
 - `public/rider.html` — Rider 3-step booking wizard and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention). Step 1: Where (pickup/dropoff), Step 2: When (date chips + time), Step 3: Confirm + optional recurring toggle. Auto-switches to My Rides tab on load if active rides exist.
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
@@ -224,22 +224,23 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - Logout button: `onclick="logout()"` (icon-only, no text label)
 
 ### Analytics Architecture
-- **Widget System:** Customizable analytics with drag-and-drop widget cards (SortableJS CDN). 22 registered widgets across 9 categories. Users can add/remove/resize/reorder widgets on ALL analytics tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab stays hardcoded.
-- **4-Size System:** 4-column CSS grid with 4 visually distinct sizes:
-  - `xs` (Compact) — `span 1` (~25% width), max-height 280px, hides donut legends
-  - `sm` (Small) — `span 2` (~50% width), max-height 320px, default for most chart widgets
-  - `md` (Medium) — `span 3` (~75% width), min-height 300px
-  - `lg` (Full) — `span 4` (100% width), min-height 280px
-- **Multi-Tab Widget Grids:** Each analytics sub-tab has its own SortableJS instance, localStorage layout key, and edit mode. Widget instances created via `createWidgetInstance(tabId, config)` factory.
+- **Widget System:** Customizable analytics with drag-and-drop widget cards (GridStack.js CDN). 22 registered widgets across 9 categories. Users can add/remove/resize/reorder widgets on ALL analytics tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab stays hardcoded.
+- **GridStack.js 12-Column Grid:** Replaced the old 4-column CSS grid + SortableJS with GridStack.js v12 (CDN, not npm). 12-column layout with `cellHeight: 80px`, `margin: 8px`, `float: false`. Responsive breakpoints: 12 cols (>=1200px), 8 cols (>=996px), 4 cols (>=768px), 1 col (>=480px).
+- **Logical Size Derivation:** Widget logical size derived from GridStack column width: `w<=3` → xs, `w<=6` → sm, `w<=9` → md, `w>=10` → lg. Stored as `data-logical-size` attribute on `.grid-stack-item` elements for CSS styling. Re-evaluated on resize; if logical size crosses a threshold, the widget loader re-renders content.
+- **GridStack v12 API:** Widgets are pre-built as DOM elements with `gs-*` attributes (gs-id, gs-x, gs-y, gs-w, gs-h, gs-min-w, gs-max-w, gs-min-h, gs-max-h, gs-no-resize, gs-no-move), appended to the grid container, then `GridStack.init()` auto-discovers them. For dynamically added widgets (Add Widget picker), use `grid.makeWidget(el)` after appending. Do NOT use `grid.addWidget(el, opts)` — deprecated in v12.
+- **Multi-Tab Widget Grids:** Each analytics sub-tab has its own GridStack instance, localStorage layout key, and edit mode. Widget instances created via `createWidgetInstance(tabId, config)` factory.
   - Dashboard: `#widget-grid`, key `rideops_widget_layout_dashboard_{userId}`
   - Hotspots: `#ht-widget-grid`, key `rideops_widget_layout_hotspots_{userId}`
   - Milestones: `#ms-widget-grid`, key `rideops_widget_layout_milestones_{userId}`
   - Attendance: `#att-widget-grid`, key `rideops_widget_layout_attendance_{userId}`
-- **Widget Files:** `widget-registry.js` (static metadata, per-tab default layouts), `widget-system.js` (runtime, multi-instance). Widget loaders registered in `app.js` via `registerWidgetLoader()`.
+- **Edit Mode:** `grid.setStatic(true/false)` toggles drag/resize. Toolbar buttons: Done, Set Default, Add Widget, Reset. Drag handle: `.widget-card__drag-handle`. Remove button: `.widget-action--remove`.
+- **Set Default / Reset:** "Set Default" saves the current layout as a custom default per tab per user (localStorage key: `rideops_widget_custom_default_{prefix}_{userId}`). "Reset" restores to the custom default if one exists, otherwise falls back to the built-in `DEFAULT_*_LAYOUT` from widget-registry.js.
+- **Layout Persistence:** `grid.save(false)` serializes widget positions. Saved as `{version, widgets: [{id, x, y, w, h}]}` in localStorage. Auto-saved on `change` and `resizestop` events.
+- **Widget Files:** `widget-registry.js` (static metadata, constraints: minW/maxW/minH/maxH/noResize, per-tab default layouts in `{id, x, y, w, h}` format), `widget-system.js` (runtime, multi-instance). Widget loaders registered in `app.js` via `registerWidgetLoader()`.
 - **Widget Container ID Prefixes:** Dashboard uses `chart-`/`w-` prefix. Hotspots tab uses `ht-` prefix. Milestones uses `ms-` prefix. Attendance uses `att-` prefix. Per-tab overrides via `containerOverrides` in widget instance config.
 - **Data Caching:** `_tardinessCache` and `_hotspotsCache` prevent duplicate API calls when multiple widgets on the same tab use the same data source.
 - **Lazy Loading:** Analytics tabs load on first switch, not all at once. `_analyticsTabsLoaded` tracks which tabs have been initialized.
-- **Layout Version:** `WIDGET_LAYOUT_VERSION = 2` — bumped from 1 to force reset of old `small/medium/large` layouts.
+- **Layout Version:** `WIDGET_LAYOUT_VERSION = 3` — bumped from 2 to force reset of old 4-column layouts to new 12-column GridStack format.
 - **Date Range Picker:** Quick-select buttons (Today, Week, Month, [Academic Period]) + manual from/to inputs. Last preset label driven by `academic_period_label` tenant_setting (Semester/Quarter/Trimester). Date ranges adapt per period type: Semester (Jan/May/Aug), Quarter (Jan/Mar/Jun/Sep), Trimester (Jan/May/Aug).
 - **Default Range:** Last 7 days (set on page load, persists across sub-tab switches within session)
 - **Reports Sub-Tab:** Excel export with report type selector (Full/Rides/Drivers/Riders/Fleet) + semester report + wrapped
@@ -248,7 +249,7 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming
 - **Sortable Tables:** Top Routes and Driver Leaderboard tables support click-to-sort on column headers
 - **Calendar View Filters:** Calendar (FullCalendar) respects the same status/date/text filter pills as the table view via `renderRideViews()` helper
-- **Chart Responsiveness:** All charts are SVG-based (not Chart.js). Chart wrapper classes (`.col-chart-wrap`, `.area-chart-wrap`, `.donut-wrap`) enable CSS `:has()` selectors to apply flex layout and `overflow: hidden` to widget bodies containing charts. SVGs use `width: 100%; preserveAspectRatio="xMidYMid meet"` with per-size max-height caps (md: 240px, lg: 320px for column/area; xs: 140px, sm: 160px, md/lg: 200px for donuts). Widget resize calls the registered loader function to re-render chart content at the new size.
+- **Chart Responsiveness:** All charts are SVG-based (not Chart.js). SVGs use `width: 100%; preserveAspectRatio="xMidYMid meet"`. On `resizestop`, if the widget's logical size crosses a threshold, the registered loader re-renders the chart content (e.g., hiding legends at xs, adjusting label density).
 
 ## Database Schema
 
@@ -467,7 +468,7 @@ The frontend uses a Tabler-based design system.
 - Tabler CSS: `https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css`
 - Tabler Icons: `https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css`
 - FullCalendar: `https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js` (office view only)
-- SortableJS: `https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js` (analytics widget drag-and-drop)
+- GridStack.js: `https://cdn.jsdelivr.net/npm/gridstack@12/dist/gridstack-all.js` + `gridstack.min.css` (analytics widget grid layout, drag-and-drop, resize)
 - DiceBear API: `https://api.dicebear.com/9.x` — client-side avatar generation, no API key needed
 
 ### Color System (Three-Layer Theming)
