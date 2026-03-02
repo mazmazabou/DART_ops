@@ -248,6 +248,7 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming
 - **Sortable Tables:** Top Routes and Driver Leaderboard tables support click-to-sort on column headers
 - **Calendar View Filters:** Calendar (FullCalendar) respects the same status/date/text filter pills as the table view via `renderRideViews()` helper
+- **Chart Responsiveness:** All charts are SVG-based (not Chart.js). Chart wrapper classes (`.col-chart-wrap`, `.area-chart-wrap`, `.donut-wrap`) enable CSS `:has()` selectors to apply flex layout and `overflow: hidden` to widget bodies containing charts. SVGs use `width: 100%; preserveAspectRatio="xMidYMid meet"` with per-size max-height caps (md: 240px, lg: 320px for column/area; xs: 140px, sm: 160px, md/lg: 200px for donuts). Widget resize calls the registered loader function to re-render chart content at the new size.
 
 ## Database Schema
 
