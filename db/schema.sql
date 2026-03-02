@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS program_content (
 
 CREATE TABLE IF NOT EXISTS academic_terms (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
+  name VARCHAR(50) NOT NULL,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   sort_order INTEGER DEFAULT 0,

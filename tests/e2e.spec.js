@@ -1336,7 +1336,7 @@ test.describe('API: Clock Events & Tardiness Auth Guards', () => {
     const res = await ctx.get('/api/employees/today-status', {
       headers: { Accept: 'application/json' },
     });
-    expect(res.status()).toBe(403);
+    expect(res.status()).toBe(401);
     await ctx.dispose();
   });
 

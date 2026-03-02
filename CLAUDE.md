@@ -462,7 +462,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - API tests use `playwright.request.newContext()` with cookie-based auth
 - UI tests use `loginUI()` helper that navigates and submits the login form
 - `test.describe.serial` for groups with shared state (ride lifecycle, clock events)
-- Settings API expects array format: `{ data: [{ key: 'grace_period_minutes', value: '0' }] }`
+- Settings API expects bare array format: `[{ key: 'grace_period_minutes', value: '0' }]` (Playwright's `data:` wrapper is NOT part of the JSON payload)
 - Rider tests must explicitly click `button[data-target="book-panel"]` because `autoSwitchToActiveRide()` may hide the booking wizard
 - Driver tests reference dynamically rendered content (e.g., `button:has-text("CLOCK IN")`) — no static element IDs for clock or ride sections
 - Modal confirmation selector: `.ro-modal-overlay.open button:has-text("...")` (not `.show`)

@@ -1656,7 +1656,7 @@ async function renderRideScheduleGrid() {
             .map((ride) => {
               const statusClass = `status-${ride.status}`;
               const pickup = formatLocationLabel(ride.pickupLocation);
-              const riderLink = ride.riderId ? `<span data-user="${ride.riderId}" data-email="${ride.riderEmail || ''}" class="clickable-name">${ride.riderName}</span>` : ride.riderName;
+              const riderLink = ride.riderId ? `<span data-user="${ride.riderId}" data-email="${ride.riderEmail || ''}" class="clickable-name">${escapeHtml(ride.riderName)}</span>` : escapeHtml(ride.riderName);
               const offsetClass = ride.offset === 'mid' ? 'offset-mid' : '';
               return `<span class="ride-chip ${statusClass} ${offsetClass}"><span>${riderLink}</span><span class="time">${formatTimeOnly(ride.requestedTime)}</span><span class="small-text">${pickup}</span></span>`;
             })
@@ -1841,7 +1841,7 @@ function renderProfilePanel(data) {
 
 function renderProfileRide(ride) {
   return `<div style="padding:8px 0; border-bottom:1px solid var(--color-border);">
-    <div>${statusBadge(ride.status)} ${ride.pickupLocation} → ${ride.dropoffLocation}</div>
+    <div>${statusBadge(ride.status)} ${escapeHtml(ride.pickupLocation)} → ${escapeHtml(ride.dropoffLocation)}</div>
     <div class="text-sm text-muted" style="margin-top:2px;">${formatDate(ride.requestedTime)}</div>
   </div>`;
 }
@@ -2127,7 +2127,7 @@ async function showEditRideModal(ride, onDone) {
         <input type="datetime-local" id="edit-ride-time" value="${currentTime}">
       </label>
       <label>Rider Notes
-        <textarea id="edit-ride-notes" rows="2">${ride.notes || ''}</textarea>
+        <textarea id="edit-ride-notes" rows="2">${escapeHtml(ride.notes || '')}</textarea>
       </label>
       <hr style="margin:16px 0; border:none; border-top:1px solid var(--border);">
       <label>Change Notes <span style="color:var(--status-no-show);">*</span>
@@ -2340,10 +2340,10 @@ function renderRideLists() {
       tr.innerHTML = `
         <td><input type="checkbox" class="ride-row-cb" data-ride-id="${ride.id}" style="cursor:pointer;"></td>
         <td>${formatDate(ride.requestedTime)}</td>
-        <td><span class="clickable-name" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}">${ride.riderName}</span></td>
-        <td title="${ride.pickupLocation} → ${ride.dropoffLocation}">${pickup} → ${dropoff}</td>
+        <td><span class="clickable-name" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}">${escapeHtml(ride.riderName)}</span></td>
+        <td title="${escapeHtml(ride.pickupLocation)} → ${escapeHtml(ride.dropoffLocation)}">${escapeHtml(pickup)} → ${escapeHtml(dropoff)}</td>
         <td>${statusBadge(ride.status)}</td>
-        <td>${ride.assignedDriverId ? `<span class="clickable-name" data-user="${ride.assignedDriverId}">${driverName}</span>` : '—'}</td>
+        <td>${ride.assignedDriverId ? `<span class="clickable-name" data-user="${ride.assignedDriverId}">${escapeHtml(driverName)}</span>` : '—'}</td>
         <td></td>
       `;
       // Checkbox handler — preserve selections across re-renders
@@ -2484,8 +2484,8 @@ function renderPendingQueue() {
     const terminated = ride.consecutiveMisses >= 5;
     row.innerHTML = `
       <div style="flex:1;">
-        <div>${statusBadge('pending')} <span class="clickable-name" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}">${ride.riderName}</span></div>
-        <div class="text-sm text-muted" style="margin-top:2px;">${ride.pickupLocation} → ${ride.dropoffLocation} · ${formatDate(ride.requestedTime)}</div>
+        <div>${statusBadge('pending')} <span class="clickable-name" data-user="${ride.riderId || ''}" data-email="${ride.riderEmail || ''}">${escapeHtml(ride.riderName)}</span></div>
+        <div class="text-sm text-muted" style="margin-top:2px;">${escapeHtml(ride.pickupLocation)} → ${escapeHtml(ride.dropoffLocation)} · ${formatDate(ride.requestedTime)}</div>
         ${terminated ? '<div class="alert" style="margin-top:4px;">SERVICE TERMINATED — 5 consecutive no-shows</div>' : ''}
       </div>
     `;
@@ -2571,7 +2571,7 @@ async function renderDispatchGrid() {
         const left = (mins / 60 * 100) + '%';
         const lastName = (r.riderName || '').split(' ').pop();
         const abbrev = abbreviateLocation(r.pickupLocation);
-        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}" draggable="true" style="left:${left};width:50%;background:var(--status-approved);" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
+        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}" draggable="true" style="left:${left};width:50%;background:var(--status-approved);" title="${escapeHtml(r.riderName)}: ${escapeHtml(r.pickupLocation)} → ${escapeHtml(r.dropoffLocation)}">${escapeHtml(lastName)} · ${escapeHtml(abbrev)}</div>`;
       }
     });
     html += '</div>';
@@ -2690,7 +2690,7 @@ function buildDriverGridRow(driver, driverRides, cols, startHour, gridColStyle, 
         const lastName = (r.riderName || '').split(' ').pop();
         const abbrev = abbreviateLocation(r.pickupLocation);
         const isDraggable = r.status === 'scheduled';
-        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}"${isDraggable ? ' draggable="true"' : ''} style="left:${left};width:50%;background:${bg};border-left:3px solid ${driver._paletteColor || bg};" title="${r.riderName}: ${r.pickupLocation} → ${r.dropoffLocation}">${lastName} · ${abbrev}</div>`;
+        html += `<div class="time-grid__ride-strip" data-ride-id="${r.id}" data-ride-status="${r.status}"${isDraggable ? ' draggable="true"' : ''} style="left:${left};width:50%;background:${bg};border-left:3px solid ${driver._paletteColor || bg};" title="${escapeHtml(r.riderName)}: ${escapeHtml(r.pickupLocation)} → ${escapeHtml(r.dropoffLocation)}">${escapeHtml(lastName)} · ${escapeHtml(abbrev)}</div>`;
       }
     });
 
@@ -2741,12 +2741,12 @@ function openRideDrawer(ride) {
   // Route
   html += `<div class="drawer-section">`;
   html += `<div class="drawer-section-title">Route</div>`;
-  html += `<div class="drawer-field"><div class="drawer-field-label">Pickup</div><div class="drawer-field-value">${ride.pickupLocation}</div></div>`;
-  html += `<div class="drawer-field"><div class="drawer-field-label">Dropoff</div><div class="drawer-field-value">${ride.dropoffLocation}</div></div>`;
+  html += `<div class="drawer-field"><div class="drawer-field-label">Pickup</div><div class="drawer-field-value">${escapeHtml(ride.pickupLocation)}</div></div>`;
+  html += `<div class="drawer-field"><div class="drawer-field-label">Dropoff</div><div class="drawer-field-value">${escapeHtml(ride.dropoffLocation)}</div></div>`;
   html += `<div class="drawer-field"><div class="drawer-field-label">Requested</div><div class="drawer-field-value">${formatDate(ride.requestedTime)}</div></div>`;
-  html += `<div class="drawer-field"><div class="drawer-field-label">Driver</div><div class="drawer-field-value">${ride.assignedDriverId ? `<span class="clickable-name" data-user="${ride.assignedDriverId}">${driverName}</span>` : 'Unassigned'}</div></div>`;
-  if (vehicleName) html += `<div class="drawer-field"><div class="drawer-field-label">Vehicle</div><div class="drawer-field-value">${vehicleName}</div></div>`;
-  if (ride.notes) html += `<div class="drawer-field"><div class="drawer-field-label">Notes</div><div class="drawer-field-value">${ride.notes}</div></div>`;
+  html += `<div class="drawer-field"><div class="drawer-field-label">Driver</div><div class="drawer-field-value">${ride.assignedDriverId ? `<span class="clickable-name" data-user="${ride.assignedDriverId}">${escapeHtml(driverName)}</span>` : 'Unassigned'}</div></div>`;
+  if (vehicleName) html += `<div class="drawer-field"><div class="drawer-field-label">Vehicle</div><div class="drawer-field-value">${escapeHtml(vehicleName)}</div></div>`;
+  if (ride.notes) html += `<div class="drawer-field"><div class="drawer-field-label">Notes</div><div class="drawer-field-value">${escapeHtml(ride.notes)}</div></div>`;
   html += `<div class="drawer-field"><div class="drawer-field-label">No-shows</div><div class="drawer-field-value">${ride.consecutiveMisses || 0}</div></div>`;
   html += `</div>`;
 
@@ -2754,8 +2754,8 @@ function openRideDrawer(ride) {
   if (ride.riderPhone) {
     html += `<div class="drawer-section"><div class="drawer-section-title">Contact</div>`;
     html += `<div class="contact-row">`;
-    html += `<a class="contact-pill" href="tel:${ride.riderPhone}"><span class="icon">☎</span>Call</a>`;
-    html += `<a class="contact-pill" href="sms:${ride.riderPhone}"><span class="icon">✉</span>Text</a>`;
+    html += `<a class="contact-pill" href="tel:${escapeHtml(ride.riderPhone)}"><span class="icon">☎</span>Call</a>`;
+    html += `<a class="contact-pill" href="sms:${escapeHtml(ride.riderPhone)}"><span class="icon">✉</span>Text</a>`;
     html += `</div></div>`;
   }
 
@@ -4590,7 +4590,7 @@ function renderTopRoutesTable(containerId, routes) {
   var html = '<table class="ro-table ro-table--sm" style="width:100%;"><thead><tr><th>Route</th><th style="text-align:right;">Rides</th><th style="text-align:right;">Completion</th></tr></thead><tbody>';
   top10.forEach(function(r) {
     var rateColor = r.completionRate >= 85 ? 'var(--status-completed)' : r.completionRate >= 70 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
-    html += '<tr><td style="font-size:12px;">' + r.pickupLocation + ' \u2192 ' + r.dropoffLocation + '</td><td style="text-align:right;font-weight:600;">' + r.total + '</td><td style="text-align:right;"><span style="color:' + rateColor + ';font-weight:600;">' + r.completionRate + '%</span></td></tr>';
+    html += '<tr><td style="font-size:12px;">' + escapeHtml(r.pickupLocation) + ' \u2192 ' + escapeHtml(r.dropoffLocation) + '</td><td style="text-align:right;font-weight:600;">' + r.total + '</td><td style="text-align:right;"><span style="color:' + rateColor + ';font-weight:600;">' + r.completionRate + '%</span></td></tr>';
   });
   html += '</tbody></table>';
   container.innerHTML = html;

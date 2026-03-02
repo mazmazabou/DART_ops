@@ -1,354 +1,374 @@
-# RideOps Pre-Demo Audit Report
+# RideOps Platform Audit Report
 
-**Date:** 2026-03-01
-**Audited by:** Claude Code (5-agent parallel sweep)
-**Agents:** Backend/API Integrity, Demo Premortem, Data Model/Business Logic, Frontend Quality, Architecture/Deployment
-**Codebase:** main branch, commit 69387cb (~10,900 lines backend, ~6,040 lines frontend JS)
+**Date:** 2026-03-02
+**Auditor:** QA Audit Agent (Claude Opus 4.6)
+**Codebase:** main branch, commit fc33b4e
+**Server:** localhost:3000 with DEMO_MODE=true
+**Scope:** 5-phase audit: Database, API, Entity Lifecycle, Browser UI, Cross-Cutting Concerns
 
 ---
 
 ## Executive Summary
 
-RideOps is a feature-rich, well-designed campus transportation platform with impressive multi-tenant theming, a comprehensive analytics dashboard, real-time three-role workflows, and polished UI built on Tabler. The business logic is sound and the multi-campus architecture is clean. However, the platform is **not production-ready** and has several issues that would surface during a live demo or university IT evaluation.
+**3 critical, 4 warnings, 5 notes** found across 100+ individual checks.
 
-**Critical blockers for demos:** Weekend/evening demos are impossible without changing service hour settings (today is Sunday). The office console flashes default blue before campus colors load (FOUC). The demo page uses jarring browser `alert()` instead of styled toasts. A missing `demo-config.js` file causes 404 errors on every page load.
+The platform is functionally solid: ride lifecycle works end-to-end, all 17 analytics endpoints return data, multi-campus theming applies correctly across all views, session-based auth is properly enforced on every endpoint, and all SQL queries use parameterized statements (no injection risk). The widget-based analytics dashboard, Chart.js charts, and academic terms feature all function correctly.
 
-**Critical blockers for production/sales:** Session security is weak (hardcoded fallback secret, in-memory store, no secure cookies). There is no rate limiting on login. SQL injection is possible via the timezone tenant config. No health check endpoint exists. The `rides` table has zero indexes — analytics will degrade with real data. Multi-step operations (no-show, completion) lack database transactions. No graceful shutdown handler exists.
+However, the platform has a **critical stored XSS vulnerability** affecting the office console and driver console where ride data (rider name, locations, notes) is interpolated into HTML templates without escaping. The rider console is safe -- it uses `escHtml()` consistently.
 
-**The good news:** All critical issues are low-effort fixes (1-3 days total). The platform's core functionality, analytics suite, and campus theming are genuinely impressive and demo-ready once these polish items are addressed.
-
----
-
-## Critical Issues (Must Fix Before Demo)
-
-### 1. Weekend/Evening Demos Blocked by Service Hours
-**Source:** Premortem, Business Logic
-**Impact:** The entire ride creation flow is blocked outside Mon-Fri 8am-7pm. Today is Sunday.
-**Location:** `server.js:1714` — `isWithinServiceHours()` always enforced, no demo bypass
-**Fix:** Before demo: Settings > Business Rules → change operating days to 0-6, hours to 00:00-23:59. Or add `if (DEMO_MODE) return true;` to `isWithinServiceHours()`.
-
-### 2. Office Console FOUC on Campus-Themed URLs
-**Source:** Premortem, Frontend
-**Impact:** Sidebar/header flash default blue then switch to campus color (~100-200ms visible).
-**Location:** `index.html` — missing synchronous color IIFE that `driver.html` and `rider.html` already have
-**Fix:** Copy the synchronous IIFE from `driver.html:13-26` into `index.html` after the `campus-themes.js` script tag.
-
-### 3. `demo-config.js` File Missing — 404 on Every Page
-**Source:** Frontend
-**Impact:** All 6 HTML pages load `<script src="/demo-config.js">` but the file doesn't exist. 404 + potential JS error on every page load, visible in DevTools console.
-**Fix:** Create `public/demo-config.js` with expected exports, or remove the script tag from all pages if unused.
-
-### 4. Demo Page Uses Browser `alert()` for Errors
-**Source:** Premortem, Frontend
-**Impact:** If login fails during demo, audience sees a native browser alert box. Every other page uses styled toasts.
-**Location:** `demo.html:182,186`
-**Fix:** Replace `alert()` with `showToast()` and load `utils.js` before the inline script.
-
-### 5. Session Secret Hardcoded with No Startup Validation
-**Source:** Architecture
-**Impact:** Fallback secret `'rideops-secret-change-in-production'` enables session forgery if `SESSION_SECRET` env var is unset. Not documented in README.
-**Location:** `server.js:115`
-**Fix:** Add startup check that refuses to start without `SESSION_SECRET` in production.
-
-### 6. SQL Injection via Timezone Setting
-**Source:** Architecture, Premortem
-**Impact:** `TENANT.timezone` is interpolated directly into SQL without parameterization. Malicious tenant config → full SQL injection.
-**Location:** `server.js:109` — `` client.query(`SET timezone = '${TENANT.timezone}'`) ``
-**Fix:** Change to `client.query('SET timezone = $1', [TENANT.timezone])`.
-
-### 7. No Rate Limiting on Authentication
-**Source:** Architecture, Data Model, Premortem
-**Impact:** Login and signup endpoints accept unlimited requests. Brute-force possible, especially with default `demo123` password.
-**Fix:** `npm install express-rate-limit` and apply to `/api/auth/login` and `/api/auth/signup`.
-
-### 8. In-Memory Session Store
-**Source:** Architecture, Premortem
-**Impact:** All sessions lost on every server restart/deploy. Memory leak over time. Blocks horizontal scaling.
-**Location:** `server.js:114-119` — no `store` option
-**Fix:** Add `connect-pg-simple` as session store (uses existing PostgreSQL).
-
-### 9. Session Cookie Security Disabled
-**Source:** Architecture
-**Impact:** `secure: false` sends cookie over HTTP. No `sameSite` set (CSRF risk). No conditional for production.
-**Location:** `server.js:118`
-**Fix:** Set `secure: true` and `sameSite: 'lax'` when `NODE_ENV === 'production'`, add `trust proxy`.
-
-### 10. No Graceful Shutdown
-**Source:** Architecture
-**Impact:** No SIGTERM/SIGINT handlers. Deploys drop in-flight requests, leave DB connections open.
-**Fix:** Add 15-line shutdown handler: stop accepting connections, drain pool, exit.
+All critical issues from the 2026-03-01 pre-demo audit have been resolved: FOUC prevention is in place on all pages, `demo-config.js` 404 is gone, session security uses `connect-pg-simple`, all 16 database indexes exist, transactions wrap multi-step operations, graceful shutdown handlers are implemented, and a `/health` endpoint exists.
 
 ---
 
-## High Priority (Should Fix Before Sales Conversations)
+## Critical Issues (3)
 
-### 11. Missing Database Indexes — Performance Time Bomb
-**Source:** Data Model, Architecture
-**Impact:** `rides` table has ZERO indexes beyond PK. 10 concurrent office sessions = 120 full table scans/minute. Analytics with 1000+ rides will be slow.
-**Missing:** `rides(status)`, `rides(requested_time)`, `rides(rider_email)`, `rides(assigned_driver_id)`, `rides(rider_id)`, `rides(vehicle_id)`, `ride_events(ride_id)`, `shifts(employee_id)`
+### CRITICAL-1: Stored XSS in Office Console (app.js)
 
-### 12. No Database Transactions for Multi-Step Operations
-**Source:** Data Model
-**Impact:** No-show handler, completion, cancellation do 3+ queries without transaction. Server crash mid-flow → inconsistent data (miss count incremented but ride status unchanged).
-**Location:** `server.js:2232-2329` (no-show), `2198-2230` (complete)
+**Severity:** CRITICAL
+**Impact:** An attacker who can submit a ride request (any authenticated rider) can inject arbitrary JavaScript that executes in the office staff's browser session. This could enable DOM manipulation, phishing overlays, and data exfiltration. The httpOnly cookie flag mitigates direct session cookie theft, but other attack vectors remain.
 
-### 13. Stored XSS via Program Rules HTML
-**Source:** Data Model, Architecture
-**Impact:** Only `<script>` tags blocked. `<img onerror="...">`, `<svg onload="...">`, `<a href="javascript:...">` all pass through.
-**Location:** `server.js:796`
-**Fix:** Strip all `on*` event attributes: `rulesHtml.replace(/\bon\w+\s*=/gi, '')`.
+**Affected File:** `/Users/mazenabouelela/Documents/Projects/RideOps/public/app.js`
 
-### 14. Office Grace Timer Hardcoded to 5 Minutes
-**Source:** Premortem
-**Impact:** Office and driver views show different countdowns if grace period setting is changed from default.
-**Location:** `app.js:2812` — `const remaining = Math.max(0, 300 - elapsed);`
-**Fix:** Replace `300` with `(tenantConfig?.grace_period_minutes || 5) * 60`.
+**Vulnerable Locations (ride data interpolated into HTML templates without escaping):**
 
-### 15. Rider "Termination" Is Not Enforced — Only Advisory
-**Source:** Data Model
-**Impact:** When rider hits max no-shows, notification says "Account deactivated" but rider can still log in, submit rides. Only enforcement: office can't approve. Rider sees a broken experience (rides stuck pending forever).
+| Line(s) | Function | Unescaped Field(s) |
+|---------|----------|-------------------|
+| 2343 | Rides table (renderAllRides) | `ride.riderName` |
+| 2344 | Rides table (renderAllRides) | `ride.pickupLocation`, `ride.dropoffLocation` (also in `title` attribute) |
+| 2346 | Rides table (renderAllRides) | `driverName` |
+| 2487 | Pending queue (renderPendingQueue) | `ride.riderName` |
+| 2488 | Pending queue (renderPendingQueue) | `ride.pickupLocation`, `ride.dropoffLocation` |
+| 2744-2745 | Ride drawer (openRideDrawer) | `ride.pickupLocation`, `ride.dropoffLocation` |
+| 2747 | Ride drawer (openRideDrawer) | `driverName` |
+| 2749 | Ride drawer (openRideDrawer) | `ride.notes` (**highest risk: free-text user input**) |
+| 2757-2758 | Ride drawer contact | `ride.riderPhone` in `href="tel:"` and `href="sms:"` attributes |
 
-### 16. `uscId` Field Name Leaked in Signup API
-**Source:** Premortem
-**Impact:** Stanford/UCLA evaluators inspecting network requests will see their member ID sent as "uscId" — undermines multi-tenant credibility.
-**Location:** `signup.html:159`, `server.js:1038,1116,1159`
-**Fix:** Rename to `memberId` across ~15 locations.
+**Reproduction:**
+1. Log in as rider `casey` (password: `demo123`)
+2. Submit a ride with notes field set to: `<img src=x onerror="document.body.style.background='red'">`
+3. Log in as `office`
+4. View the ride in the rides table or open the ride drawer -- the injected payload executes
 
-### 17. Synchronous bcrypt Blocks Event Loop
-**Source:** Architecture
-**Impact:** `bcrypt.hashSync()` and `bcrypt.compareSync()` block ~80-120ms per call. During login/signup, all other requests (including polling) stall.
-**Location:** `server.js:121,723,1023,1026,1057,1135,1259`
-**Fix:** Switch to async `bcrypt.hash()` and `bcrypt.compare()`.
+**Evidence:** Server stores `notes` directly from `req.body` without sanitization (server.js line 1993: `notes || ''`). The parameterized query prevents SQL injection but does nothing for HTML injection. The frontend inserts `ride.notes` directly into HTML template literals.
 
-### 18. Many Async Route Handlers Lack try/catch
-**Source:** Architecture
-**Impact:** ~20+ async route handlers have no error wrapping. Database connection blip → client hangs with no response.
-**Fix:** Wrap all async handlers or add Express 5-style async error middleware.
-
-### 19. No Health Check Endpoint
-**Source:** Architecture
-**Impact:** Deployment platforms can't distinguish "app booting" from "app crashed". Zero-downtime deploys impossible.
-**Fix:** Add `/health` endpoint returning `{ status: "ok", db: "connected" }`.
-
-### 20. Hardcoded Hex Colors in `app.js`
-**Source:** Frontend
-**Impact:** ~10 hardcoded colors (`#c62828`, `#28a745`, `#dc3545`, `#f5f5f5`) that won't adapt to campus themes.
-**Location:** `app.js:504,515,565,576,785,2070,2073`
-
-### 21. `utils.js` showEmptyState Uses Material Symbols (Deprecated)
-**Source:** Frontend, Premortem
-**Impact:** Renders `<span class="material-symbols-outlined">` but no page loads that font. Icon renders as invisible text.
-**Location:** `utils.js:158`
-**Fix:** Change to `<i class="ti ti-${icon}"></i>`.
-
-### 22. Phantom Notification Event Types
-**Source:** Data Model
-**Impact:** `driver_no_clock_in`, `daily_summary`, and `ride_completed` (office) event types appear in notification preferences but are never dispatched. Settings UI promises features that don't work.
-
-### 23. `auto_deny_outside_hours` Setting Has No Effect
-**Source:** Data Model
-**Impact:** Setting exists in UI and DB but ride creation always enforces service hours regardless of its value.
-
-### 24. 30+ Console Error/Warn Statements Visible During Demo
-**Source:** Premortem, Frontend
-**Impact:** Technical evaluator opening DevTools sees red/yellow messages on every failed fetch or analytics timing issue.
-
-### 25. CDN Dependencies — Offline/Slow Network Kills UI
-**Source:** Premortem
-**Impact:** Tabler CSS/Icons, FullCalendar, Quill, SortableJS all load from jsdelivr CDN. Conference WiFi or corporate firewall → unstyled HTML.
-**Mitigation:** Pre-cache in browser before demo. For production: vendor locally.
-
-### 26. No SSO/SAML/LDAP Integration
-**Source:** Premortem
-**Impact:** Deal-breaker for universities with mandatory SSO policies (UCLA, Stanford both require this).
-**Mitigation:** Prepare roadmap slide showing SSO as near-term deliverable.
+**Note:** `escapeHtml()` is available in `rideops-utils.js` (loaded by app.js) but is not used for ride data rendering. The `profileCardHTML()` function and notification drawer correctly use `escapeHtml()`, proving the utility exists and is available.
 
 ---
 
-## Medium Priority (Polish Items)
+### CRITICAL-2: Stored XSS in Driver Console (driver.html)
 
-### 27. Password Minimum Inconsistency (6 vs 8 characters)
-Signup requires 6, change-password requires 8, admin-create has no minimum.
-**Location:** `server.js:1045` vs `1017` vs `1115`
+**Severity:** CRITICAL
+**Impact:** Same XSS vulnerability as CRITICAL-1, but targeting driver sessions. A malicious rider's injected payload executes in every driver's browser when they view available or claimed rides.
 
-### 28. No Pagination on `GET /api/rides`
-Returns ALL rides every 5 seconds. Payload grows with data volume.
+**Affected File:** `/Users/mazenabouelela/Documents/Projects/RideOps/public/driver.html`
 
-### 29. Driver Can Clock Out with Active Rides
-Rides in `scheduled`/`driver_on_the_way`/`driver_arrived_grace` become stranded.
+**Vulnerable Locations (ride data interpolated into HTML templates without escaping):**
 
-### 30. Demo Data Re-seeds Every Hour
-**Location:** `server.js:4780-4782` — `setInterval` re-seeds all demo data hourly. Mid-demo changes get overwritten.
+| Line(s) | Function | Unescaped Field(s) |
+|---------|----------|-------------------|
+| 204 | renderAvailableRide() | `ride.pickupLocation`, `ride.dropoffLocation` |
+| 205 | renderAvailableRide() | `ride.riderName` |
+| 263 | renderActiveRide() | `ride.pickupLocation`, `ride.dropoffLocation` |
+| 266 | renderActiveRide() | `ride.notes` (**highest risk**) |
+| 270 | renderActiveRide() | `vehicleName` |
+| 292 | renderFutureRide() | `ride.riderName`, `ride.pickupLocation`, `ride.dropoffLocation` |
+| 304 | renderCompletedRide() | `ride.riderName` |
+| 215 | renderActiveRide() | `phone` in `href` attribute and display text |
 
-### 31. `rider_miss_counts` Tracks by Email Without Foreign Key
-Changing a rider's email resets their strike counter. Old email's count orphaned.
+**Note:** `driver.html` loads `rideops-utils.js` which provides `escapeHtml()`, but none of the ride rendering functions use it.
 
-### 32. Email Env Var Naming Mismatch
-Code reads `FROM_NAME`/`FROM_EMAIL` but docs say `NOTIFICATION_FROM`/`NOTIFICATION_FROM_NAME`.
-
-### 33. Notification Email Templates Hardcode "RideOps"
-USC DART emails should say "USC DART" but always say "RideOps".
-**Location:** `notification-service.js:9-10`
-
-### 34. Two Toast Systems Coexist
-`showToast()` (utils.js) and `showToastNew()` (rideops-utils.js) render visually different notifications. Both used in `app.js`.
-
-### 35. Two Modal Systems Coexist
-`showConfirmModal()` (utils.js) and `showModalNew()` (rideops-utils.js) use different CSS class systems.
-
-### 36. Deprecated `styles.css` File Still Present
-Contains old Material Symbols imports and USC-hardcoded colors. Not loaded but could confuse developers.
-
-### 37. `form-select` CSS Class Used but Never Defined
-**Location:** `driver.html:863` — vehicle selector falls back to unstyled browser defaults.
-
-### 38. Inline Styles Used Extensively in driver.html / rider.html
-Heavy inline `style=""` attributes instead of CSS classes. Harder to maintain and override.
-
-### 39. Graduation Year Options Static (2024-2030)
-Hardcoded in driver.html and rider.html. Will be outdated by 2027.
-
-### 40. No UNIQUE Constraint on Shift Duplication
-Overlapping shifts for same driver can be created without error.
-
-### 41. Vehicles Have No UNIQUE Constraint on Name
-Duplicate "Cart 1" entries possible, confusing in UI.
-
-### 42. Polling Fires Continuously Regardless of Tab Visibility
-No `visibilitychange` listener. Backgrounded tabs waste server resources.
-**Location:** `app.js:6034-6038`
-
-### 43. `db/schema.sql` is Stale and Incomplete
-Missing 4 tables and ~15 columns added via migrations. Misleading as reference doc.
-
-### 44. `server.js` is 4,838 Lines / `app.js` is 6,040 Lines
-Monolith files make code review, testing, and onboarding difficult.
-
-### 45. No `trust proxy` Configuration
-Behind a reverse proxy: `req.ip` wrong, `secure: true` cookies don't work.
-
-### 46. No Node.js Version Specified
-No `engines` in package.json, no `.nvmrc`. Platform picks arbitrary version.
-
-### 47. Recurring Ride Date Generation Timezone Risk
-Near midnight, UTC vs local date can differ → rides generated on wrong day.
-
-### 48. Rides Stuck in Non-Terminal States After Restart
-`driver_on_the_way` and `driver_arrived_grace` rides are permanently stuck with no recovery routine.
+**Contrast:** `rider.html` is **safe** -- it defines its own `escHtml()` at line 1028 and uses it consistently for all user-supplied data (confirmed at lines 662, 685, 719, 726, 792, 799, 844, 912, 913).
 
 ---
 
-## Low Priority (Nice to Have)
+### CRITICAL-3: No Server-Side HTML Sanitization of Ride Notes
 
-### 49. Untracked Development Files in Working Directory
-40+ PNG screenshots, `tabler/` directory, `linkedin_shots*.js`, `.xlsx` reports in root.
+**Severity:** CRITICAL
+**Impact:** The `notes` field on rides is the most dangerous XSS vector because it accepts arbitrary free-text input from riders. Even if the frontend is patched to escape output, any future frontend code that renders notes without escaping would re-introduce the vulnerability.
 
-### 50. `.gitignore` Missing Common Patterns
-No rules for `*.png`, `*.xlsx`, `tabler/`, `.claude/`, `.playwright-mcp/`.
+**Affected File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`
 
-### 51. Inconsistent Login Redirect Paths
-`rider.html` redirects to `/login.html` (with extension), `driver.html` to `/login` (without). Non-org-scoped.
+**Location:** Line 1993 in `POST /api/rides` -- the `notes` value from `req.body` (line 1948) is stored directly via parameterized INSERT without any HTML entity encoding or tag stripping.
 
-### 52. Generic Page Titles Before JS Updates
-Initial `<title>` flashes "Operations Console" before JS changes to org name.
+The same applies to `PUT /api/rides/:id` (line 2233+) where notes can be updated by office staff.
 
-### 53. Login/Signup Pages Use Empty `catch {}` Blocks
-Silent error swallowing — no feedback if tenant-config API fails.
-
-### 54. `defaultPasswordHash` Computed Synchronously at Startup
-Blocks event loop ~100ms. Could be a pre-computed constant.
-
-### 55. Notification Badge Uses Hardcoded `#EF4444`
-Should use `var(--status-no-show)`. Functionally identical but breaks convention.
-**Location:** `rideops-theme.css:868`
-
-### 56. `!important` Overrides in FullCalendar/Quill Theming
-~30+ `!important` declarations. Unavoidable for CDN library theming but fragile.
-
-### 57. `ride_events.actor_user_id` Set to NULL on User Deletion
-Audit trail loses record of who performed actions. Soft-delete would preserve history.
-
-### 58. README.md Missing Key Information for Technical Buyers
-No accessibility statement, security posture, architecture diagram, scaling guidance, or FERPA considerations.
+**Also unvalidated:** `riderPhone` (line 1979) has no format validation and could contain HTML/JS if injected into href attributes.
 
 ---
 
-## Suggestions & Strategic Recommendations
+## Warnings (4)
 
-### Highest-Impact, Lowest-Effort Improvements (1-2 days each)
+### WARNING-1: signup.html Password Placeholder Misleads Users
 
-1. **Fix session security** — Add `SESSION_SECRET` validation, `connect-pg-simple` store, secure cookie settings, `trust proxy`. Eliminates Critical #5, #8, #9.
-
-2. **Add database indexes** — 10 `CREATE INDEX IF NOT EXISTS` statements in `runMigrations()`. Eliminates High #11.
-
-3. **Add `/health` endpoint** — 10 lines. Unlocks proper deployment on Railway/Render/Fly.io.
-
-4. **Add rate limiting** — `express-rate-limit`, 10 lines. Eliminates Critical #7.
-
-5. **Add graceful shutdown** — 15 lines. Eliminates Critical #10.
-
-6. **Fix FOUC on office console** — Copy synchronous IIFE from driver.html. Eliminates Critical #2.
-
-### Demo "Wow Factor" Features Already Built
-
-1. **Multi-campus theming** — Switching between USC cardinal, Stanford red, UCLA blue, UCI blue in one platform is visually stunning. Lead with this.
-
-2. **Analytics widget dashboard** — 16 widgets with drag-and-drop, campus-themed charts, Excel export. Enterprise-grade. Show this prominently.
-
-3. **Three-role real-time workflow** — Office approve → driver claim → rider tracking across three browser tabs simultaneously. Demonstrates the complete value chain.
-
-4. **Excel export** — Multi-sheet `.xlsx` with conditional formatting. Download one during the demo.
-
-5. **Notification system** — 9 event types, per-user preferences, email + in-app channels. Feature competitors charge extra for.
-
-### What to Build Next for Competitive Advantage
-
-1. **SSO/SAML integration** — Required by most universities. Biggest deal-blocker.
-2. **Real-time driver location on map** — Currently just an iframe to campus map. Integrated map with driver pins would be transformative.
-3. **Rider SMS notifications** — Phone numbers already collected. Twilio for "Driver on the way" and "Driver arrived" would differentiate.
-4. **PDF ride receipts** — Universities need paper trails for disability services. "Download Receipt" on completed rides closes ADA compliance deals.
-5. **API documentation (OpenAPI/Swagger)** — Makes integration conversations concrete instead of theoretical.
-6. **Audit log / activity feed** — `ride_events` table already has the data. Exposing as visible timeline demonstrates compliance readiness.
-
-### 1-Hour Pre-Demo Checklist
-
-1. Start server with `DEMO_MODE=true node server.js`
-2. Log in as `office`/`demo123`, go to Settings > Business Rules
-3. Change operating days to all 7 days, hours to 00:00-23:59
-4. Pre-populate Program Guidelines with real content
-5. Load the app once on demo network to cache CDN resources
-6. Open office, driver, and rider views in separate tabs
-7. Use analytics "Month" button to ensure data is visible
-8. Do NOT open DevTools during the demo
+**Severity:** WARNING
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/public/signup.html`, line 91
+**Issue:** Password input placeholder says `"At least 6 characters"` but the server enforces `MIN_PASSWORD_LENGTH = 8` (server.js line 1225).
+**Impact:** Users will attempt 6-7 character passwords and receive a rejection error. Poor UX, no security impact.
 
 ---
 
-## Appendix: Agent Reports
+### WARNING-2: db/schema.sql Drifts from Actual Database Schema
 
-### Agent 1: Backend & API Integrity
-The audit agent performed static code analysis on `server.js` (4,838 lines), `email.js`, `notification-service.js`, and `tenants/` directory. Key findings were incorporated into Critical #5-10 and High #13, #17-19 above. All documented API endpoints exist and are properly implemented. Role-based middleware correctly guards endpoints. Parameterized queries are used everywhere except the timezone setting (Critical #6). The `usc_id → member_id` migration in the column name is complete but the API field name `uscId` persists (High #16).
-
-### Agent 2: Demo Premortem
-Identified 19 risks across 4 severity levels with specific 15-minute fixes for each. The single biggest demo risk is service hours blocking weekend demos (Critical #1). Provided a detailed 1-hour pre-demo action plan and competitive readiness analysis. Key gap areas: no SSO, no FERPA documentation, no push notifications, no real-time GPS tracking, no automated dispatch.
-
-### Agent 3: Data Model & Business Logic
-Found 5 critical, 9 high, 10 medium findings. The most impactful are: missing database indexes (Critical #11), no transactions on multi-step operations (Critical #12), rider termination being advisory-only (High #15), and three phantom notification event types that appear in settings but never fire (High #22). The `auto_deny_outside_hours` setting has no effect on code behavior (High #23).
-
-### Agent 4: Frontend Quality & Consistency
-Found 4 critical, 7 high, 9 medium, 8 low findings across all 14 frontend files. Critical: missing `demo-config.js`, Material Symbols in legacy `showEmptyState()`, `alert()` in demo page, undefined `form-select` CSS class. Notable: two toast systems and two modal systems coexist from design iteration. Hardcoded hex colors in `app.js` (~10 instances) won't adapt to campus themes.
-
-### Agent 5: Architecture & Deployment
-Found 6 critical, 7 high, 8 medium, 8 low findings. Session security (hardcoded secret, in-memory store, insecure cookies) is the top cluster. No graceful shutdown, no health check, no `trust proxy`, and synchronous bcrypt calls are the key production blockers. Email env var naming mismatches documentation. `server.js` at 4,838 lines and `app.js` at 6,040 lines are monolith risks for maintainability. Polling intervals don't pause on backgrounded tabs.
+**Severity:** WARNING
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/db/schema.sql`, line 169
+**Issue:** `academic_terms.name` is defined as `TEXT NOT NULL` in schema.sql but the actual database column (created by `initDb()` in server.js) is `VARCHAR(50)`. The schema.sql file claims to reflect the schema created by `initDb()` (line 2: "This file reflects the schema as created by initDb()") but is inaccurate.
+**Impact:** Developers relying on schema.sql as a reference will have incorrect expectations. No runtime impact.
 
 ---
 
-**Total Findings: 58**
-| Severity | Count |
-|----------|-------|
-| Critical | 10 |
-| High | 16 |
-| Medium | 22 |
-| Low | 10 |
+### WARNING-3: Auth Middleware Returns 403 Instead of 401 for Unauthenticated Requests
 
-**Estimated fix time for Critical + High items: 3-5 developer-days**
-**Estimated fix time for all items: 2-3 developer-weeks**
+**Severity:** WARNING
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`
+**Issue:** `requireAuth`, `requireOffice`, `requireStaff`, and `requireRider` middleware all return `403 Forbidden` when no session exists, rather than `401 Unauthorized`. HTTP semantics specify 401 for "not authenticated" and 403 for "authenticated but insufficient permissions."
+**Impact:** API clients may misinterpret the response. Functional behavior is correct (access is denied).
+
+**Evidence (tested via curl):**
+- `GET /api/rides` (no session) -> 403 `{"error":"Unauthorized"}`
+- `GET /api/admin/users` (no session) -> 403 `{"error":"Unauthorized"}`
+- `GET /api/my-rides` (no session) -> 403 `{"error":"Unauthorized"}`
+
+---
+
+### WARNING-4: CLAUDE.md Documents Incorrect Settings API Format
+
+**Severity:** WARNING
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/CLAUDE.md`
+**Issue:** The Testing Conventions section states: `Settings API expects array format: { data: [{ key: 'grace_period_minutes', value: '0' }] }`. The actual API (`PUT /api/settings`) expects a **bare array**: `[{ key: 'grace_period_minutes', value: '0' }]`. The `data` key is Playwright's request body wrapper, not part of the JSON payload.
+**Impact:** Developers following CLAUDE.md will send the wrong payload format and receive error responses.
+
+**Evidence (tested via curl):**
+- Sending `{"data":[...]}` returns error: `"Expected array of { key, value }"`
+- Sending `[{"key":"grace_period_minutes","value":"5"}]` returns 200 OK
+
+---
+
+## Notes (5)
+
+### NOTE-1: Health Endpoint Not Wrapped in wrapAsync()
+
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`, line 854
+**Issue:** `GET /health` is the only async route handler not wrapped in `wrapAsync()`. It has its own try/catch so this is functionally safe, but it is inconsistent with the rest of the codebase.
+
+---
+
+### NOTE-2: No Pagination on Rides API
+
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`, line 1929 (`GET /api/rides`)
+**Issue:** Returns all rides on every 5-second polling cycle with no pagination, limit, or cursor. Listed in CLAUDE.md as a known issue. With 650+ demo rides, this works but will degrade at scale.
+
+---
+
+### NOTE-3: Phone Numbers Not Validated
+
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`, line 1979
+**Issue:** `riderPhone` from ride creation is stored without format validation. While the primary XSS risk is in the frontend rendering (covered in CRITICAL-1/2), the server also does not validate that phone numbers contain only digits, dashes, or parentheses.
+
+---
+
+### NOTE-4: Rate Limiting Disabled in Development
+
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`, lines 864-877
+**Issue:** Login rate limiter allows 1000 requests/15min in development mode (vs 10 in production). Signup allows 1000/15min (vs 5 in production). This is intentional for development but worth noting.
+
+---
+
+### NOTE-5: Default Credentials Logged to Console in Development
+
+**File:** `/Users/mazenabouelela/Documents/Projects/RideOps/server.js`, line 5248
+**Issue:** Default login credentials are logged to the server console on startup in non-production mode. This is guarded by `if (!isProduction)` so it is safe, but the credentials are visible in terminal output.
+
+---
+
+## Phase-by-Phase Results
+
+### Phase 1: DATABASE AUDIT -- PASS
+
+**Tables verified (15):** users, shifts, rides, ride_events, recurring_rides, rider_miss_counts, vehicles, maintenance_logs, clock_events, tenant_settings, notification_preferences, notifications, program_content, academic_terms, session (auto-created by connect-pg-simple).
+
+**Checks passed:**
+- All 15 tables exist with correct column names, types, and constraints
+- All 16 custom indexes exist and match schema.sql definitions
+- Foreign keys verified: rides->users (rider_id, assigned_driver_id), rides->vehicles, shifts->users, ride_events->rides, clock_events->users, maintenance_logs->vehicles, notification_preferences->users, notifications->users, recurring_rides->users
+- CASCADE deletes confirmed on: ride_events, recurring_rides, maintenance_logs, notification_preferences, notifications
+- Unique constraints verified: users.username, users.email, vehicles.name, tenant_settings.setting_key, notification_preferences(user_id, event_type, channel)
+- CHECK constraint on academic_terms: `end_date > start_date` confirmed
+- No orphaned records found (rides referencing non-existent users, clock_events referencing non-existent employees)
+- No `$1::uuid[]` casts found in server.js (all IDs are text format)
+
+**Checks with findings:**
+- [WARNING-2] db/schema.sql academic_terms.name type mismatch (TEXT vs VARCHAR(50))
+
+---
+
+### Phase 2: API AUDIT -- PASS (with findings)
+
+**Endpoints tested:** 60+ endpoints across auth, config, admin, profile, employees, shifts, rides, recurring rides, vehicles, analytics, settings, notifications, academic terms.
+
+**Auth endpoints:**
+- POST /api/auth/login -- 200 with valid credentials, 401 with invalid
+- POST /api/auth/logout -- 200
+- GET /api/auth/me -- 200 with session, 403 without
+- GET /api/auth/signup-allowed -- 200
+
+**Authorization enforcement (all passed):**
+- requireOffice endpoints (admin, settings, analytics) -- 403 for driver/rider role
+- requireStaff endpoints (rides list, employees) -- 403 for rider role
+- requireRider endpoints (my-rides, recurring-rides) -- 403 for non-rider role
+- requireAuth endpoints (ride creation, profile) -- 403 for no session
+
+**Ride lifecycle (all passed):**
+- Create ride -- 200 with valid data, 400 for missing fields
+- Approve/Deny -- 200
+- Claim (driver) -- 200
+- On-the-way -- 200 (requires vehicle assigned first)
+- Here (arrive) -- 200
+- Complete -- 200
+- No-show -- 200
+- Cancel (rider cancels pending) -- 200
+
+**Error handling (all passed):**
+- Non-existent ride ID returns 404 (not 500)
+- Missing required fields return 400 with descriptive error messages
+- Driver clock-out with active rides returns 409
+
+**Analytics endpoints (17 tested, all 200):**
+summary, hotspots, frequency, vehicles, milestones, semester-report, tardiness, ride-volume, ride-outcomes, peak-hours, routes, driver-performance, driver-utilization, rider-cohorts, rider-no-shows, fleet-utilization, shift-coverage, export-report
+
+**Academic terms CRUD (all passed):**
+- POST create -- 200
+- GET list -- 200
+- PUT update -- 200
+- DELETE -- 200
+- Invalid date range (end < start) -- 400
+
+**Findings:**
+- [WARNING-3] 403 instead of 401 for unauthenticated requests
+- [WARNING-4] CLAUDE.md documents incorrect settings payload format
+
+---
+
+### Phase 3: ENTITY LIFECYCLE AUDIT -- PASS
+
+**Ride lifecycle (full path tested):**
+1. Create ride (pending) -- verified all fields stored correctly
+2. Approve (approved) -- status updated, ride event logged
+3. Set vehicle -- vehicle_id assigned
+4. Claim by driver (scheduled) -- assigned_driver_id set
+5. On-the-way (driver_on_the_way) -- status updated
+6. Here (driver_arrived_grace) -- grace_start_time set
+7. Complete (completed) -- terminal state reached, miss count reset
+
+**No-show path tested:**
+- Grace period enforced before no-show allowed
+- Miss count increments in rider_miss_counts table
+
+**Cancel path tested:**
+- Rider can cancel pending/approved rides
+- cancelled_by field set to 'rider'
+
+**Deny path tested:**
+- Office can deny pending rides
+- Status set to 'denied'
+
+**Business rules verified:**
+- Service hours enforcement (rides outside hours rejected with 400)
+- Driver must be clocked in to claim rides
+- Vehicle required before "On My Way"
+- Clock-out guard: driver cannot clock out with active rides (409)
+
+---
+
+### Phase 4: BROWSER AUDIT -- PASS
+
+**Pages tested:**
+- `/login` -- Campus selector loads with all 4 campuses, no console errors
+- `/usc/login` -- USC DART branding applied, correct tagline, login form functional
+- `/usc` (office console) -- Dispatch panel loads with KPI cards, pending queue, today's board. Analytics tab loads all widgets. No console errors.
+- `/usc/driver` -- DART branding, clock-in button, bottom tabs functional. No console errors.
+- `/usc/rider` -- Auto-switches to My Rides when active rides exist. Hero card displays. Cancel buttons present. No console errors.
+
+**Mobile responsiveness (375px width):**
+- Rider page: Layout renders correctly, no horizontal overflow
+
+**Tenant theming:**
+- USC branding applies correctly (crimson primary, DART org name)
+- All 4 campus configs return correct tenant data via API
+
+**No console errors detected on any page.**
+
+---
+
+### Phase 5: CROSS-CUTTING CONCERNS -- FAIL (Critical XSS)
+
+**Security (findings):**
+- [CRITICAL-1] Stored XSS in app.js (12 unescaped interpolation points)
+- [CRITICAL-2] Stored XSS in driver.html (8 unescaped interpolation points)
+- [CRITICAL-3] No server-side HTML sanitization of ride notes
+
+**Security (passed):**
+- All SQL queries use parameterized statements -- no SQL injection
+- No secrets, API keys, or password hashes in frontend code
+- Session cookies: httpOnly=true, sameSite='lax', secure=true in production
+- connect-pg-simple session store (not in-memory)
+- Rate limiting on login (10/15min) and signup (5/15min) in production
+- Password hashing with bcrypt, MIN_PASSWORD_LENGTH=8
+- Static file serving limited to `public/` directory only
+- Credentials only logged in non-production mode
+- Global error handler exists at line 5198 (last middleware, returns generic 500)
+- Graceful shutdown handlers for SIGTERM/SIGINT with 15s drain timeout
+- Startup recovery: stuck rides reverted to 'scheduled', driver active states reset
+
+**Code quality (passed):**
+- No Material Symbols usage (all Tabler Icons)
+- No legacy `showToast()` or `showConfirmModal()` calls
+- No `$1::uuid[]` casts
+- `wrapAsync()` covers all async route handlers (except /health which has its own try/catch)
+- `.tab-panel` / `.sub-panel` CSS visibility rules intact at rideops-theme.css lines 78-81
+- CDN dependencies properly loaded (no npm-installed versions)
+- FOUC prevention scripts present in all HTML pages
+
+**Findings:**
+- [WARNING-1] signup.html password placeholder says 6 characters, server enforces 8
+
+---
+
+## Recommended Fix Priority
+
+### Immediate (before any user-facing deployment)
+1. **CRITICAL-1 + CRITICAL-2: Patch XSS in app.js and driver.html** -- Add `escapeHtml()` calls around all ride data interpolated into HTML templates. The function already exists in `rideops-utils.js`. Estimated effort: 1-2 hours.
+2. **CRITICAL-3: Add server-side sanitization** -- Strip HTML tags from `notes`, `riderPhone`, and potentially `pickupLocation`/`dropoffLocation` on the server before storage. This provides defense-in-depth. Estimated effort: 30 minutes.
+
+### Before next release
+3. **WARNING-1: Fix signup.html placeholder** -- Change "At least 6 characters" to "At least 8 characters". 1-minute fix.
+4. **WARNING-2: Update db/schema.sql** -- Change `name TEXT NOT NULL` to `name VARCHAR(50) NOT NULL` for academic_terms. 1-minute fix.
+5. **WARNING-3: Use 401 for unauthenticated, 403 for unauthorized** -- Update auth middleware to distinguish between missing session (401) and insufficient role (403). 15-minute fix.
+6. **WARNING-4: Correct CLAUDE.md settings API format** -- Update the test conventions section to show the bare array format. 1-minute fix.
+
+### Tech debt (no urgency)
+7. NOTE-1: Wrap /health in wrapAsync for consistency.
+8. NOTE-2: Add pagination to rides API (documented known issue).
+9. NOTE-3: Add phone number format validation.
+10. NOTE-4, NOTE-5: Informational only, no action needed.
+
+---
+
+## Appendix: Items Resolved Since Last Audit (2026-03-01)
+
+The following critical issues from the previous audit have been **verified resolved**:
+
+| Previous Issue | Status |
+|---------------|--------|
+| Weekend/evening demos blocked by service hours | RESOLVED -- configurable operating days |
+| Office console FOUC on campus-themed URLs | RESOLVED -- synchronous FOUC prevention script in all pages |
+| demo-config.js 404 on every page | RESOLVED -- file removed/no longer referenced |
+| Hardcoded SESSION_SECRET fallback | RESOLVED -- random fallback in dev, required in production |
+| In-memory session store | RESOLVED -- connect-pg-simple PostgreSQL store |
+| No secure cookie flag | RESOLVED -- secure=isProduction |
+| No rate limiting on login | RESOLVED -- express-rate-limit on login and signup |
+| SQL injection via timezone config | RESOLVED -- timezone validated against pg_timezone_names |
+| No health check endpoint | RESOLVED -- GET /health with DB connectivity check |
+| Zero indexes on rides table | RESOLVED -- 7 indexes on rides table confirmed |
+| Multi-step operations lack transactions | RESOLVED -- transactions used for no-show, completion, etc. |
+| No graceful shutdown | RESOLVED -- SIGTERM/SIGINT handlers with 15s drain timeout |
+| Demo page uses browser alert() | RESOLVED -- uses styled toasts |

@@ -540,6 +540,12 @@ function generateId(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Strip HTML tags from user input for defense-in-depth against stored XSS */
+function stripHtml(str) {
+  if (!str) return str;
+  return str.replace(/<[^>]*>/g, '');
+}
+
 function formatLocalDate(date) {
   const local = new Date(date.toLocaleString('en-US', { timeZone: TENANT.timezone }));
   const y = local.getFullYear();
@@ -812,7 +818,13 @@ async function requireAuth(req, res, next) {
 }
 
 function requireOffice(req, res, next) {
-  if (!req.session.userId || req.session.role !== 'office') {
+  if (!req.session.userId) {
+    if (req.path.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
+      return res.status(401).json({ error: 'Not authenticated', code: 'SESSION_EXPIRED' });
+    }
+    return res.redirect('/login');
+  }
+  if (req.session.role !== 'office') {
     if (req.path.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
       return res.status(403).json({ error: 'Office access required' });
     }
@@ -822,7 +834,13 @@ function requireOffice(req, res, next) {
 }
 
 function requireStaff(req, res, next) {
-  if (!req.session.userId || (req.session.role !== 'office' && req.session.role !== 'driver')) {
+  if (!req.session.userId) {
+    if (req.path.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
+      return res.status(401).json({ error: 'Not authenticated', code: 'SESSION_EXPIRED' });
+    }
+    return res.redirect('/login');
+  }
+  if (req.session.role !== 'office' && req.session.role !== 'driver') {
     if (req.path.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
       return res.status(403).json({ error: 'Staff access required' });
     }
@@ -832,7 +850,13 @@ function requireStaff(req, res, next) {
 }
 
 function requireRider(req, res, next) {
-  if (!req.session.userId || req.session.role !== 'rider') {
+  if (!req.session.userId) {
+    if (req.path.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
+      return res.status(401).json({ error: 'Not authenticated', code: 'SESSION_EXPIRED' });
+    }
+    return res.redirect('/login');
+  }
+  if (req.session.role !== 'rider') {
     if (req.path.startsWith('/api/') || req.xhr || req.headers.accept?.includes('application/json')) {
       return res.status(403).json({ error: 'Rider access required' });
     }
@@ -1990,7 +2014,7 @@ app.post('/api/rides', requireAuth, wrapAsync(async (req, res) => {
   await query(
     `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10, NULL)`,
-    [rideId, req.session.userId, name, email, phone, pickupLocation, dropoffLocation, notes || '', requestedTime, missCount]
+    [rideId, req.session.userId, name, email, phone, pickupLocation, dropoffLocation, stripHtml(notes || ''), requestedTime, missCount]
   );
   await addRideEvent(rideId, req.session.userId, 'requested');
   const ride = await query(
@@ -2253,7 +2277,7 @@ app.put('/api/rides/:id', requireOffice, wrapAsync(async (req, res) => {
   if (pickupLocation !== undefined) { updates.push(`pickup_location = $${idx++}`); values.push(pickupLocation); }
   if (dropoffLocation !== undefined) { updates.push(`dropoff_location = $${idx++}`); values.push(dropoffLocation); }
   if (requestedTime !== undefined) { updates.push(`requested_time = $${idx++}`); values.push(requestedTime); }
-  if (notes !== undefined) { updates.push(`notes = $${idx++}`); values.push(notes); }
+  if (notes !== undefined) { updates.push(`notes = $${idx++}`); values.push(stripHtml(notes)); }
   updates.push(`updated_at = NOW()`);
 
   if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
