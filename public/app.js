@@ -6246,7 +6246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (analyticsTo) analyticsTo.value = today;
 
   // Analytics: sub-tab lazy loading tracker
-  var _analyticsTabsLoaded = { dashboard: false, hotspots: false, milestones: false, attendance: false };
+  var _analyticsTabsLoaded = { dashboard: false, hotspots: false, milestones: false, attendance: false, reports: false };
 
   // Helper: get the active analytics sub-tab target
   function getActiveAnalyticsSubTab() {
@@ -6297,6 +6297,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else if (target === 'analytics-tardiness-view' && !_analyticsTabsLoaded.attendance) {
         _analyticsTabsLoaded.attendance = true;
         loadAttendanceWidgets();
+      } else if (target === 'analytics-reports-view' && !_analyticsTabsLoaded.reports) {
+        _analyticsTabsLoaded.reports = true;
+        loadSemesterReport();
       }
     });
   });
