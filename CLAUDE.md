@@ -51,7 +51,7 @@ RideOps is an accessible campus transportation operations platform. It provides 
 
 ### Server-Side Campus Configs (tenants/campus-configs.js)
 Defines complete per-campus overrides merged into `/api/tenant-config` response: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, secondaryTextColor, sidebarBg, sidebarText, sidebarActiveBg, sidebarHover, sidebarBorder, headerBg, mapUrl, mapEmbeddable, campusKey, locationsKey, idFieldLabel, idFieldPattern, idFieldMaxLength, idFieldPlaceholder, serviceScopeText, timezone, rules. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding).
-- **`mapEmbeddable`:** Boolean flag. `true` for USC/Stanford (iframe works), `false` for UCLA/UCI (frame-busting scripts). Office/driver views render fallback "Open Campus Map" card when `false`.
+- **`mapEmbeddable`:** Boolean flag. `true` for all four campuses (USC, Stanford, UCLA, UCI). Office/driver views render fallback "Open Campus Map" card when `false`.
 
 ## Tech Stack
 - **Backend:** Node.js (>=18) + Express + express-session + bcryptjs
