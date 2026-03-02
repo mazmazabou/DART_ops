@@ -1214,7 +1214,7 @@ input[type="checkbox"]:disabled {
 /* ── Size: xs (Compact) — span 1 of 4 ── */
 .widget-card--xs {
   grid-column: span 1;
-  max-height: 280px;
+  max-height: 336px;
 }
 .widget-card--xs .widget-card__header { padding: 6px 10px; font-size: 11px; flex-shrink: 0; }
 .widget-card--xs .widget-card__body { padding: 6px 10px 10px; overflow-y: auto; flex: 1; min-height: 0; }
