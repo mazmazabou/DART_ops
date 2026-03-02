@@ -1081,6 +1081,79 @@ input[type="checkbox"]:disabled {
 .col-bar { transition: opacity 0.15s; cursor: default; }
 .col-bar:hover { opacity: 0.8; }
 
+/* ── Chart scaling inside widget cards ──
+   Charts fill their widget body and never overflow/scroll.
+   Uses :has() to target only bodies containing charts or donuts.
+   Size-prefixed selectors override the per-size overflow-y: auto rules. */
+.widget-card .widget-card__body:has(.col-chart-wrap),
+.widget-card .widget-card__body:has(.area-chart-wrap),
+.widget-card .widget-card__body:has(.donut-wrap) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.widget-card__body:has(.col-chart-wrap) > *,
+.widget-card__body:has(.area-chart-wrap) > * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.widget-card .col-chart-wrap,
+.widget-card .area-chart-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+}
+.widget-card .col-chart-wrap svg,
+.widget-card .area-chart-wrap svg {
+  width: 100%;
+  max-height: 100%;
+}
+/* Cap chart height for unconstrained (md/lg) cards */
+.widget-card--md .col-chart-wrap svg,
+.widget-card--md .area-chart-wrap svg {
+  max-height: 240px;
+}
+.widget-card--lg .col-chart-wrap svg,
+.widget-card--lg .area-chart-wrap svg {
+  max-height: 320px;
+}
+/* Donut charts inside widget cards: flex-fill and responsive sizing */
+.widget-card .donut-wrap {
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+}
+.widget-card .donut-svg-wrap {
+  width: auto;
+  height: auto;
+  max-width: 180px;
+  max-height: 180px;
+  aspect-ratio: 1;
+}
+.widget-card .donut-svg-wrap svg {
+  width: 100%;
+  height: 100%;
+}
+/* Constrained sizes: scale donut down */
+.widget-card--xs .donut-svg-wrap {
+  max-width: 140px;
+  max-height: 140px;
+}
+.widget-card--sm .donut-svg-wrap {
+  max-width: 160px;
+  max-height: 160px;
+}
+.widget-card--md .donut-svg-wrap,
+.widget-card--lg .donut-svg-wrap {
+  max-width: 200px;
+  max-height: 200px;
+}
+
 /* ── Stacked Bar ── */
 .stacked-bar__track { display: flex; height: 28px; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-border-light); }
 .stacked-bar__seg { transition: opacity 0.15s, filter 0.15s; cursor: default; min-width: 2px; }
@@ -1094,8 +1167,8 @@ input[type="checkbox"]:disabled {
 .stacked-bar__legend-pct { font-size: 11px; color: var(--color-text-muted); }
 
 /* ── SVG Donut ── */
-.donut-svg-wrap { position: relative; width: 160px; height: 160px; flex-shrink: 0; }
-.donut-svg-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.donut-svg-wrap { position: relative; width: 160px; height: 160px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.donut-svg-wrap svg { width: 100%; height: 100%; }
 .donut-seg { transition: opacity 0.15s; cursor: default; }
 .donut-seg:hover { opacity: 0.7; }
 
@@ -1223,10 +1296,7 @@ input[type="checkbox"]:disabled {
 /* xs donut: hide legend, expand SVG to fill card body */
 .widget-card--xs .donut-wrap { flex-direction: column; align-items: center; gap: 0; justify-content: center; }
 .widget-card--xs .donut-legend { display: none; }
-.widget-card--xs .donut-svg-wrap { width: 100%; display: flex; justify-content: center; position: relative; }
-.widget-card--xs .donut-svg-wrap svg { width: 160px !important; height: 160px !important; }
-/* xs chart: reduce SVG height for sparkline-style rendering */
-.widget-card--xs svg.analytics-chart { max-height: 200px; }
+.widget-card--xs .donut-svg-wrap { display: flex; justify-content: center; }
 
 /* ── Size: sm (Small) — span 2 of 4 ── */
 .widget-card--sm {

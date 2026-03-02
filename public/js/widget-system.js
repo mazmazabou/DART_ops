@@ -278,6 +278,12 @@ function resizeWidget(tabId, widgetId) {
     card.classList.remove('widget-card--resizing');
     void card.offsetWidth; // force reflow to restart animation
     card.classList.add('widget-card--resizing');
+    // Re-render the widget's chart/content to fit the new size
+    var overrides = inst.config.containerOverrides || {};
+    var containerId = overrides[widgetId] || def.containerId;
+    if (containerId && _widgetLoaders[widgetId]) {
+      try { _widgetLoaders[widgetId](containerId); } catch (e) { console.warn('Widget resize reload error:', widgetId, e); }
+    }
   }
 }
 

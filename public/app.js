@@ -4336,6 +4336,8 @@ function renderRideVolumeChart(data) {
     container.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-area-line"></i><div class="ro-empty__title">No ride data</div><div class="ro-empty__message">No rides found in this period.</div></div>';
     return;
   }
+  var chartId = 'ride-volume-area-chart';
+  container.innerHTML = '<div id="' + chartId + '" class="area-chart-wrap"></div>';
   var lineData = data.data.map(function(r) {
     return {
       label: new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -4343,7 +4345,7 @@ function renderRideVolumeChart(data) {
       raw: r
     };
   });
-  renderLineChart('chart-ride-volume', lineData, {
+  renderLineChart(chartId, lineData, {
     unit: 'rides',
     color: getCurrentCampusPalette()[0],
     tooltipFn: function(raw) {
@@ -4389,7 +4391,7 @@ function renderDonutChart(containerId, distribution) {
   container.innerHTML =
     '<div class="donut-wrap">' +
       '<div class="donut-svg-wrap">' +
-        '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:200px;height:200px;">' +
+        '<svg viewBox="0 0 ' + W + ' ' + H + '">' +
           arcs +
           '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" style="font-size:28px;font-weight:700;fill:var(--color-text);pointer-events:none;">' + total + '</text>' +
           '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" style="font-size:12px;fill:var(--color-text-muted);pointer-events:none;">total rides</text>' +
