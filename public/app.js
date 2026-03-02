@@ -5409,7 +5409,7 @@ async function loadNotificationPreferences() {
     const settingsData = settingsRes.ok ? await settingsRes.json() : {};
     const systemNotifSettings = (settingsData.notifications || []);
 
-    const categoryLabels = { staff: 'Staff Alerts', rides: 'Ride Alerts', reports: 'Reports' };
+    const categoryLabels = { staff: 'Staff Alerts', rides: 'Ride Alerts', reports: 'Reports', other: 'Other Alerts' };
     const byCategory = {};
     for (const [key, pref] of Object.entries(prefs)) {
       const cat = pref.category || 'other';

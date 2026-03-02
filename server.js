@@ -4837,17 +4837,19 @@ app.get('/api/notification-preferences', requireOffice, wrapAsync(async (req, re
       [req.session.userId]
     );
 
-    // Group by event_type for easier frontend rendering
+    // Group by event_type for easier frontend rendering (skip orphaned types not in NOTIFICATION_EVENT_TYPES)
+    const knownKeys = new Set(NOTIFICATION_EVENT_TYPES.map(e => e.key));
     const grouped = {};
     for (const row of result.rows) {
+      if (!knownKeys.has(row.event_type)) continue;
       if (!grouped[row.event_type]) {
         const def = NOTIFICATION_EVENT_TYPES.find(e => e.key === row.event_type);
         grouped[row.event_type] = {
           key: row.event_type,
-          label: def ? def.label : row.event_type,
-          description: def ? def.description : '',
-          category: def ? def.category : 'other',
-          thresholdUnit: def ? def.thresholdUnit : null,
+          label: def.label,
+          description: def.description || '',
+          category: def.category,
+          thresholdUnit: def.thresholdUnit,
           channels: {}
         };
       }
