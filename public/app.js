@@ -3078,6 +3078,35 @@ function getAnalyticsDateParams() {
   return qs ? '?' + qs : '';
 }
 
+// ── Data Caches (avoid duplicate API calls across widgets) ──
+
+var _tardinessCache = { data: null, params: null, promise: null };
+var _hotspotsCache = { data: null, params: null, promise: null };
+
+async function fetchTardinessData() {
+  var params = getAnalyticsDateParams();
+  if (_tardinessCache.data && _tardinessCache.params === params) return _tardinessCache.data;
+  if (_tardinessCache.promise && _tardinessCache.params === params) return _tardinessCache.promise;
+  _tardinessCache.params = params;
+  _tardinessCache.promise = fetch('/api/analytics/tardiness' + params)
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) { _tardinessCache.data = d; _tardinessCache.promise = null; return d; })
+    .catch(function() { _tardinessCache.promise = null; return null; });
+  return _tardinessCache.promise;
+}
+
+async function fetchHotspotsData() {
+  var params = getAnalyticsDateParams();
+  if (_hotspotsCache.data && _hotspotsCache.params === params) return _hotspotsCache.data;
+  if (_hotspotsCache.promise && _hotspotsCache.params === params) return _hotspotsCache.promise;
+  _hotspotsCache.params = params;
+  _hotspotsCache.promise = fetch('/api/analytics/hotspots' + params)
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) { _hotspotsCache.data = d; _hotspotsCache.promise = null; return d; })
+    .catch(function() { _hotspotsCache.promise = null; return null; });
+  return _hotspotsCache.promise;
+}
+
 function setAnalyticsQuickRange(preset) {
   var _today = new Date();
   var todayStr = _today.getFullYear() + '-' + String(_today.getMonth() + 1).padStart(2, '0') + '-' + String(_today.getDate()).padStart(2, '0');
@@ -3813,12 +3842,11 @@ async function loadAnalyticsFrequency() {
 
 async function loadAnalyticsHotspots() {
   try {
-    const res = await fetch('/api/analytics/hotspots' + getAnalyticsDateParams());
-    if (!res.ok) return;
-    const data = await res.json();
-    renderHotspotList('hotspot-pickups', data.topPickups, '', 'pickups');
-    renderHotspotList('hotspot-dropoffs', data.topDropoffs, 'darkgold', 'dropoffs');
-    renderODMatrix('hotspot-matrix', data.matrix);
+    var data = await fetchHotspotsData();
+    if (!data) return;
+    if (data.topPickups) renderHotspotList('w-hotspot-pickups', data.topPickups, '', 'pickups');
+    if (data.topDropoffs) renderHotspotList('w-hotspot-dropoffs', data.topDropoffs, 'darkgold', 'dropoffs');
+    if (data.matrix) renderODMatrix('w-hotspot-matrix', data.matrix);
   } catch (e) { console.error('Analytics hotspots error:', e); }
 }
 
@@ -3833,11 +3861,11 @@ async function loadFleetVehicles() {
 
 async function loadAnalyticsMilestones() {
   try {
-    const res = await fetch('/api/analytics/milestones');
+    var res = await fetch('/api/analytics/milestones');
     if (!res.ok) return;
-    const data = await res.json();
-    renderMilestoneList('driver-milestones', data.drivers, 'driver');
-    renderMilestoneList('rider-milestones', data.riders, 'rider');
+    var data = await res.json();
+    if (data.drivers) renderMilestoneList('w-driver-milestones', data.drivers, 'driver');
+    if (data.riders) renderMilestoneList('w-rider-milestones', data.riders, 'rider');
   } catch (e) { console.error('Analytics milestones error:', e); }
 }
 
@@ -3850,196 +3878,219 @@ async function loadSemesterReport() {
 }
 
 async function loadTardinessAnalytics() {
-  const container = document.getElementById('tardiness-analytics-container');
-  if (!container) return;
-  try {
-    const res = await fetch('/api/analytics/tardiness' + getAnalyticsDateParams());
-    if (!res.ok) return;
-    const data = await res.json();
-    await renderTardinessSection(container, data);
-  } catch (e) { console.error('Tardiness analytics error:', e); }
+  // Legacy wrapper — now delegates to the attendance widget system
+  var data = await fetchTardinessData();
+  if (!data) return;
+  if (data.summary) renderAttendanceKPIs('att-kpis', data.summary);
+  if (data.distribution) renderAttendanceDonut('att-donut', data.distribution);
+  if (data.byDayOfWeek) renderTardinessDOW('att-dow', data.byDayOfWeek);
+  if (data.dailyTrend) renderTardinessTrend('att-trend', data.dailyTrend);
+  if (data.byDriver) renderPunctualityTable('att-punctuality', data.byDriver);
 }
 
-async function renderTardinessSection(container, data) {
-  const { summary, byDriver, byDayOfWeek, dailyTrend, distribution } = data;
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  let html = '';
+// ── Decomposed Attendance Render Functions ──
 
-  // ── 1. KPI Cards (4 cards with ring gauge for on-time rate) ──
-  const onTimeRate = summary.totalClockIns > 0 ? Math.round((summary.onTimeCount / summary.totalClockIns) * 100) : 100;
-  const onTimeClass = onTimeRate >= 90 ? 'kpi-card--good' : onTimeRate >= 80 ? 'kpi-card--warning' : 'kpi-card--danger';
-  const tardyClass = summary.tardyCount === 0 ? 'kpi-card--good' : 'kpi-card--danger';
-  const avgTardy = summary.avgTardinessMinutes ? parseFloat(summary.avgTardinessMinutes).toFixed(1) : '0';
+function renderAttendanceKPIs(containerId, summary) {
+  var container = document.getElementById(containerId);
+  if (!container || !summary) return;
 
-  const ringColor = onTimeRate >= 90 ? 'var(--status-completed)' : onTimeRate >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
-  const ringBg = 'var(--color-border-light)';
+  var onTimeRate = summary.totalClockIns > 0 ? Math.round((summary.onTimeCount / summary.totalClockIns) * 100) : 100;
+  var onTimeClass = onTimeRate >= 90 ? 'kpi-card--good' : onTimeRate >= 80 ? 'kpi-card--warning' : 'kpi-card--danger';
+  var tardyClass = summary.tardyCount === 0 ? 'kpi-card--good' : 'kpi-card--danger';
+  var avgTardy = summary.avgTardinessMinutes ? parseFloat(summary.avgTardinessMinutes).toFixed(1) : '0';
+  var ringColor = onTimeRate >= 90 ? 'var(--status-completed)' : onTimeRate >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
+  var ringBg = 'var(--color-border-light)';
+  var missedClass = (summary.totalMissedShifts || 0) === 0 ? 'kpi-card--good' : (summary.totalMissedShifts || 0) <= 3 ? 'kpi-card--warning' : 'kpi-card--danger';
 
-  html += '<div class="analytics-card analytics-card--wide analytics-card--kpi" style="margin:16px 24px 0;">';
-  html += '<div class="kpi-bar">';
-  html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${summary.totalClockIns}</div><div class="kpi-card__label">Total Clock-Ins</div></div>`;
-  html += `<div class="kpi-card ${onTimeClass}">
-    <div class="kpi-ring" style="background: conic-gradient(${ringColor} ${onTimeRate * 3.6}deg, ${ringBg} ${onTimeRate * 3.6}deg);">
-      <div class="kpi-ring__inner">${onTimeRate}%</div>
-    </div>
-    <div class="kpi-card__label">On-Time Rate</div>
-  </div>`;
-  html += `<div class="kpi-card ${tardyClass}"><div class="kpi-card__value">${summary.tardyCount}</div><div class="kpi-card__label">Tardy Count</div></div>`;
-  html += `<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">${avgTardy}m</div><div class="kpi-card__label">Avg Tardiness</div></div>`;
-  const missedClass = (summary.totalMissedShifts || 0) === 0 ? 'kpi-card--good' : (summary.totalMissedShifts || 0) <= 3 ? 'kpi-card--warning' : 'kpi-card--danger';
-  html += `<div class="kpi-card ${missedClass}"><div class="kpi-card__value">${summary.totalMissedShifts || 0}</div><div class="kpi-card__label">Missed Shifts</div></div>`;
-  html += '</div></div>';
+  // KPI data is computed from server analytics — no user input in these values
+  container.innerHTML =
+    '<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">' + summary.totalClockIns + '</div><div class="kpi-card__label">Total Clock-Ins</div></div>' +
+    '<div class="kpi-card ' + onTimeClass + '">' +
+      '<div class="kpi-ring" style="background: conic-gradient(' + ringColor + ' ' + (onTimeRate * 3.6) + 'deg, ' + ringBg + ' ' + (onTimeRate * 3.6) + 'deg);">' +
+        '<div class="kpi-ring__inner">' + onTimeRate + '%</div>' +
+      '</div>' +
+      '<div class="kpi-card__label">On-Time Rate</div>' +
+    '</div>' +
+    '<div class="kpi-card ' + tardyClass + '"><div class="kpi-card__value">' + summary.tardyCount + '</div><div class="kpi-card__label">Tardy Count</div></div>' +
+    '<div class="kpi-card kpi-card--neutral"><div class="kpi-card__value">' + avgTardy + 'm</div><div class="kpi-card__label">Avg Tardiness</div></div>' +
+    '<div class="kpi-card ' + missedClass + '"><div class="kpi-card__value">' + (summary.totalMissedShifts || 0) + '</div><div class="kpi-card__label">Missed Shifts</div></div>';
+}
 
-  // ── 2. Card grid: SVG Donut + Day of Week Column Chart ──
-  html += '<div class="analytics-card-grid">';
+function renderAttendanceDonut(containerId, distribution) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
 
-  // 2a. SVG Donut
-  html += '<div class="analytics-card"><div class="analytics-card__header"><h4 class="analytics-card__title">Attendance Distribution</h4></div><div class="analytics-card__body">';
-  if (distribution && distribution.some(d => d.count > 0)) {
-    const donutColors = ['var(--status-completed)', 'var(--color-warning)', 'var(--status-on-the-way)', 'var(--color-warning-dark)', 'var(--status-no-show)'];
-    const total = distribution.reduce((s, d) => s + d.count, 0);
-    const R = 60, CX = 80, CY = 80, SW = 24;
-    const circumference = 2 * Math.PI * R;
-    // Start from top (12 o'clock): initial offset = circumference/4 (quarter turn back)
-    let offset = circumference / 4;
-
-    let circles = '';
-    distribution.forEach((d, i) => {
-      if (d.count === 0) return;
-      const segLen = (d.count / total) * circumference;
-      // Positive dashoffset shifts start clockwise; we negate to go counter-clockwise from top
-      circles += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${donutColors[i]}" stroke-width="${SW}" stroke-dasharray="${segLen} ${circumference - segLen}" stroke-dashoffset="${offset}" class="donut-seg" data-idx="${i}"/>`;
-      offset -= segLen;
-    });
-
-    html += `<div class="donut-wrap">
-      <div class="donut-svg-wrap" id="tardiness-donut">
-        <svg viewBox="0 0 160 160">${circles}</svg>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
-          <div style="font-size:18px;font-weight:700;color:var(--color-text);line-height:1.1;">${total}</div>
-          <div style="font-size:10px;color:var(--color-text-muted);">clock-ins</div>
-        </div>
-      </div>
-      <div class="donut-legend" id="tardiness-donut-legend">`;
-    distribution.forEach((d, i) => {
-      const pct = total > 0 ? Math.round(d.count / total * 100) : 0;
-      html += `<div class="donut-legend-item" data-idx="${i}">
-        <div class="donut-legend-dot" style="background: ${donutColors[i]};"></div>
-        <div class="donut-legend-label">${d.bucket}</div>
-        <div class="donut-legend-value">${d.count}</div>
-        <div class="donut-legend-pct">${pct}%</div>
-      </div>`;
-    });
-    html += '</div></div>';
-  } else {
-    html += '<div class="ro-empty"><i class="ti ti-chart-donut-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No clock-in data available.</div></div>';
+  if (!distribution || !distribution.some(function(d) { return d.count > 0; })) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-donut-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No clock-in data available.</div></div>';
+    return;
   }
-  html += '</div></div>';
 
-  // 2b. Day of Week — column chart card
-  html += '<div class="analytics-card"><div class="analytics-card__header"><h4 class="analytics-card__title">Tardiness by Day of Week</h4></div><div class="analytics-card__body">';
-  html += '<div id="tardiness-dow-col"></div>';
-  html += '</div></div>';
+  var donutColors = ['var(--status-completed)', 'var(--color-warning)', 'var(--status-on-the-way)', 'var(--color-warning-dark)', 'var(--status-no-show)'];
+  var total = distribution.reduce(function(s, d) { return s + d.count; }, 0);
+  var R = 60, CX = 80, CY = 80, SW = 24;
+  var circumference = 2 * Math.PI * R;
+  var offset = circumference / 4;
 
-  // ── 3. Daily Trend Line Chart ──
-  html += '<div class="analytics-card analytics-card--wide"><div class="analytics-card__header"><h4 class="analytics-card__title">Daily Tardiness Trend</h4></div><div class="analytics-card__body"><div id="tardiness-area-chart" class="area-chart-wrap"></div></div></div>';
+  var circles = '';
+  distribution.forEach(function(d, i) {
+    if (d.count === 0) return;
+    var segLen = (d.count / total) * circumference;
+    circles += '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="' + donutColors[i] + '" stroke-width="' + SW + '" stroke-dasharray="' + segLen + ' ' + (circumference - segLen) + '" stroke-dashoffset="' + offset + '" class="donut-seg" data-idx="' + i + '"/>';
+    offset -= segLen;
+  });
 
-  // ── 4. Punctuality by Driver Table ──
-  html += '<div class="analytics-card analytics-card--wide"><div class="analytics-card__header"><h4 class="analytics-card__title">Punctuality by Driver</h4><button class="csv-export-icon" onclick="exportTableCSV(this.closest(\'.analytics-card\').querySelector(\'table\'),\'punctuality-by-driver.csv\')" title="Export CSV"><i class="ti ti-download"></i></button></div><div class="analytics-card__body">';
-  if (byDriver && byDriver.length) {
-    html += '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th><th>Max Late</th><th>Missed Shifts</th></tr></thead><tbody>';
-    byDriver.forEach(d => {
-      const driverOnTime = d.totalClockIns > 0 ? Math.round(((d.totalClockIns - d.tardyCount) / d.totalClockIns) * 100) : 100;
-      const tardyPct = d.totalClockIns > 0 ? (d.tardyCount / d.totalClockIns * 100) : 0;
-      const dotClass = d.tardyCount === 0 ? 'punctuality-dot--good' : tardyPct < 20 ? 'punctuality-dot--warning' : 'punctuality-dot--poor';
-      const avg = d.avgTardinessMinutes ? parseFloat(d.avgTardinessMinutes).toFixed(1) + 'm' : '—';
-      const maxL = d.maxTardinessMinutes ? d.maxTardinessMinutes + 'm' : '—';
-      const barColor = driverOnTime >= 90 ? 'var(--status-completed)' : driverOnTime >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
-      const missedShifts = parseInt(d.missedShifts, 10) || 0;
-      const missedBadge = missedShifts > 0
-        ? `<span class="tardy-badge" style="background:var(--status-no-show)">${missedShifts}</span>`
-        : '<span class="text-muted">—</span>';
-      html += `<tr>
-        <td><span class="punctuality-dot ${dotClass}"></span>${d.name}</td>
-        <td>${d.totalClockIns}</td>
-        <td>${d.tardyCount > 0 ? '<span class="tardy-badge">' + d.tardyCount + '</span>' : '<span class="text-muted">—</span>'}</td>
-        <td><div class="ontime-bar-cell"><div class="ontime-bar-track"><div class="ontime-bar-fill" style="width:${driverOnTime}%; background:${barColor};"></div></div><span class="ontime-bar-label">${driverOnTime}%</span></div></td>
-        <td>${avg}</td>
-        <td>${maxL}</td>
-        <td>${missedBadge}</td>
-      </tr>`;
-    });
-    html += '</tbody></table></div>';
-  } else {
-    html += '<div class="ro-empty"><i class="ti ti-clock-check"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No clock-in data available for this period.</div></div>';
-  }
-  html += '</div></div>'; // close analytics-card__body + analytics-card
-  html += '</div>'; // close analytics-card-grid
+  var legendHTML = '';
+  distribution.forEach(function(d, i) {
+    var pct = total > 0 ? Math.round(d.count / total * 100) : 0;
+    legendHTML += '<div class="donut-legend-item" data-idx="' + i + '">' +
+      '<div class="donut-legend-dot" style="background: ' + donutColors[i] + ';"></div>' +
+      '<div class="donut-legend-label">' + d.bucket + '</div>' +
+      '<div class="donut-legend-value">' + d.count + '</div>' +
+      '<div class="donut-legend-pct">' + pct + '%</div>' +
+    '</div>';
+  });
 
-  container.innerHTML = html;
+  // Donut data comes from server analytics aggregation — safe for innerHTML
+  var donutId = 'att-donut-svg-' + containerId;
+  var legendId = 'att-donut-legend-' + containerId;
+  container.innerHTML = '<div class="donut-wrap">' +
+    '<div class="donut-svg-wrap" id="' + donutId + '">' +
+      '<svg viewBox="0 0 160 160">' + circles + '</svg>' +
+      '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">' +
+        '<div style="font-size:18px;font-weight:700;color:var(--color-text);line-height:1.1;">' + total + '</div>' +
+        '<div style="font-size:10px;color:var(--color-text-muted);">clock-ins</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="donut-legend" id="' + legendId + '">' + legendHTML + '</div>' +
+  '</div>';
 
-  // ── Post-render: SVG donut tooltips + cross-highlight ──
-  const donutSvg = document.querySelector('#tardiness-donut svg');
-  const donutLegend = document.getElementById('tardiness-donut-legend');
-  if (donutSvg && donutLegend && distribution) {
-    const total = distribution.reduce((s, d) => s + d.count, 0);
-    const segs = donutSvg.querySelectorAll('.donut-seg');
-    const legendItems = donutLegend.querySelectorAll('.donut-legend-item');
+  // Post-render: tooltips + cross-highlight
+  var donutSvg = document.querySelector('#' + donutId + ' svg');
+  var donutLegend = document.getElementById(legendId);
+  if (donutSvg && donutLegend) {
+    var segs = donutSvg.querySelectorAll('.donut-seg');
+    var legendItems = donutLegend.querySelectorAll('.donut-legend-item');
 
-    const highlight = (idx, e) => {
-      const d = distribution[idx];
+    var highlight = function(idx, e) {
+      var d = distribution[idx];
       if (!d) return;
-      const pct = total > 0 ? Math.round(d.count / total * 100) : 0;
-      showChartTooltip(e, `${d.bucket}: ${d.count} clock-ins (${pct}% of total)`);
-      segs.forEach((s, i) => { s.style.opacity = i === idx ? '1' : '0.4'; });
-      legendItems.forEach((l, i) => { l.style.opacity = i === idx ? '1' : '0.5'; });
+      var pct = total > 0 ? Math.round(d.count / total * 100) : 0;
+      showChartTooltip(e, d.bucket + ': ' + d.count + ' clock-ins (' + pct + '% of total)');
+      segs.forEach(function(s, i) { s.style.opacity = i === idx ? '1' : '0.4'; });
+      legendItems.forEach(function(l, i) { l.style.opacity = i === idx ? '1' : '0.5'; });
     };
-    const unhighlight = () => {
+    var unhighlight = function() {
       hideChartTooltip();
-      segs.forEach(s => { s.style.opacity = '1'; });
-      legendItems.forEach(l => { l.style.opacity = '1'; });
+      segs.forEach(function(s) { s.style.opacity = '1'; });
+      legendItems.forEach(function(l) { l.style.opacity = '1'; });
     };
 
-    segs.forEach(seg => {
-      const idx = parseInt(seg.dataset.idx);
-      seg.addEventListener('mouseenter', (e) => highlight(idx, e));
-      seg.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+    segs.forEach(function(seg) {
+      var idx = parseInt(seg.dataset.idx);
+      seg.addEventListener('mouseenter', function(e) { highlight(idx, e); });
+      seg.addEventListener('mousemove', function(e) { positionChartTooltip(e, getChartTooltip()); });
       seg.addEventListener('mouseleave', unhighlight);
     });
-    legendItems.forEach(item => {
-      const idx = parseInt(item.dataset.idx);
-      item.addEventListener('mouseenter', (e) => highlight(idx, e));
-      item.addEventListener('mousemove', (e) => positionChartTooltip(e, getChartTooltip()));
+    legendItems.forEach(function(item) {
+      var idx = parseInt(item.dataset.idx);
+      item.addEventListener('mouseenter', function(e) { highlight(idx, e); });
+      item.addEventListener('mousemove', function(e) { positionChartTooltip(e, getChartTooltip()); });
       item.addEventListener('mouseleave', unhighlight);
     });
   }
+}
 
-  // Day of Week — column chart
-  if (byDayOfWeek && byDayOfWeek.length) {
-    const opsConfig2 = typeof getOpsConfig === 'function' ? await getOpsConfig() : null;
-    const opDays2 = opsConfig2 && opsConfig2.operating_days
-      ? String(opsConfig2.operating_days).split(',').map(Number)
-      : [0, 1, 2, 3, 4];
-    const tardyDowData = opDays2.map(d => {
-      const pgDow = (d + 1) % 7;
-      const found = byDayOfWeek.find(r => r.dayOfWeek === pgDow);
-      return { label: dayLabels[pgDow], count: found ? found.tardyCount : 0 };
-    });
-    renderColumnChart('tardiness-dow-col', tardyDowData, { color: 'var(--status-on-the-way)', unit: 'tardy clock-ins' });
+async function renderTardinessDOW(containerId, byDayOfWeek) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  if (!byDayOfWeek || !byDayOfWeek.length) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-calendar-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No tardiness data by day.</div></div>';
+    return;
   }
 
-  // Daily trend — line chart
-  const trendData = (dailyTrend || []).map(d => ({
-    label: new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    value: d.tardyCount, raw: d
-  }));
-  renderLineChart('tardiness-area-chart', trendData, {
+  var dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var chartId = 'tardiness-dow-col-' + containerId;
+  container.innerHTML = '<div id="' + chartId + '"></div>';
+
+  var opsConfig2 = typeof getOpsConfig === 'function' ? await getOpsConfig() : null;
+  var opDays2 = opsConfig2 && opsConfig2.operating_days
+    ? String(opsConfig2.operating_days).split(',').map(Number)
+    : [0, 1, 2, 3, 4];
+  var tardyDowData = opDays2.map(function(d) {
+    var pgDow = (d + 1) % 7;
+    var found = byDayOfWeek.find(function(r) { return r.dayOfWeek === pgDow; });
+    return { label: dayLabels[pgDow], count: found ? found.tardyCount : 0 };
+  });
+  renderColumnChart(chartId, tardyDowData, { color: 'var(--status-on-the-way)', unit: 'tardy clock-ins' });
+}
+
+function renderTardinessTrend(containerId, dailyTrend) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  if (!dailyTrend || !dailyTrend.length) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-trending-up"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No trend data available.</div></div>';
+    return;
+  }
+
+  var chartId = 'tardiness-area-' + containerId;
+  container.innerHTML = '<div id="' + chartId + '" class="area-chart-wrap"></div>';
+
+  var trendData = dailyTrend.map(function(d) {
+    return {
+      label: new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      value: d.tardyCount, raw: d
+    };
+  });
+  renderLineChart(chartId, trendData, {
     color: 'var(--status-on-the-way)', fillOpacity: 0.12, unit: 'tardy',
-    tooltipFn: (raw) => {
-      const dateStr = new Date(raw.date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
-      const rate = raw.totalClockIns > 0 ? Math.round(raw.tardyCount / raw.totalClockIns * 100) : 0;
-      return `${dateStr}: ${raw.tardyCount} tardy of ${raw.totalClockIns} (${rate}%) \u00B7 Avg ${raw.avgTardinessMinutes || 0}m`;
+    tooltipFn: function(raw) {
+      var dateStr = new Date(raw.date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      var rate = raw.totalClockIns > 0 ? Math.round(raw.tardyCount / raw.totalClockIns * 100) : 0;
+      return dateStr + ': ' + raw.tardyCount + ' tardy of ' + raw.totalClockIns + ' (' + rate + '%) \u00B7 Avg ' + (raw.avgTardinessMinutes || 0) + 'm';
     }
   });
+}
+
+function renderPunctualityTable(containerId, byDriver) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  if (!byDriver || !byDriver.length) {
+    container.innerHTML = '<div class="ro-empty"><i class="ti ti-clock-check"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No clock-in data available for this period.</div></div>';
+    return;
+  }
+
+  // Punctuality table data comes from server analytics — driver names from DB, not user input
+  var html = '<div class="ro-table-wrap"><table class="ro-table"><thead><tr><th>Driver</th><th>Clock-Ins</th><th>Tardy</th><th>On-Time %</th><th>Avg Late</th><th>Max Late</th><th>Missed Shifts</th></tr></thead><tbody>';
+  byDriver.forEach(function(d) {
+    var driverOnTime = d.totalClockIns > 0 ? Math.round(((d.totalClockIns - d.tardyCount) / d.totalClockIns) * 100) : 100;
+    var tardyPct = d.totalClockIns > 0 ? (d.tardyCount / d.totalClockIns * 100) : 0;
+    var dotClass = d.tardyCount === 0 ? 'punctuality-dot--good' : tardyPct < 20 ? 'punctuality-dot--warning' : 'punctuality-dot--poor';
+    var avg = d.avgTardinessMinutes ? parseFloat(d.avgTardinessMinutes).toFixed(1) + 'm' : '\u2014';
+    var maxL = d.maxTardinessMinutes ? d.maxTardinessMinutes + 'm' : '\u2014';
+    var barColor = driverOnTime >= 90 ? 'var(--status-completed)' : driverOnTime >= 80 ? 'var(--status-on-the-way)' : 'var(--status-no-show)';
+    var missedShifts = parseInt(d.missedShifts, 10) || 0;
+    var missedBadge = missedShifts > 0
+      ? '<span class="tardy-badge" style="background:var(--status-no-show)">' + missedShifts + '</span>'
+      : '<span class="text-muted">\u2014</span>';
+    html += '<tr>' +
+      '<td><span class="punctuality-dot ' + dotClass + '"></span>' + d.name + '</td>' +
+      '<td>' + d.totalClockIns + '</td>' +
+      '<td>' + (d.tardyCount > 0 ? '<span class="tardy-badge">' + d.tardyCount + '</span>' : '<span class="text-muted">\u2014</span>') + '</td>' +
+      '<td><div class="ontime-bar-cell"><div class="ontime-bar-track"><div class="ontime-bar-fill" style="width:' + driverOnTime + '%; background:' + barColor + ';"></div></div><span class="ontime-bar-label">' + driverOnTime + '%</span></div></td>' +
+      '<td>' + avg + '</td>' +
+      '<td>' + maxL + '</td>' +
+      '<td>' + missedBadge + '</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+
+  // Make the table sortable
+  var tbl = container.querySelector('.ro-table');
+  if (tbl) makeSortable(tbl);
 }
 
 // ── New Analytics Data Loaders ──
@@ -4558,24 +4609,23 @@ function renderFleetUtilChart(containerId, data) {
   container.innerHTML = html;
 }
 
-// ── Updated Analytics Orchestrator ──
+// ── Dashboard Widget Loader ──
 
-async function loadAllAnalytics() {
-  // Initialize or refresh widget system (creates dynamic widget card DOM)
+async function loadDashboardWidgets() {
+  // Initialize or refresh dashboard widget system
   if (typeof initWidgetSystem === 'function') {
-    if (typeof _widgetUserId === 'undefined' || !_widgetUserId) {
-      // First call: full init
+    var inst = _widgetInstances['dashboard'];
+    if (!inst || !inst.userId) {
       initWidgetSystem(currentUser ? currentUser.id : 'default');
     } else {
-      // Subsequent calls (date change, refresh): just rebuild DOM
-      renderWidgetGrid();
+      renderWidgetGrid('dashboard');
     }
   }
 
   // Helper: check if a container exists in the DOM (widget is visible)
   function has(id) { return !!document.getElementById(id); }
 
-  // Show skeleton loading states for visible widgets
+  // Show skeleton loading states for visible dashboard widgets
   if (has('analytics-kpi-grid')) showAnalyticsSkeleton('analytics-kpi-grid', 'kpi');
   if (has('chart-ride-volume')) showAnalyticsSkeleton('chart-ride-volume', 'chart');
   if (has('chart-ride-outcomes')) showAnalyticsSkeleton('chart-ride-outcomes', 'donut');
@@ -4590,13 +4640,13 @@ async function loadAllAnalytics() {
 
   // Determine which shared data sources are needed
   var needKPI = has('analytics-kpi-grid');
-  var needTardiness = needKPI || has('tardiness-analytics-container');
+  var needTardiness = needKPI;
   var needFleet = needKPI || has('chart-fleet-util');
 
   // Fetch KPI data sources first (in parallel)
   var results = await Promise.all([
     needKPI ? fetch('/api/analytics/summary' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }) : Promise.resolve(null),
-    needTardiness ? fetch('/api/analytics/tardiness' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }) : Promise.resolve(null),
+    needTardiness ? fetchTardinessData() : Promise.resolve(null),
     needFleet ? fetch('/api/analytics/fleet-utilization' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }) : Promise.resolve(null)
   ]);
 
@@ -4613,7 +4663,7 @@ async function loadAllAnalytics() {
   // Render fleet utilization chart (if visible in widget grid)
   if (fleetData && has('chart-fleet-util')) renderFleetUtilChart('chart-fleet-util', fleetData);
 
-  // Load everything else in parallel — only for visible containers
+  // Load everything else in parallel — only for visible dashboard containers
   var loaders = [];
   if (has('chart-ride-volume')) loaders.push(loadRideVolume());
   if (has('chart-ride-outcomes')) loaders.push(loadRideOutcomes());
@@ -4623,14 +4673,99 @@ async function loadAllAnalytics() {
   if (has('chart-driver-leaderboard')) loaders.push(loadDriverLeaderboard());
   if (has('chart-shift-coverage')) loaders.push(loadShiftCoverage());
   if (has('chart-rider-cohorts')) loaders.push(loadRiderCohorts());
-  // Hotspots & milestones are on separate sub-tabs but also available as widgets
-  if (has('hotspot-pickups') || has('hotspot-dropoffs') || has('hotspot-matrix')) loaders.push(loadAnalyticsHotspots());
-  if (has('driver-milestones') || has('rider-milestones')) loaders.push(loadAnalyticsMilestones());
-  // These always load (on their own sub-tabs)
-  loaders.push(loadSemesterReport());
-  if (tardinessData) loaders.push(renderTardinessSection(document.getElementById('tardiness-analytics-container'), tardinessData));
+  // Dashboard widget versions of hotspots/milestones (w- prefixed containers)
+  if (has('w-hotspot-pickups') || has('w-hotspot-dropoffs') || has('w-hotspot-matrix')) loaders.push(loadAnalyticsHotspots());
+  if (has('w-driver-milestones') || has('w-rider-milestones')) loaders.push(loadAnalyticsMilestones());
 
   await Promise.all(loaders);
+}
+
+// Backward-compatible alias
+async function loadAllAnalytics() {
+  return loadDashboardWidgets();
+}
+
+// ── Tab-Specific Widget Loaders ──
+
+async function loadHotspotsWidgets() {
+  initTabWidgets('hotspots', currentUser ? currentUser.id : 'default');
+  var inst = _widgetInstances['hotspots'];
+  if (!inst || !inst.layout) return;
+
+  // Show skeletons
+  var overrides = inst.config.containerOverrides || {};
+  inst.layout.forEach(function(w) {
+    var cid = overrides[w.id] || (WIDGET_REGISTRY[w.id] ? WIDGET_REGISTRY[w.id].containerId : null);
+    if (cid && document.getElementById(cid)) {
+      var sType = (w.id === 'route-demand-matrix') ? 'heatmap' : (w.id === 'hotspot-top-routes') ? 'table' : 'chart';
+      showAnalyticsSkeleton(cid, sType);
+    }
+  });
+
+  var data = await fetchHotspotsData();
+  if (!data) return;
+  inst.layout.forEach(function(w) {
+    var cid = overrides[w.id] || (WIDGET_REGISTRY[w.id] ? WIDGET_REGISTRY[w.id].containerId : null);
+    if (!cid || !document.getElementById(cid)) return;
+    if (w.id === 'hotspot-pickups' && data.topPickups) renderHotspotList(cid, data.topPickups, '', 'pickups');
+    if (w.id === 'hotspot-dropoffs' && data.topDropoffs) renderHotspotList(cid, data.topDropoffs, 'darkgold', 'dropoffs');
+    if (w.id === 'route-demand-matrix' && data.matrix) renderODMatrix(cid, data.matrix);
+    if (w.id === 'hotspot-top-routes' && data.topRoutes) renderHotspotList(cid, data.topRoutes, '', 'routes');
+  });
+}
+
+async function loadMilestonesWidgets() {
+  initTabWidgets('milestones', currentUser ? currentUser.id : 'default');
+  var inst = _widgetInstances['milestones'];
+  if (!inst || !inst.layout) return;
+
+  // Show skeletons
+  var overrides = inst.config.containerOverrides || {};
+  inst.layout.forEach(function(w) {
+    var cid = overrides[w.id] || (WIDGET_REGISTRY[w.id] ? WIDGET_REGISTRY[w.id].containerId : null);
+    if (cid && document.getElementById(cid)) showAnalyticsSkeleton(cid, 'chart');
+  });
+
+  try {
+    var res = await fetch('/api/analytics/milestones');
+    if (!res.ok) return;
+    var data = await res.json();
+    inst.layout.forEach(function(w) {
+      var cid = overrides[w.id] || (WIDGET_REGISTRY[w.id] ? WIDGET_REGISTRY[w.id].containerId : null);
+      if (!cid || !document.getElementById(cid)) return;
+      if (w.id === 'driver-milestones' && data.drivers) renderMilestoneList(cid, data.drivers, 'driver');
+      if (w.id === 'rider-milestones' && data.riders) renderMilestoneList(cid, data.riders, 'rider');
+    });
+  } catch (e) { console.error('Milestones tab error:', e); }
+}
+
+async function loadAttendanceWidgets() {
+  initTabWidgets('attendance', currentUser ? currentUser.id : 'default');
+  var inst = _widgetInstances['attendance'];
+  if (!inst || !inst.layout) return;
+
+  // Show skeletons
+  inst.layout.forEach(function(w) {
+    var cid = WIDGET_REGISTRY[w.id] ? WIDGET_REGISTRY[w.id].containerId : null;
+    if (!cid || !document.getElementById(cid)) return;
+    var sType = 'chart';
+    if (w.id === 'attendance-kpis') sType = 'kpi';
+    else if (w.id === 'attendance-donut') sType = 'donut';
+    else if (w.id === 'punctuality-table') sType = 'table';
+    showAnalyticsSkeleton(cid, sType);
+  });
+
+  var data = await fetchTardinessData();
+  if (!data) return;
+  inst.layout.forEach(function(w) {
+    var cid = WIDGET_REGISTRY[w.id] ? WIDGET_REGISTRY[w.id].containerId : null;
+    if (!cid || !document.getElementById(cid)) return;
+    if (w.id === 'attendance-kpis' && data.summary) renderAttendanceKPIs(cid, data.summary);
+    if (w.id === 'attendance-donut' && data.distribution) renderAttendanceDonut(cid, data.distribution);
+    if (w.id === 'tardiness-by-dow' && data.byDayOfWeek) renderTardinessDOW(cid, data.byDayOfWeek);
+    if (w.id === 'tardiness-trend' && data.dailyTrend) renderTardinessTrend(cid, data.dailyTrend);
+    if (w.id === 'punctuality-table' && data.byDriver) renderPunctualityTable(cid, data.byDriver);
+  });
 }
 
 function logVehicleMaintenance(vehicleId) {
@@ -5544,10 +5679,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Register widget loaders for the widget system
   if (typeof registerWidgetLoader === 'function') {
+    // Dashboard widget loaders
     registerWidgetLoader('kpi-grid', async function() {
       var results = await Promise.all([
         fetch('/api/analytics/summary' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
-        fetch('/api/analytics/tardiness' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+        fetchTardinessData(),
         fetch('/api/analytics/fleet-utilization' + getAnalyticsDateParams()).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
       ]);
       if (results[0]) renderKPIGrid(results[0], results[1], results[2]);
@@ -5565,45 +5701,114 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data) renderFleetUtilChart('chart-fleet-util', data);
     });
     registerWidgetLoader('rider-cohorts', loadRiderCohorts);
-    registerWidgetLoader('hotspot-pickups', async function() {
-      try {
-        var res = await fetch('/api/analytics/hotspots' + getAnalyticsDateParams());
-        if (!res.ok) return;
-        var data = await res.json();
-        if (data.topPickups) renderHotspotList('w-hotspot-pickups', data.topPickups, '', 'pickups');
-      } catch(e) {}
+    // Hotspot/milestone loaders use caching
+    registerWidgetLoader('hotspot-pickups', async function(containerId) {
+      var data = await fetchHotspotsData();
+      if (data && data.topPickups) renderHotspotList(containerId || 'w-hotspot-pickups', data.topPickups, '', 'pickups');
     });
-    registerWidgetLoader('hotspot-dropoffs', async function() {
-      try {
-        var res = await fetch('/api/analytics/hotspots' + getAnalyticsDateParams());
-        if (!res.ok) return;
-        var data = await res.json();
-        if (data.topDropoffs) renderHotspotList('w-hotspot-dropoffs', data.topDropoffs, 'darkgold', 'dropoffs');
-      } catch(e) {}
+    registerWidgetLoader('hotspot-dropoffs', async function(containerId) {
+      var data = await fetchHotspotsData();
+      if (data && data.topDropoffs) renderHotspotList(containerId || 'w-hotspot-dropoffs', data.topDropoffs, 'darkgold', 'dropoffs');
     });
-    registerWidgetLoader('route-demand-matrix', async function() {
-      try {
-        var res = await fetch('/api/analytics/hotspots' + getAnalyticsDateParams());
-        if (!res.ok) return;
-        var data = await res.json();
-        if (data.matrix) renderODMatrix('w-hotspot-matrix', data.matrix);
-      } catch(e) {}
+    registerWidgetLoader('route-demand-matrix', async function(containerId) {
+      var data = await fetchHotspotsData();
+      if (data && data.matrix) renderODMatrix(containerId || 'w-hotspot-matrix', data.matrix);
     });
-    registerWidgetLoader('driver-milestones', async function() {
+    registerWidgetLoader('hotspot-top-routes', async function(containerId) {
+      var data = await fetchHotspotsData();
+      if (data && data.topRoutes) renderHotspotList(containerId || 'ht-top-routes', data.topRoutes, '', 'routes');
+    });
+    registerWidgetLoader('driver-milestones', async function(containerId) {
       try {
         var res = await fetch('/api/analytics/milestones');
         if (!res.ok) return;
         var data = await res.json();
-        if (data.drivers) renderMilestoneList('w-driver-milestones', data.drivers, 'driver');
-      } catch(e) {}
+        if (data.drivers) renderMilestoneList(containerId || 'w-driver-milestones', data.drivers, 'driver');
+      } catch(e) { console.warn('Driver milestones loader error:', e); }
     });
-    registerWidgetLoader('rider-milestones', async function() {
+    registerWidgetLoader('rider-milestones', async function(containerId) {
       try {
         var res = await fetch('/api/analytics/milestones');
         if (!res.ok) return;
         var data = await res.json();
-        if (data.riders) renderMilestoneList('w-rider-milestones', data.riders, 'rider');
-      } catch(e) {}
+        if (data.riders) renderMilestoneList(containerId || 'w-rider-milestones', data.riders, 'rider');
+      } catch(e) { console.warn('Rider milestones loader error:', e); }
+    });
+    // Attendance widget loaders
+    registerWidgetLoader('attendance-kpis', async function(containerId) {
+      var data = await fetchTardinessData();
+      if (data && data.summary) renderAttendanceKPIs(containerId || 'att-kpis', data.summary);
+    });
+    registerWidgetLoader('attendance-donut', async function(containerId) {
+      var data = await fetchTardinessData();
+      if (data && data.distribution) renderAttendanceDonut(containerId || 'att-donut', data.distribution);
+    });
+    registerWidgetLoader('tardiness-by-dow', async function(containerId) {
+      var data = await fetchTardinessData();
+      if (data && data.byDayOfWeek) renderTardinessDOW(containerId || 'att-dow', data.byDayOfWeek);
+    });
+    registerWidgetLoader('tardiness-trend', async function(containerId) {
+      var data = await fetchTardinessData();
+      if (data && data.dailyTrend) renderTardinessTrend(containerId || 'att-trend', data.dailyTrend);
+    });
+    registerWidgetLoader('punctuality-table', async function(containerId) {
+      var data = await fetchTardinessData();
+      if (data && data.byDriver) renderPunctualityTable(containerId || 'att-punctuality', data.byDriver);
+    });
+  }
+
+  // ── Initialize multi-tab widget instances ──
+  if (typeof createWidgetInstance === 'function') {
+    createWidgetInstance('hotspots', {
+      gridId: 'ht-widget-grid',
+      storagePrefix: 'hotspots',
+      defaultLayout: DEFAULT_HOTSPOTS_LAYOUT,
+      allowedWidgets: ['hotspot-pickups', 'hotspot-dropoffs', 'route-demand-matrix', 'hotspot-top-routes'],
+      containerOverrides: {
+        'hotspot-pickups': 'ht-hotspot-pickups',
+        'hotspot-dropoffs': 'ht-hotspot-dropoffs',
+        'route-demand-matrix': 'ht-hotspot-matrix'
+      },
+      toolbarIds: {
+        customize: 'ht-customize-btn',
+        toolbar: 'ht-toolbar',
+        done: 'ht-done-btn',
+        add: 'ht-add-btn',
+        reset: 'ht-reset-btn'
+      }
+    });
+
+    createWidgetInstance('milestones', {
+      gridId: 'ms-widget-grid',
+      storagePrefix: 'milestones',
+      defaultLayout: DEFAULT_MILESTONES_LAYOUT,
+      allowedWidgets: ['driver-milestones', 'rider-milestones'],
+      containerOverrides: {
+        'driver-milestones': 'ms-driver-milestones',
+        'rider-milestones': 'ms-rider-milestones'
+      },
+      toolbarIds: {
+        customize: 'ms-customize-btn',
+        toolbar: 'ms-toolbar',
+        done: 'ms-done-btn',
+        add: 'ms-add-btn',
+        reset: 'ms-reset-btn'
+      }
+    });
+
+    createWidgetInstance('attendance', {
+      gridId: 'att-widget-grid',
+      storagePrefix: 'attendance',
+      defaultLayout: DEFAULT_ATTENDANCE_LAYOUT,
+      allowedWidgets: ['attendance-kpis', 'attendance-donut', 'tardiness-by-dow', 'tardiness-trend', 'punctuality-table'],
+      containerOverrides: null,
+      toolbarIds: {
+        customize: 'att-customize-btn',
+        toolbar: 'att-toolbar',
+        done: 'att-done-btn',
+        add: 'att-add-btn',
+        reset: 'att-reset-btn'
+      }
     });
   }
 
@@ -6038,9 +6243,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (analyticsFrom) analyticsFrom.value = sevenDaysAgoStr;
   if (analyticsTo) analyticsTo.value = today;
 
-  // Analytics: lazy load on first tab click
+  // Analytics: sub-tab lazy loading tracker
+  var _analyticsTabsLoaded = { dashboard: false, hotspots: false, milestones: false, attendance: false };
+
+  // Helper: get the active analytics sub-tab target
+  function getActiveAnalyticsSubTab() {
+    var activeTab = document.querySelector('#analytics-panel .ro-tab.active');
+    return activeTab ? activeTab.dataset.subtarget : 'analytics-dashboard-view';
+  }
+
+  // Helper: reload the currently active analytics sub-tab
+  function reloadActiveAnalyticsTab() {
+    // Invalidate data caches so fresh data is fetched
+    _tardinessCache.data = null;
+    _hotspotsCache.data = null;
+    var target = getActiveAnalyticsSubTab();
+    if (target === 'analytics-dashboard-view') loadDashboardWidgets();
+    else if (target === 'analytics-hotspots-view') loadHotspotsWidgets();
+    else if (target === 'analytics-milestones-view') loadMilestonesWidgets();
+    else if (target === 'analytics-tardiness-view') loadAttendanceWidgets();
+    else if (target === 'analytics-reports-view') loadSemesterReport();
+  }
+
+  // Analytics: refresh reloads only active sub-tab
   const analyticsRefreshBtn = document.getElementById('analytics-refresh-btn');
-  if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAllAnalytics);
+  if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', reloadActiveAnalyticsTab);
 
   // Analytics: quick-select range buttons
   document.querySelectorAll('.analytics-quick-select button[data-range]').forEach(function(btn) {
@@ -6048,7 +6275,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.querySelectorAll('.analytics-quick-select button').forEach(function(b) { b.classList.remove('active'); });
       btn.classList.add('active');
       setAnalyticsQuickRange(btn.dataset.range);
-      loadAllAnalytics();
+      // Invalidate caches on date change
+      _tardinessCache.data = null;
+      _hotspotsCache.data = null;
+      reloadActiveAnalyticsTab();
+    });
+  });
+
+  // Analytics: lazy-load sub-tabs on first click
+  document.querySelectorAll('#analytics-panel .ro-tab[data-subtarget]').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var target = tab.dataset.subtarget;
+      if (target === 'analytics-hotspots-view' && !_analyticsTabsLoaded.hotspots) {
+        _analyticsTabsLoaded.hotspots = true;
+        loadHotspotsWidgets();
+      } else if (target === 'analytics-milestones-view' && !_analyticsTabsLoaded.milestones) {
+        _analyticsTabsLoaded.milestones = true;
+        loadMilestonesWidgets();
+      } else if (target === 'analytics-tardiness-view' && !_analyticsTabsLoaded.attendance) {
+        _analyticsTabsLoaded.attendance = true;
+        loadAttendanceWidgets();
+      }
     });
   });
 
@@ -6070,7 +6317,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     analyticsNavBtn.addEventListener('click', () => {
       if (!analyticsLoaded) {
         analyticsLoaded = true;
-        loadAllAnalytics();
+        _analyticsTabsLoaded.dashboard = true;
+        loadDashboardWidgets();
       }
     });
   }
