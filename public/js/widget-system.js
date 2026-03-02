@@ -1,26 +1,34 @@
 /* Widget System — manages analytics widget dashboards (multi-tab) */
 /* Depends on: widget-registry.js (WIDGET_REGISTRY, DEFAULT_WIDGET_LAYOUT, WIDGET_CATEGORIES) */
-/* Depends on: SortableJS (optional — degrades gracefully if CDN fails) */
+/* Depends on: GridStack (loaded from CDN) */
 
-var WIDGET_LAYOUT_VERSION = 2;
-var WIDGET_SIZE_LABELS = { xs: 'Compact', sm: 'Small', md: 'Medium', lg: 'Full' };
+var WIDGET_LAYOUT_VERSION = 3;
 var _widgetLoaders = {};
 var _widgetInstances = {};   // keyed by tabId
 var _activeWidgetTab = null; // tracks which tab the library drawer should operate on
 
-// ── Widget Registration ──
+// -- Widget Registration --
 
 function registerWidgetLoader(widgetId, loaderFn) {
   _widgetLoaders[widgetId] = loaderFn;
 }
 
-// ── Multi-Instance Factory ──
+// -- Logical Size Derivation --
+
+function getLogicalSize(gridStackW) {
+  if (gridStackW <= 3) return 'xs';
+  if (gridStackW <= 6) return 'sm';
+  if (gridStackW <= 9) return 'md';
+  return 'lg';
+}
+
+// -- Multi-Instance Factory --
 
 function createWidgetInstance(tabId, config) {
   // config: {
   //   gridId: string          -- DOM id of the grid container
   //   storagePrefix: string   -- localStorage key prefix
-  //   defaultLayout: array    -- default widget layout for this tab
+  //   defaultLayout: array    -- default widget layout for this tab [{id, x, y, w, h}]
   //   allowedWidgets: array|null  -- widget IDs allowed on this tab (null = all)
   //   containerOverrides: object|null -- { widgetId: 'alt-container-id' }
   //   toolbarIds: { customize, toolbar, done, add, reset }
@@ -30,14 +38,14 @@ function createWidgetInstance(tabId, config) {
     config: config,
     layout: null,
     editMode: false,
-    sortable: null,
+    grid: null,  // GridStack instance
     userId: null
   };
   _widgetInstances[tabId] = instance;
   return instance;
 }
 
-// ── Layout Persistence ──
+// -- Layout Persistence --
 
 function getWidgetStorageKey(storagePrefix, userId) {
   return 'rideops_widget_layout_' + storagePrefix + '_' + (userId || 'default');
@@ -49,25 +57,64 @@ function loadWidgetLayout(storagePrefix, userId) {
     if (!raw) return null;
     var saved = JSON.parse(raw);
     if (!saved || saved.version !== WIDGET_LAYOUT_VERSION || !Array.isArray(saved.widgets)) return null;
+    // Filter out widgets that no longer exist in the registry
     saved.widgets = saved.widgets.filter(function(w) { return WIDGET_REGISTRY[w.id]; });
+    // Clamp saved values to current registry constraints
+    saved.widgets.forEach(function(w) {
+      var def = WIDGET_REGISTRY[w.id];
+      if (def) {
+        if (typeof def.minW === 'number' && w.w < def.minW) w.w = def.minW;
+        if (typeof def.maxW === 'number' && w.w > def.maxW) w.w = def.maxW;
+        if (typeof def.minH === 'number' && w.h < def.minH) w.h = def.minH;
+        if (typeof def.maxH === 'number' && w.h > def.maxH) w.h = def.maxH;
+      }
+    });
     return saved.widgets;
   } catch (e) {
     return null;
   }
 }
 
-function saveWidgetLayout(storagePrefix, userId, layout) {
+function saveWidgetLayout(storagePrefix, userId, gridStackItems) {
   try {
+    var widgets = gridStackItems.map(function(item) {
+      return {
+        id: item.id,
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h
+      };
+    });
     localStorage.setItem(getWidgetStorageKey(storagePrefix, userId), JSON.stringify({
       version: WIDGET_LAYOUT_VERSION,
-      widgets: layout
+      widgets: widgets
     }));
   } catch (e) {
     console.warn('Failed to save widget layout:', e);
   }
 }
 
-// ── Widget Grid Rendering ──
+// -- Widget Content Builder (inner HTML for grid-stack-item-content) --
+// Widget card HTML is constructed from developer-defined registry data (title, icon,
+// description) -- not user input. Safe for innerHTML construction.
+
+function buildGridStackItemContent(widgetId, containerId) {
+  var def = WIDGET_REGISTRY[widgetId];
+  if (!def) return '';
+  var bodyClass = def.containerClass ? ' ' + def.containerClass : '';
+
+  return '<div class="widget-card__header">' +
+      '<div class="widget-card__drag-handle"><i class="ti ti-grip-vertical"></i></div>' +
+      '<h4 class="widget-card__title"><i class="ti ' + def.icon + '"></i> ' + def.title + '</h4>' +
+      '<div class="widget-card__actions">' +
+        '<button class="widget-action widget-action--remove" title="Remove"><i class="ti ti-x"></i></button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="widget-card__body' + bodyClass + '" id="' + containerId + '"></div>';
+}
+
+// -- Widget Grid Rendering --
 
 function getVisibleWidgetIds(tabId) {
   var inst = _widgetInstances[tabId || 'dashboard'];
@@ -75,30 +122,10 @@ function getVisibleWidgetIds(tabId) {
   return inst.layout.map(function(w) { return w.id; });
 }
 
-function buildWidgetCardHTML(widgetId, size, containerOverrides) {
+function _resolveContainerId(widgetId, containerOverrides) {
+  if (containerOverrides && containerOverrides[widgetId]) return containerOverrides[widgetId];
   var def = WIDGET_REGISTRY[widgetId];
-  if (!def) return '';
-  var actualSize = size || def.defaultSize;
-  var sizeClass = 'widget-card--' + actualSize;
-  var canResize = def.allowedSizes && def.allowedSizes.length > 1;
-  var bodyId = (containerOverrides && containerOverrides[widgetId]) || def.containerId;
-  var bodyClass = def.containerClass ? ' ' + def.containerClass : '';
-  var sizeLabel = WIDGET_SIZE_LABELS[actualSize] || actualSize;
-
-  // Widget card HTML is constructed from developer-defined registry data (title, icon,
-  // description) — not user input. Safe for innerHTML construction.
-  return '<div class="widget-card ' + sizeClass + '" data-widget-id="' + widgetId + '" data-size="' + actualSize + '">' +
-    '<div class="widget-card__header">' +
-      '<div class="widget-card__drag-handle"><i class="ti ti-grip-vertical"></i></div>' +
-      '<h4 class="widget-card__title"><i class="ti ' + def.icon + '"></i> ' + def.title + '</h4>' +
-      '<span class="widget-card__size-badge">' + sizeLabel + '</span>' +
-      '<div class="widget-card__actions">' +
-        (canResize ? '<button class="widget-action widget-action--resize" title="Resize"><i class="ti ti-arrows-diagonal"></i></button>' : '') +
-        '<button class="widget-action widget-action--remove" title="Remove"><i class="ti ti-x"></i></button>' +
-      '</div>' +
-    '</div>' +
-    '<div class="widget-card__body' + bodyClass + '" id="' + bodyId + '"></div>' +
-  '</div>';
+  return def ? def.containerId : null;
 }
 
 function renderWidgetGrid(tabId) {
@@ -106,46 +133,160 @@ function renderWidgetGrid(tabId) {
   var inst = _widgetInstances[tabId];
   if (!inst) return;
 
-  var grid = document.getElementById(inst.config.gridId);
-  if (!grid) return;
+  var gridEl = document.getElementById(inst.config.gridId);
+  if (!gridEl) return;
+
+  // Destroy existing GridStack instance if present
+  if (inst.grid) {
+    try { inst.grid.destroy(false); } catch (e) { /* ignore */ }
+    inst.grid = null;
+  }
+
+  // Clear the container
+  gridEl.innerHTML = '';
 
   if (!inst.layout || inst.layout.length === 0) {
-    // Note: widget card HTML is constructed from registry data (title, icon, description)
-    // which is developer-defined static content, not user input. Safe for innerHTML.
-    grid.innerHTML = '<div class="ro-empty"><i class="ti ti-layout-dashboard"></i>' +
+    // Show empty state -- content is static developer text, safe for innerHTML
+    gridEl.innerHTML = '<div class="ro-empty" style="padding:64px 24px;border:2px dashed var(--color-border);border-radius:var(--radius-md);text-align:center;">' +
+      '<i class="ti ti-layout-dashboard"></i>' +
       '<div class="ro-empty__title">No widgets on this tab</div>' +
       '<div class="ro-empty__message">Click "Customize" to add widgets.</div></div>';
     return;
   }
 
+  // Build GridStack children items
   var overrides = inst.config.containerOverrides || null;
-  var html = '';
+  var children = [];
   inst.layout.forEach(function(w) {
-    html += buildWidgetCardHTML(w.id, w.size, overrides);
-  });
-  grid.innerHTML = html;
-
-  // Bind remove and resize buttons
-  grid.querySelectorAll('.widget-action--remove').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var card = btn.closest('.widget-card');
-      var widgetId = card.dataset.widgetId;
-      removeWidget(tabId, widgetId);
+    var def = WIDGET_REGISTRY[w.id];
+    if (!def) return;
+    var containerId = _resolveContainerId(w.id, overrides);
+    children.push({
+      id: w.id,
+      x: w.x,
+      y: w.y,
+      w: w.w,
+      h: w.h,
+      minW: def.minW,
+      maxW: def.maxW,
+      minH: def.minH,
+      maxH: def.maxH,
+      noResize: def.noResize || false,
+      noMove: def.noResize || false,
+      content: buildGridStackItemContent(w.id, containerId)
     });
   });
 
-  grid.querySelectorAll('.widget-action--resize').forEach(function(btn) {
+  // Initialize GridStack
+  var grid = GridStack.init({
+    column: 12,
+    cellHeight: 80,
+    margin: 8,
+    animate: true,
+    float: false,
+    staticGrid: !inst.editMode,
+    disableResize: !inst.editMode,
+    draggable: {
+      handle: '.widget-card__drag-handle'
+    },
+    columnOpts: {
+      breakpoints: [
+        { c: 12, w: 1200 },
+        { c: 8,  w: 996 },
+        { c: 4,  w: 768 },
+        { c: 1,  w: 480 }
+      ],
+      layout: 'list'
+    },
+    children: children
+  }, '#' + inst.config.gridId);
+
+  inst.grid = grid;
+
+  // Set data-logical-size attribute on each item
+  gridEl.querySelectorAll('.grid-stack-item').forEach(function(el) {
+    if (el.gridstackNode) {
+      el.setAttribute('data-logical-size', getLogicalSize(el.gridstackNode.w));
+    }
+  });
+
+  // Bind remove buttons
+  gridEl.querySelectorAll('.widget-action--remove').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      var card = btn.closest('.widget-card');
-      var widgetId = card.dataset.widgetId;
-      resizeWidget(tabId, widgetId);
+      var gsItem = btn.closest('.grid-stack-item');
+      if (gsItem && gsItem.gridstackNode) {
+        removeWidget(tabId, gsItem.gridstackNode.id);
+      }
     });
   });
 
-  initWidgetSortable(tabId);
+  // Hook events
+  _hookGridEvents(tabId);
 }
 
-// ── Widget Library (shared drawer, filtered by active tab) ──
+// -- GridStack Event Hooks --
+
+function _hookGridEvents(tabId) {
+  var inst = _widgetInstances[tabId];
+  if (!inst || !inst.grid) return;
+
+  // On resizestop: check if logical size changed, re-render if needed
+  inst.grid.on('resizestop', function(event, el) {
+    if (!el || !el.gridstackNode) return;
+    var node = el.gridstackNode;
+    var newLogical = getLogicalSize(node.w);
+    var oldLogical = el.getAttribute('data-logical-size') || '';
+
+    // Always update the attribute
+    el.setAttribute('data-logical-size', newLogical);
+
+    // If logical size crossed a threshold, re-render the widget content
+    if (newLogical !== oldLogical) {
+      var widgetId = node.id;
+      var overrides = inst.config.containerOverrides || {};
+      var containerId = _resolveContainerId(widgetId, overrides);
+      if (containerId && _widgetLoaders[widgetId]) {
+        try { _widgetLoaders[widgetId](containerId); } catch (e) {
+          console.warn('Widget resize re-render error:', widgetId, e);
+        }
+      }
+    }
+
+    // Save layout after resize
+    _saveCurrentLayout(tabId);
+  });
+
+  // On change: auto-save layout on any move/resize
+  inst.grid.on('change', function() {
+    // Update logical size attributes for all items that may have shifted
+    var gridEl = document.getElementById(inst.config.gridId);
+    if (gridEl) {
+      gridEl.querySelectorAll('.grid-stack-item').forEach(function(el) {
+        if (el.gridstackNode) {
+          el.setAttribute('data-logical-size', getLogicalSize(el.gridstackNode.w));
+        }
+      });
+    }
+    _saveCurrentLayout(tabId);
+  });
+}
+
+function _saveCurrentLayout(tabId) {
+  var inst = _widgetInstances[tabId];
+  if (!inst || !inst.grid) return;
+  var items = inst.grid.save(false);
+  if (Array.isArray(items)) {
+    // Update the in-memory layout reference
+    inst.layout = items.map(function(item) {
+      return { id: item.id, x: item.x, y: item.y, w: item.w, h: item.h };
+    });
+    saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
+  }
+}
+
+// -- Widget Library (shared drawer, filtered by active tab) --
+// Widget library content is built from developer-defined registry data (title, icon,
+// description) -- not user input. Safe for innerHTML construction.
 
 function renderWidgetLibrary(tabId) {
   tabId = tabId || _activeWidgetTab || 'dashboard';
@@ -180,8 +321,6 @@ function renderWidgetLibrary(tabId) {
     groups[cat].push(id);
   });
 
-  // Widget library content is built from developer-defined registry data (title, icon,
-  // description) — not user input. Safe for innerHTML construction.
   var html = '';
   Object.keys(groups).forEach(function(cat) {
     var catLabel = (WIDGET_CATEGORIES && WIDGET_CATEGORIES[cat]) || cat;
@@ -194,7 +333,6 @@ function renderWidgetLibrary(tabId) {
         '<div class="widget-library-item__info">' +
           '<div class="widget-library-item__name">' + def.title + '</div>' +
           '<div class="widget-library-item__desc">' + (def.description || '') + '</div>' +
-          '<span class="widget-library-item__size">' + (WIDGET_SIZE_LABELS[def.defaultSize] || def.defaultSize) + '</span>' +
         '</div>' +
         '<button class="ro-btn ro-btn--outline ro-btn--xs widget-library-item__add" title="Add to tab"><i class="ti ti-plus"></i></button>' +
       '</div>';
@@ -229,17 +367,55 @@ function closeWidgetLibrary() {
   if (backdrop) backdrop.classList.remove('open');
 }
 
-// ── Widget Operations ──
+// -- Widget Operations --
 
 function addWidget(tabId, widgetId) {
   tabId = tabId || 'dashboard';
   var inst = _widgetInstances[tabId];
-  if (!inst) return;
+  if (!inst || !inst.grid) return;
   var def = WIDGET_REGISTRY[widgetId];
   if (!def) return;
-  inst.layout.push({ id: widgetId, size: def.defaultSize });
-  saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
-  renderWidgetGrid(tabId);
+
+  // Determine default w/h from the tab's default layout, or use a sensible default
+  var defaultItem = null;
+  if (inst.config.defaultLayout) {
+    defaultItem = inst.config.defaultLayout.find(function(d) { return d.id === widgetId; });
+  }
+  var w = defaultItem ? defaultItem.w : 6;
+  var h = defaultItem ? defaultItem.h : 4;
+
+  var overrides = inst.config.containerOverrides || {};
+  var containerId = _resolveContainerId(widgetId, overrides);
+
+  var widgetOpts = {
+    id: widgetId,
+    w: w,
+    h: h,
+    minW: def.minW,
+    maxW: def.maxW,
+    minH: def.minH,
+    maxH: def.maxH,
+    noResize: def.noResize || false,
+    noMove: def.noResize || false,
+    content: buildGridStackItemContent(widgetId, containerId)
+  };
+
+  var el = inst.grid.addWidget(widgetOpts);
+
+  // Set logical size attribute
+  if (el) {
+    el.setAttribute('data-logical-size', getLogicalSize(w));
+    // Bind remove button on the new widget
+    var removeBtn = el.querySelector('.widget-action--remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', function() {
+        removeWidget(tabId, widgetId);
+      });
+    }
+  }
+
+  // Update in-memory layout and save
+  _saveCurrentLayout(tabId);
   renderWidgetLibrary(tabId);
   _triggerTabReload(tabId);
 }
@@ -247,44 +423,25 @@ function addWidget(tabId, widgetId) {
 function removeWidget(tabId, widgetId) {
   tabId = tabId || 'dashboard';
   var inst = _widgetInstances[tabId];
-  if (!inst) return;
-  inst.layout = inst.layout.filter(function(w) { return w.id !== widgetId; });
-  saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
-  renderWidgetGrid(tabId);
-  renderWidgetLibrary(tabId);
-  _triggerTabReload(tabId);
-}
+  if (!inst || !inst.grid) return;
 
-function resizeWidget(tabId, widgetId) {
-  tabId = tabId || 'dashboard';
-  var inst = _widgetInstances[tabId];
-  if (!inst) return;
-  var def = WIDGET_REGISTRY[widgetId];
-  if (!def || !def.allowedSizes || def.allowedSizes.length < 2) return;
-  var entry = inst.layout.find(function(w) { return w.id === widgetId; });
-  if (!entry) return;
-  var currentIdx = def.allowedSizes.indexOf(entry.size);
-  var nextIdx = (currentIdx + 1) % def.allowedSizes.length;
-  entry.size = def.allowedSizes[nextIdx];
-  saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
-  var card = document.querySelector('#' + inst.config.gridId + ' .widget-card[data-widget-id="' + widgetId + '"]');
-  if (card) {
-    card.className = 'widget-card widget-card--' + entry.size;
-    card.dataset.size = entry.size;
-    // Update size badge
-    var badge = card.querySelector('.widget-card__size-badge');
-    if (badge) badge.textContent = WIDGET_SIZE_LABELS[entry.size] || entry.size;
-    // Flash animation for visual feedback
-    card.classList.remove('widget-card--resizing');
-    void card.offsetWidth; // force reflow to restart animation
-    card.classList.add('widget-card--resizing');
-    // Re-render the widget's chart/content to fit the new size
-    var overrides = inst.config.containerOverrides || {};
-    var containerId = overrides[widgetId] || def.containerId;
-    if (containerId && _widgetLoaders[widgetId]) {
-      try { _widgetLoaders[widgetId](containerId); } catch (e) { console.warn('Widget resize reload error:', widgetId, e); }
+  // Find the DOM element for this widget
+  var gridEl = document.getElementById(inst.config.gridId);
+  if (!gridEl) return;
+  var el = null;
+  gridEl.querySelectorAll('.grid-stack-item').forEach(function(item) {
+    if (item.gridstackNode && item.gridstackNode.id === widgetId) {
+      el = item;
     }
+  });
+
+  if (el) {
+    inst.grid.removeWidget(el);
   }
+
+  // Update in-memory layout and save
+  _saveCurrentLayout(tabId);
+  renderWidgetLibrary(tabId);
 }
 
 function resetWidgetLayout(tabId) {
@@ -330,7 +487,7 @@ function _triggerTabReload(tabId) {
   }
 }
 
-// ── Edit Mode ──
+// -- Edit Mode --
 
 function toggleWidgetEditMode(tabId) {
   tabId = tabId || 'dashboard';
@@ -338,59 +495,31 @@ function toggleWidgetEditMode(tabId) {
   if (!inst) return;
 
   inst.editMode = !inst.editMode;
-  var grid = document.getElementById(inst.config.gridId);
+  var gridEl = document.getElementById(inst.config.gridId);
   var ids = inst.config.toolbarIds;
   var toolbar = ids ? document.getElementById(ids.toolbar) : null;
   var customizeBtn = ids ? document.getElementById(ids.customize) : null;
 
-  if (grid) grid.classList.toggle('widget-grid--editing', inst.editMode);
+  // Toggle GridStack static mode
+  if (inst.grid) {
+    inst.grid.setStatic(!inst.editMode);
+  }
+
+  // Toggle visual editing class on the grid container
+  if (gridEl) {
+    gridEl.classList.toggle('gs-editing', inst.editMode);
+  }
+
+  // Toggle toolbar visibility
   if (toolbar) toolbar.style.display = inst.editMode ? '' : 'none';
   if (customizeBtn) customizeBtn.style.display = inst.editMode ? 'none' : '';
-
-  if (inst.sortable) {
-    inst.sortable.option('disabled', !inst.editMode);
-  }
 
   if (!inst.editMode) {
     closeWidgetLibrary();
   }
 }
 
-// ── SortableJS Integration ──
-
-function initWidgetSortable(tabId) {
-  tabId = tabId || 'dashboard';
-  if (typeof Sortable === 'undefined') return;
-  var inst = _widgetInstances[tabId];
-  if (!inst) return;
-  var grid = document.getElementById(inst.config.gridId);
-  if (!grid) return;
-
-  if (inst.sortable) {
-    inst.sortable.destroy();
-    inst.sortable = null;
-  }
-
-  inst.sortable = new Sortable(grid, {
-    handle: '.widget-card__drag-handle',
-    animation: 200,
-    ghostClass: 'sortable-ghost',
-    dragClass: 'sortable-drag',
-    disabled: !inst.editMode,
-    onEnd: function() {
-      var newLayout = [];
-      grid.querySelectorAll('.widget-card[data-widget-id]').forEach(function(card) {
-        var wid = card.dataset.widgetId;
-        var existing = inst.layout.find(function(w) { return w.id === wid; });
-        if (existing) newLayout.push({ id: wid, size: existing.size });
-      });
-      inst.layout = newLayout;
-      saveWidgetLayout(inst.config.storagePrefix, inst.userId, inst.layout);
-    }
-  });
-}
-
-// ── Data Loading ──
+// -- Data Loading --
 
 function loadSingleWidget(widgetId, containerId) {
   var loader = _widgetLoaders[widgetId];
@@ -405,8 +534,7 @@ function loadVisibleWidgets(tabId) {
   if (!inst || !inst.layout) return;
   var overrides = inst.config.containerOverrides || {};
   inst.layout.forEach(function(w) {
-    var def = WIDGET_REGISTRY[w.id];
-    var cid = (overrides[w.id]) || (def ? def.containerId : null);
+    var cid = _resolveContainerId(w.id, overrides);
     var container = cid ? document.getElementById(cid) : null;
     if (container && typeof showAnalyticsSkeleton === 'function') {
       var skeletonType = 'chart';
@@ -419,7 +547,7 @@ function loadVisibleWidgets(tabId) {
   });
 }
 
-// ── Tab Initialization ──
+// -- Tab Initialization --
 
 function initTabWidgets(tabId, userId) {
   var inst = _widgetInstances[tabId];
@@ -448,7 +576,8 @@ function initTabWidgets(tabId, userId) {
     var newBtn = customizeBtn.cloneNode(true);
     customizeBtn.parentNode.replaceChild(newBtn, customizeBtn);
     newBtn.addEventListener('click', function() { toggleWidgetEditMode(tabId); });
-    if (typeof Sortable === 'undefined') newBtn.style.display = 'none';
+    // GridStack is always available (CDN loaded before this script)
+    if (typeof GridStack === 'undefined') newBtn.style.display = 'none';
   }
 
   var doneBtn = document.getElementById(ids.done);
@@ -473,7 +602,7 @@ function initTabWidgets(tabId, userId) {
   }
 }
 
-// ── Backward-Compatible Initialization (Dashboard) ──
+// -- Backward-Compatible Initialization (Dashboard) --
 
 function initWidgetSystem(userId) {
   if (!_widgetInstances['dashboard']) {
@@ -513,11 +642,10 @@ function initWidgetSystem(userId) {
   _syncDashboardGlobals();
 }
 
-// ── Backward-compatible globals ──
+// -- Backward-compatible globals --
 
 var _widgetLayout = null;
 var _widgetEditMode = false;
-var _widgetGridSortable = null;
 var _widgetUserId = null;
 
 function _syncDashboardGlobals() {
@@ -525,7 +653,6 @@ function _syncDashboardGlobals() {
   if (inst) {
     _widgetLayout = inst.layout;
     _widgetEditMode = inst.editMode;
-    _widgetGridSortable = inst.sortable;
     _widgetUserId = inst.userId;
   }
 }

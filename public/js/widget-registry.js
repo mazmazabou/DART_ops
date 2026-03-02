@@ -17,253 +17,231 @@ var WIDGET_REGISTRY = {
   'kpi-grid': {
     title: 'Key Metrics',
     icon: 'ti-dashboard',
-    defaultSize: 'lg',
-    allowedSizes: ['lg'],
     containerId: 'analytics-kpi-grid',
     containerClass: 'kpi-bar',
     category: 'overview',
-    description: 'KPI cards showing totals, completion rate, and averages.'
+    description: 'KPI cards showing totals, completion rate, and averages.',
+    minW: 12, maxW: 12, minH: 2, maxH: 3, noResize: true
   },
   'ride-volume': {
     title: 'Ride Volume',
     icon: 'ti-chart-area-line',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'chart-ride-volume',
     category: 'rides',
-    description: 'Daily ride volume over the selected date range.'
+    description: 'Daily ride volume over the selected date range.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'ride-outcomes': {
     title: 'Ride Outcomes',
     icon: 'ti-chart-donut-3',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'chart-ride-outcomes',
     category: 'rides',
-    description: 'Donut chart of ride completion, cancellation, and no-show rates.'
+    description: 'Donut chart of ride completion, cancellation, and no-show rates.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'peak-hours': {
     title: 'Peak Hours',
     icon: 'ti-flame',
-    defaultSize: 'lg',
-    allowedSizes: ['md', 'lg'],
     containerId: 'chart-peak-hours',
     category: 'rides',
-    description: 'Day-of-week by hour heatmap showing ride demand.'
+    description: 'Day-of-week by hour heatmap showing ride demand.',
+    minW: 6, maxW: 12, minH: 4, maxH: 7, noResize: false
   },
   'rides-by-dow': {
     title: 'Rides by Day of Week',
     icon: 'ti-calendar-stats',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'chart-dow',
     category: 'rides',
-    description: 'Column chart of ride counts per day of week.'
+    description: 'Column chart of ride counts per day of week.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'rides-by-hour': {
     title: 'Rides by Hour',
     icon: 'ti-clock-hour-4',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'chart-hour',
     category: 'rides',
-    description: 'Column chart of ride counts per hour of the day.'
+    description: 'Column chart of ride counts per hour of the day.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'top-routes': {
     title: 'Top Routes',
     icon: 'ti-route',
-    defaultSize: 'sm',
-    allowedSizes: ['sm', 'md', 'lg'],
     containerId: 'chart-top-routes',
     category: 'rides',
-    description: 'Ranked table of most popular pickup-to-dropoff routes.'
+    description: 'Ranked table of most popular pickup-to-dropoff routes.',
+    minW: 6, maxW: 12, minH: 3, maxH: 7, noResize: false
   },
   'driver-leaderboard': {
     title: 'Driver Leaderboard',
     icon: 'ti-steering-wheel',
-    defaultSize: 'sm',
-    allowedSizes: ['sm', 'md', 'lg'],
     containerId: 'chart-driver-leaderboard',
     category: 'drivers',
-    description: 'Driver scorecard with rides, punctuality, and hours.'
+    description: 'Driver scorecard with rides, punctuality, and hours.',
+    minW: 6, maxW: 12, minH: 3, maxH: 7, noResize: false
   },
   'shift-coverage': {
     title: 'Shift Coverage',
     icon: 'ti-calendar-stats',
-    defaultSize: 'lg',
-    allowedSizes: ['md', 'lg'],
     containerId: 'chart-shift-coverage',
     category: 'drivers',
-    description: 'Scheduled vs actual driver hours, day-by-day gap analysis.'
+    description: 'Scheduled vs actual driver hours, day-by-day gap analysis.',
+    minW: 6, maxW: 12, minH: 4, maxH: 8, noResize: false
   },
   'fleet-utilization': {
     title: 'Fleet Utilization',
     icon: 'ti-bus',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'chart-fleet-util',
     category: 'fleet',
-    description: 'Per-vehicle ride counts and maintenance in period.'
+    description: 'Per-vehicle ride counts and maintenance in period.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'rider-cohorts': {
     title: 'Rider Cohorts',
     icon: 'ti-users-group',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'chart-rider-cohorts',
     category: 'riders',
-    description: 'Active, new, returning, churned, at-risk rider segments.'
+    description: 'Active, new, returning, churned, at-risk rider segments.',
+    minW: 3, maxW: 12, minH: 3, maxH: 5, noResize: false
   },
   'hotspot-pickups': {
     title: 'Top Pickup Locations',
     icon: 'ti-map-pin',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'w-hotspot-pickups',
     tabContainers: {
       hotspots: 'ht-hotspot-pickups'
     },
     category: 'locations',
-    description: 'Ranked bar list of most popular pickup locations.'
+    description: 'Ranked bar list of most popular pickup locations.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'hotspot-dropoffs': {
     title: 'Top Dropoff Locations',
     icon: 'ti-map-pin-filled',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'w-hotspot-dropoffs',
     tabContainers: {
       hotspots: 'ht-hotspot-dropoffs'
     },
     category: 'locations',
-    description: 'Ranked bar list of most popular dropoff locations.'
+    description: 'Ranked bar list of most popular dropoff locations.',
+    minW: 3, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'route-demand-matrix': {
     title: 'Route Demand Matrix',
     icon: 'ti-grid-dots',
-    defaultSize: 'lg',
-    allowedSizes: ['md', 'lg'],
     containerId: 'w-hotspot-matrix',
     tabContainers: {
       hotspots: 'ht-hotspot-matrix'
     },
     category: 'locations',
-    description: 'Origin-destination matrix showing route demand.'
+    description: 'Origin-destination matrix showing route demand.',
+    minW: 6, maxW: 12, minH: 4, maxH: 7, noResize: false
   },
   'hotspot-top-routes': {
     title: 'Top Routes (Hotspots)',
     icon: 'ti-route',
-    defaultSize: 'md',
-    allowedSizes: ['sm', 'md', 'lg'],
     containerId: 'ht-top-routes',
     category: 'locations',
-    description: 'Top routes by frequency from hotspot analysis.'
+    description: 'Top routes by frequency from hotspot analysis.',
+    minW: 6, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'driver-milestones': {
     title: 'Driver Milestones',
     icon: 'ti-trophy',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'w-driver-milestones',
     tabContainers: {
       milestones: 'ms-driver-milestones'
     },
     category: 'achievements',
-    description: 'Driver achievement badges based on cumulative rides.'
+    description: 'Driver achievement badges based on cumulative rides.',
+    minW: 3, maxW: 12, minH: 3, maxH: 8, noResize: false
   },
   'rider-milestones': {
     title: 'Rider Milestones',
     icon: 'ti-award',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'w-rider-milestones',
     tabContainers: {
       milestones: 'ms-rider-milestones'
     },
     category: 'achievements',
-    description: 'Rider achievement badges based on cumulative rides.'
+    description: 'Rider achievement badges based on cumulative rides.',
+    minW: 3, maxW: 12, minH: 3, maxH: 8, noResize: false
   },
-  // ── Attendance Widgets ──
+  // -- Attendance Widgets --
   'attendance-kpis': {
     title: 'Attendance KPIs',
     icon: 'ti-chart-bar',
-    defaultSize: 'lg',
-    allowedSizes: ['lg'],
     containerId: 'att-kpis',
     containerClass: 'kpi-bar',
     category: 'attendance',
-    description: 'KPI cards: total clock-ins, on-time rate, tardy count, avg tardiness, missed shifts.'
+    description: 'KPI cards: total clock-ins, on-time rate, tardy count, avg tardiness, missed shifts.',
+    minW: 12, maxW: 12, minH: 2, maxH: 3, noResize: true
   },
   'attendance-donut': {
     title: 'Attendance Distribution',
     icon: 'ti-chart-donut-3',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md'],
     containerId: 'att-donut',
     category: 'attendance',
-    description: 'SVG donut chart of on-time vs late distribution.'
+    description: 'SVG donut chart of on-time vs late distribution.',
+    minW: 3, maxW: 9, minH: 3, maxH: 5, noResize: false
   },
   'tardiness-by-dow': {
     title: 'Tardiness by Day',
     icon: 'ti-calendar-stats',
-    defaultSize: 'sm',
-    allowedSizes: ['xs', 'sm', 'md'],
     containerId: 'att-dow',
     category: 'attendance',
-    description: 'Column chart of tardiness by day of week.'
+    description: 'Column chart of tardiness by day of week.',
+    minW: 3, maxW: 9, minH: 3, maxH: 5, noResize: false
   },
   'tardiness-trend': {
     title: 'Tardiness Trend',
     icon: 'ti-trending-up',
-    defaultSize: 'lg',
-    allowedSizes: ['xs', 'sm', 'md', 'lg'],
     containerId: 'att-trend',
     category: 'attendance',
-    description: 'Area chart showing daily tardiness trend over the selected period.'
+    description: 'Area chart showing daily tardiness trend over the selected period.',
+    minW: 6, maxW: 12, minH: 3, maxH: 6, noResize: false
   },
   'punctuality-table': {
     title: 'Punctuality by Driver',
     icon: 'ti-table',
-    defaultSize: 'lg',
-    allowedSizes: ['md', 'lg'],
     containerId: 'att-punctuality',
     category: 'attendance',
-    description: 'Table of driver punctuality: clock-ins, tardy count, on-time %, avg/max late, missed shifts.'
+    description: 'Table of driver punctuality: clock-ins, tardy count, on-time %, avg/max late, missed shifts.',
+    minW: 6, maxW: 12, minH: 4, maxH: 8, noResize: false
   }
 };
 
-// ── Default Layouts Per Tab ──
+// -- Default Layouts Per Tab (GridStack format: {id, x, y, w, h}) --
 
 var DEFAULT_WIDGET_LAYOUT = [
-  { id: 'kpi-grid', size: 'lg' },
-  { id: 'ride-volume', size: 'sm' },
-  { id: 'ride-outcomes', size: 'sm' },
-  { id: 'peak-hours', size: 'lg' },
-  { id: 'rides-by-dow', size: 'sm' },
-  { id: 'rides-by-hour', size: 'sm' },
-  { id: 'top-routes', size: 'sm' },
-  { id: 'driver-leaderboard', size: 'sm' },
-  { id: 'shift-coverage', size: 'lg' },
-  { id: 'fleet-utilization', size: 'sm' },
-  { id: 'rider-cohorts', size: 'sm' }
+  { id: 'kpi-grid',            x: 0,  y: 0,  w: 12, h: 2 },
+  { id: 'ride-volume',         x: 0,  y: 2,  w: 6,  h: 4 },
+  { id: 'ride-outcomes',       x: 6,  y: 2,  w: 6,  h: 4 },
+  { id: 'peak-hours',          x: 0,  y: 6,  w: 12, h: 5 },
+  { id: 'rides-by-dow',        x: 0,  y: 11, w: 6,  h: 4 },
+  { id: 'rides-by-hour',       x: 6,  y: 11, w: 6,  h: 4 },
+  { id: 'top-routes',          x: 0,  y: 15, w: 6,  h: 4 },
+  { id: 'driver-leaderboard',  x: 6,  y: 15, w: 6,  h: 4 },
+  { id: 'shift-coverage',      x: 0,  y: 19, w: 12, h: 5 },
+  { id: 'fleet-utilization',   x: 0,  y: 24, w: 6,  h: 4 },
+  { id: 'rider-cohorts',       x: 6,  y: 24, w: 6,  h: 4 }
 ];
 
 var DEFAULT_HOTSPOTS_LAYOUT = [
-  { id: 'hotspot-pickups', size: 'sm' },
-  { id: 'hotspot-dropoffs', size: 'sm' },
-  { id: 'hotspot-top-routes', size: 'md' },
-  { id: 'route-demand-matrix', size: 'lg' }
+  { id: 'hotspot-pickups',      x: 0,  y: 0,  w: 6,  h: 4 },
+  { id: 'hotspot-dropoffs',     x: 6,  y: 0,  w: 6,  h: 4 },
+  { id: 'hotspot-top-routes',   x: 0,  y: 4,  w: 9,  h: 4 },
+  { id: 'route-demand-matrix',  x: 0,  y: 8,  w: 12, h: 5 }
 ];
 
 var DEFAULT_MILESTONES_LAYOUT = [
-  { id: 'driver-milestones', size: 'sm' },
-  { id: 'rider-milestones', size: 'sm' }
+  { id: 'driver-milestones',  x: 0,  y: 0,  w: 6,  h: 4 },
+  { id: 'rider-milestones',   x: 6,  y: 0,  w: 6,  h: 4 }
 ];
 
 var DEFAULT_ATTENDANCE_LAYOUT = [
-  { id: 'attendance-kpis', size: 'lg' },
-  { id: 'attendance-donut', size: 'sm' },
-  { id: 'tardiness-by-dow', size: 'sm' },
-  { id: 'tardiness-trend', size: 'lg' },
-  { id: 'punctuality-table', size: 'lg' }
+  { id: 'attendance-kpis',    x: 0,  y: 0,  w: 12, h: 2 },
+  { id: 'attendance-donut',   x: 0,  y: 2,  w: 6,  h: 4 },
+  { id: 'tardiness-by-dow',   x: 6,  y: 2,  w: 6,  h: 4 },
+  { id: 'tardiness-trend',    x: 0,  y: 6,  w: 6,  h: 4 },
+  { id: 'punctuality-table',  x: 0,  y: 10, w: 12, h: 5 }
 ];

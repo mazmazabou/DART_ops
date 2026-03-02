@@ -7,6 +7,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@12/dist/gridstack.min.css">
   <link rel="stylesheet" href="/css/rideops-theme.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
@@ -303,7 +304,7 @@
                 <button class="ro-btn ro-btn--ghost ro-btn--sm" id="widget-reset-btn" type="button"><i class="ti ti-refresh"></i> Reset</button>
               </div>
             </div>
-            <div class="widget-grid" id="widget-grid"></div>
+            <div class="grid-stack" id="widget-grid"></div>
           </div>
 
           <div class="sub-panel" id="analytics-hotspots-view">
@@ -317,7 +318,7 @@
                 <button class="ro-btn ro-btn--ghost ro-btn--sm" id="ht-reset-btn" type="button"><i class="ti ti-refresh"></i> Reset</button>
               </div>
             </div>
-            <div class="widget-grid" id="ht-widget-grid"></div>
+            <div class="grid-stack" id="ht-widget-grid"></div>
           </div>
 
           <div class="sub-panel" id="analytics-milestones-view">
@@ -331,7 +332,7 @@
                 <button class="ro-btn ro-btn--ghost ro-btn--sm" id="ms-reset-btn" type="button"><i class="ti ti-refresh"></i> Reset</button>
               </div>
             </div>
-            <div class="widget-grid" id="ms-widget-grid"></div>
+            <div class="grid-stack" id="ms-widget-grid"></div>
           </div>
 
           <div class="sub-panel" id="analytics-reports-view">
@@ -381,7 +382,7 @@
                 <button class="ro-btn ro-btn--ghost ro-btn--sm" id="att-reset-btn" type="button"><i class="ti ti-refresh"></i> Reset</button>
               </div>
             </div>
-            <div class="widget-grid" id="att-widget-grid"></div>
+            <div class="grid-stack" id="att-widget-grid"></div>
           </div>
         </section>
 
@@ -547,7 +548,7 @@
     <div id="widget-library-list"></div>
   </aside>
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gridstack@12/dist/gridstack-all.js"></script>
   <script src="/utils.js"></script>
   <script src="/js/rideops-utils.js"></script>
   <script src="/js/widget-registry.js"></script>

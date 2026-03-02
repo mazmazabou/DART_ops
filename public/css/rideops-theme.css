@@ -1081,13 +1081,12 @@ input[type="checkbox"]:disabled {
 .col-bar { transition: opacity 0.15s; cursor: default; }
 .col-bar:hover { opacity: 0.8; }
 
-/* ── Chart scaling inside widget cards ──
+/* ── Chart scaling inside GridStack widget cards ──
    Charts fill their widget body and never overflow/scroll.
-   Uses :has() to target only bodies containing charts or donuts.
-   Size-prefixed selectors override the per-size overflow-y: auto rules. */
-.widget-card .widget-card__body:has(.col-chart-wrap),
-.widget-card .widget-card__body:has(.area-chart-wrap),
-.widget-card .widget-card__body:has(.donut-wrap) {
+   Uses :has() to target only bodies containing charts or donuts. */
+.grid-stack-item-content .widget-card__body:has(.col-chart-wrap),
+.grid-stack-item-content .widget-card__body:has(.area-chart-wrap),
+.grid-stack-item-content .widget-card__body:has(.donut-wrap) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1099,57 +1098,61 @@ input[type="checkbox"]:disabled {
   display: flex;
   flex-direction: column;
 }
-.widget-card .col-chart-wrap,
-.widget-card .area-chart-wrap {
+.grid-stack-item-content .col-chart-wrap,
+.grid-stack-item-content .area-chart-wrap {
   flex: 1;
   min-height: 0;
   display: flex;
   align-items: center;
 }
-.widget-card .col-chart-wrap svg,
-.widget-card .area-chart-wrap svg {
+.grid-stack-item-content .col-chart-wrap svg,
+.grid-stack-item-content .area-chart-wrap svg {
   width: 100%;
   max-height: 100%;
 }
-/* Cap chart height for unconstrained (md/lg) cards */
-.widget-card--md .col-chart-wrap svg,
-.widget-card--md .area-chart-wrap svg {
+/* Cap column chart height for md/lg logical sizes */
+.grid-stack-item[data-logical-size="md"] .col-chart-wrap svg {
   max-height: 240px;
 }
-.widget-card--lg .col-chart-wrap svg,
-.widget-card--lg .area-chart-wrap svg {
+.grid-stack-item[data-logical-size="lg"] .col-chart-wrap svg,
+.grid-stack-item[data-logical-size="lg"] .area-chart-wrap svg {
   max-height: 320px;
 }
 /* Donut charts inside widget cards: flex-fill and responsive sizing */
-.widget-card .donut-wrap {
+.grid-stack-item-content .donut-wrap {
   flex: 1;
   min-height: 0;
   align-items: center;
   justify-content: center;
   padding: 4px 0;
 }
-.widget-card .donut-svg-wrap {
+.grid-stack-item-content .donut-svg-wrap {
   width: auto;
   height: auto;
   max-width: 180px;
   max-height: 180px;
   aspect-ratio: 1;
 }
-.widget-card .donut-svg-wrap svg {
+.grid-stack-item-content .donut-svg-wrap svg {
   width: 100%;
   height: 100%;
 }
-/* Constrained sizes: scale donut down */
-.widget-card--xs .donut-svg-wrap {
-  max-width: 140px;
-  max-height: 140px;
+/* xs donut: fill card body with large centered circle */
+.grid-stack-item[data-logical-size="xs"] .donut-svg-wrap {
+  max-width: unset;
+  max-height: unset;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
 }
-.widget-card--sm .donut-svg-wrap {
-  max-width: 160px;
-  max-height: 160px;
+.grid-stack-item[data-logical-size="sm"] .donut-svg-wrap {
+  max-width: unset;
+  max-height: unset;
+  flex: 1;
+  min-height: 0;
 }
-.widget-card--md .donut-svg-wrap,
-.widget-card--lg .donut-svg-wrap {
+.grid-stack-item[data-logical-size="md"] .donut-svg-wrap,
+.grid-stack-item[data-logical-size="lg"] .donut-svg-wrap {
   max-width: 200px;
   max-height: 200px;
 }
@@ -1261,16 +1264,15 @@ input[type="checkbox"]:disabled {
   gap: 8px;
 }
 
-/* ── Widget Grid (4-column) ── */
-.widget-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+/* ── GridStack Integration ── */
+
+/* Make grid-stack containers fill the tab panel */
+.grid-stack {
   padding: 0 24px 24px;
 }
 
-/* ── Widget Card Base ── */
-.widget-card {
+/* Override GridStack's widget styling to match RideOps card style */
+.grid-stack-item-content {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -1278,49 +1280,35 @@ input[type="checkbox"]:disabled {
   display: flex;
   flex-direction: column;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease, border-style 0.2s ease, max-height 0.3s ease;
+  inset: 0;
 }
-.widget-card:hover {
+.grid-stack-item-content:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.10);
 }
 
-/* ── Size: xs (Compact) — span 1 of 4 ── */
-.widget-card--xs {
-  grid-column: span 1;
-  max-height: 336px;
-}
-.widget-card--xs .widget-card__header { padding: 6px 10px; font-size: 11px; flex-shrink: 0; }
-.widget-card--xs .widget-card__body { padding: 6px 10px 10px; overflow-y: auto; flex: 1; min-height: 0; }
-.widget-card--xs .widget-card__title { font-size: 11px; }
-.widget-card--xs .widget-card__title i { font-size: 12px; }
+/* Size-specific styles via data-logical-size attribute on .grid-stack-item */
+
+/* xs (Compact): compact padding, auto-scroll body */
+.grid-stack-item[data-logical-size="xs"] .widget-card__header { padding: 6px 10px; font-size: 11px; flex-shrink: 0; }
+.grid-stack-item[data-logical-size="xs"] .widget-card__body { padding: 6px 10px 10px; overflow-y: auto; flex: 1; min-height: 0; }
+.grid-stack-item[data-logical-size="xs"] .widget-card__title { font-size: 11px; }
+.grid-stack-item[data-logical-size="xs"] .widget-card__title i { font-size: 12px; }
 /* xs donut: hide legend, expand SVG to fill card body */
-.widget-card--xs .donut-wrap { flex-direction: column; align-items: center; gap: 0; justify-content: center; }
-.widget-card--xs .donut-legend { display: none; }
-.widget-card--xs .donut-svg-wrap { display: flex; justify-content: center; }
+.grid-stack-item[data-logical-size="xs"] .donut-wrap { flex-direction: column; align-items: center; gap: 0; justify-content: center; }
+.grid-stack-item[data-logical-size="xs"] .donut-legend,
+.grid-stack-item[data-logical-size="sm"] .donut-legend { display: none; }
+.grid-stack-item[data-logical-size="xs"] .donut-svg-wrap { display: flex; justify-content: center; }
 
-/* ── Size: sm (Small) — span 2 of 4 ── */
-.widget-card--sm {
-  grid-column: span 2;
-  max-height: 336px;
-}
-.widget-card--sm .widget-card__header { padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
-.widget-card--sm .widget-card__body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 0; }
-.widget-card--sm .widget-card__title { font-size: 12px; }
-.widget-card--sm .widget-card__title i { font-size: 13px; }
+/* sm (Small): slightly compact padding */
+.grid-stack-item[data-logical-size="sm"] .widget-card__header { padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
+.grid-stack-item[data-logical-size="sm"] .widget-card__body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 0; }
+.grid-stack-item[data-logical-size="sm"] .widget-card__title { font-size: 12px; }
+.grid-stack-item[data-logical-size="sm"] .widget-card__title i { font-size: 13px; }
 
-/* ── Size: md (Medium) — span 3 of 4 ── */
-.widget-card--md {
-  grid-column: span 3;
-  min-height: 300px;
-}
-
-/* ── Size: lg (Full) — span 4 of 4 ── */
-.widget-card--lg {
-  grid-column: 1 / -1;
-}
 /* lg KPI bar: remove excessive min-height, let content dictate height */
-.widget-card--lg .kpi-bar { padding: 4px 0; }
+.grid-stack-item[data-logical-size="lg"] .kpi-bar { padding: 4px 0; }
 
+/* Widget card header base styles */
 .widget-card__header {
   background: var(--color-primary);
   color: var(--color-secondary);
@@ -1373,65 +1361,48 @@ input[type="checkbox"]:disabled {
 }
 .widget-action:hover { opacity: 1; }
 
-/* Edit mode: show controls, dashed border, prominent drag handle */
-.widget-grid--editing .widget-card__drag-handle,
-.widget-grid--editing .widget-card__actions {
+/* Edit mode: show controls via gs-editing class on grid container */
+.gs-editing .widget-card__drag-handle,
+.gs-editing .widget-card__actions {
   display: flex;
 }
-.widget-grid--editing .widget-card__drag-handle {
+.gs-editing .widget-card__drag-handle {
   opacity: 0.85;
   font-size: 18px;
 }
-.widget-grid--editing .widget-card {
+.gs-editing > .grid-stack-item > .grid-stack-item-content {
   border: 2px dashed var(--color-primary-light);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
-.widget-grid--editing .widget-card:hover {
+.gs-editing > .grid-stack-item > .grid-stack-item-content:hover {
   border-color: var(--color-primary);
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 
-/* Size badge — shown in edit mode in the header */
-.widget-card__size-badge {
+/* GridStack placeholder styling (the ghost during drag) */
+.grid-stack > .grid-stack-placeholder > .placeholder-content {
+  background: var(--color-primary-subtle);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-md);
+  opacity: 0.5;
+}
+
+/* Resize handle visibility — only in edit mode */
+.grid-stack-item > .ui-resizable-handle {
   display: none;
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  background: rgba(255,255,255,0.2);
-  color: inherit;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill, 999px);
-  white-space: nowrap;
 }
-.widget-grid--editing .widget-card__size-badge {
-  display: inline-block;
+.gs-editing > .grid-stack-item > .ui-resizable-handle {
+  display: block;
 }
 
-/* Resize flash animation */
-@keyframes widget-resize-flash {
-  0% { background-color: var(--color-primary-subtle); }
-  100% { background-color: var(--color-surface); }
-}
-.widget-card--resizing {
-  animation: widget-resize-flash 0.4s ease-out;
-}
-
-/* Widget grid empty state — span full width */
-.widget-grid > .ro-empty {
-  grid-column: 1 / -1;
+/* GridStack empty grid state */
+.grid-stack:empty::after {
+  content: 'No widgets on this tab. Click "Customize" to add widgets.';
+  display: block;
+  text-align: center;
+  padding: 64px 24px;
+  color: var(--color-text-muted);
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-md);
-  padding: 64px 24px;
-}
-
-/* SortableJS ghost/drag states */
-.sortable-ghost {
-  opacity: 0.4;
-  background: var(--color-primary-subtle);
-}
-.sortable-drag {
-  box-shadow: var(--shadow-lg);
 }
 
 /* Widget Library Items */
@@ -1485,29 +1456,15 @@ input[type="checkbox"]:disabled {
 }
 .widget-library-item__add { flex-shrink: 0; align-self: center; }
 
-@media (max-width: 1024px) {
-  .widget-grid { grid-template-columns: repeat(2, 1fr); padding: 0 16px 20px; }
-  .widget-card--xs { grid-column: span 1; }
-  .widget-card--sm { grid-column: span 1; }
-  .widget-card--md { grid-column: span 2; }
-  .widget-card--lg { grid-column: 1 / -1; }
-}
-@media (max-width: 768px) {
-  .widget-grid { grid-template-columns: 1fr; padding: 0 12px 16px; }
-  .widget-card--xs,
-  .widget-card--sm,
-  .widget-card--md,
-  .widget-card--lg { grid-column: 1; min-height: unset; max-height: unset; }
-  .widget-toolbar-bar { padding: 8px 12px; }
-}
+/* Print styles for GridStack */
 @media print {
   .widget-toolbar-bar { display: none !important; }
-  .widget-grid { grid-template-columns: repeat(2, 1fr); }
-  .widget-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
-  .widget-card--xs { grid-column: span 1; }
-  .widget-card--sm { grid-column: span 1; }
-  .widget-card--md { grid-column: span 2; }
-  .widget-card--lg { grid-column: 1 / -1; }
+  .grid-stack { min-height: auto !important; }
+  .grid-stack-item { position: static !important; width: 50% !important; display: inline-block !important; }
+  .grid-stack-item-content { box-shadow: none; border: 1px solid #ddd; }
+}
+@media (max-width: 768px) {
+  .widget-toolbar-bar { padding: 8px 12px; }
 }
 
 /* ── OD Matrix ── */

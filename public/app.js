@@ -3191,14 +3191,30 @@ function positionChartTooltip(e, tip) {
   tip.style.top = top + 'px';
 }
 
+// Helper: derive logical widget size from GridStack node width
+function getWidgetSize(containerId) {
+  var el = document.getElementById(containerId);
+  if (!el) return null;
+  var gsItem = el.closest('.grid-stack-item');
+  if (!gsItem || !gsItem.gridstackNode) return null;
+  var w = gsItem.gridstackNode.w;
+  if (w <= 3) return 'xs';
+  if (w <= 6) return 'sm';
+  if (w <= 9) return 'md';
+  return 'lg';
+}
+
 function renderColumnChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!data || !data.length) {
+    // Empty state uses developer-defined static content — safe for innerHTML
     container.innerHTML = '<div class="ro-empty"><i class="ti ti-chart-bar-off"></i><div class="ro-empty__title">No data</div><div class="ro-empty__message">No ride data for this period.</div></div>';
     return;
   }
-  const W = 700, H = 180;
+  var _wSize = getWidgetSize(containerId);
+  var _compact = _wSize === 'xs';
+  const W = _compact ? 300 : 700, H = _compact ? 260 : 180;
   const pad = { top: 16, right: 16, bottom: 36, left: 40 };
   const cw = W - pad.left - pad.right;
   const ch = H - pad.top - pad.bottom;
@@ -3224,6 +3240,28 @@ function renderColumnChart(containerId, data, options = {}) {
   let bars = '';
   let labels = '';
   let valueLabels = '';
+
+  // X-axis label collision avoidance — skip labels that would overlap
+  const MIN_COL_LABEL_GAP = _compact ? 30 : 50;
+  const colLabelIndices = [];
+  let lastColLabelX = -Infinity;
+  data.forEach((d, i) => {
+    const cx = pad.left + i * slotW + slotW / 2;
+    if (i === 0 || cx - lastColLabelX >= MIN_COL_LABEL_GAP) {
+      colLabelIndices.push(i);
+      lastColLabelX = cx;
+    }
+  });
+  // Force last label
+  const lastColIdx = data.length - 1;
+  if (colLabelIndices[colLabelIndices.length - 1] !== lastColIdx) {
+    const lastCx = pad.left + lastColIdx * slotW + slotW / 2;
+    const prevCx = pad.left + colLabelIndices[colLabelIndices.length - 1] * slotW + slotW / 2;
+    if (lastCx - prevCx < MIN_COL_LABEL_GAP) colLabelIndices.pop();
+    colLabelIndices.push(lastColIdx);
+  }
+  const colLabelSet = new Set(colLabelIndices);
+
   data.forEach((d, i) => {
     const val = parseInt(d.count) || 0;
     const barH = maxY > 0 ? (val / maxY) * ch : 0;
@@ -3231,10 +3269,12 @@ function renderColumnChart(containerId, data, options = {}) {
     const y = pad.top + ch - barH;
     const barColor = palette ? palette[i % palette.length] : fillColor;
     bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${barColor}" class="col-bar" data-idx="${i}"/>`;
-    if (options.showValues !== false) {
+    if (options.showValues !== false && !_compact) {
       valueLabels += `<text x="${x + barW / 2}" y="${y - 4}" class="axis-label" text-anchor="middle">${val}</text>`;
     }
-    labels += `<text x="${pad.left + i * slotW + slotW / 2}" y="${H - 6}" class="axis-label" text-anchor="middle">${d.label}</text>`;
+    if (colLabelSet.has(i)) {
+      labels += `<text x="${pad.left + i * slotW + slotW / 2}" y="${H - 6}" class="axis-label" text-anchor="middle">${d.label}</text>`;
+    }
   });
 
   container.innerHTML = `<div class="col-chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${gridLines}${bars}${valueLabels}${labels}</svg></div>`;
@@ -3259,7 +3299,9 @@ function renderLineChart(containerId, data, options = {}) {
     return;
   }
 
-  const W = 700, H = 260;
+  var _wSize = getWidgetSize(containerId);
+  var _compact = _wSize === 'xs';
+  const W = _compact ? 300 : 700, H = _compact ? 280 : 260;
   const pad = { top: 16, right: 32, bottom: 32, left: 36 };
   const cw = W - pad.left - pad.right;
   const ch = H - pad.top - pad.bottom;
@@ -3303,7 +3345,7 @@ function renderLineChart(containerId, data, options = {}) {
 
   // X-axis labels — pixel-based collision avoidance
   let xLabels = '';
-  const MIN_LABEL_GAP = 65; // minimum pixels between label centers
+  const MIN_LABEL_GAP = _compact ? 35 : 65; // minimum pixels between label centers
   let lastLabelX = -Infinity;
 
   // Pass 1: decide which indices get labels
@@ -3816,10 +3858,15 @@ async function loadAnalyticsFrequency() {
     });
     renderColumnChart('chart-dow', dowData, { unit: 'rides', palette: getCurrentCampusPalette() });
 
-    // Hourly — column chart
+    // Hourly — column chart (short labels: "8a", "12p", "3p")
+    const _hourCompact = getWidgetSize('chart-hour') === 'xs';
     const hourData = data.byHour
       .filter(r => parseInt(r.hour) >= 8 && parseInt(r.hour) <= 19)
-      .map(r => ({ label: `${r.hour}:00`, count: r.count }));
+      .map(r => {
+        var h = parseInt(r.hour);
+        var shortLabel = h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p';
+        return { label: _hourCompact ? shortLabel : h + ':00', count: r.count };
+      });
     renderColumnChart('chart-hour', hourData, { unit: 'rides', palette: getCurrentCampusPalette() });
 
     // Daily volume — line chart
@@ -4370,8 +4417,11 @@ function renderDonutChart(containerId, distribution) {
     return;
   }
 
-  var W = 300, H = 260;
-  var cx = 130, cy = 130, r = 95, strokeW = 28;
+  var _wSize = getWidgetSize(containerId);
+  var _compact = _wSize === 'xs';
+  var _hideLegend = _wSize === 'xs' || _wSize === 'sm';
+  var W = _compact ? 260 : 300, H = 260;
+  var cx = _compact ? 130 : 130, cy = 130, r = 95, strokeW = 28;
   var circumference = 2 * Math.PI * r;
   var offset = 0;
 
@@ -4383,10 +4433,15 @@ function renderDonutChart(containerId, distribution) {
     offset += dashLen;
   });
 
-  var legend = items.map(function(i) {
-    var pct = (i.value / total * 100).toFixed(1);
-    return '<div style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:10px;height:10px;border-radius:2px;background:' + i.color + ';flex-shrink:0;"></span>' + i.label + ': ' + i.value + ' (' + pct + '%)</div>';
-  }).join('');
+  var legendHTML = '';
+  if (!_hideLegend) {
+    legendHTML = '<div class="donut-legend" style="display:flex;flex-direction:column;gap:6px;">' +
+      items.map(function(i) {
+        var pct = (i.value / total * 100).toFixed(1);
+        return '<div style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:10px;height:10px;border-radius:2px;background:' + i.color + ';flex-shrink:0;"></span>' + i.label + ': ' + i.value + ' (' + pct + '%)</div>';
+      }).join('') +
+    '</div>';
+  }
 
   container.innerHTML =
     '<div class="donut-wrap">' +
@@ -4397,7 +4452,7 @@ function renderDonutChart(containerId, distribution) {
           '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" style="font-size:12px;fill:var(--color-text-muted);pointer-events:none;">total rides</text>' +
         '</svg>' +
       '</div>' +
-      '<div class="donut-legend" style="display:flex;flex-direction:column;gap:6px;">' + legend + '</div>' +
+      legendHTML +
     '</div>';
 
   // Post-render: add hover tooltips to donut segments
