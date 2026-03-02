@@ -126,8 +126,8 @@ Default login credentials (password: `demo123`):
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
-- `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, DEFAULT_WIDGET_LAYOUT)
-- `public/js/widget-system.js` — Widget dashboard runtime: layout persistence, grid rendering, edit mode, SortableJS integration
+- `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, 22 widgets, 9 categories, per-tab default layouts: DEFAULT_WIDGET_LAYOUT, DEFAULT_HOTSPOTS_LAYOUT, DEFAULT_MILESTONES_LAYOUT, DEFAULT_ATTENDANCE_LAYOUT)
+- `public/js/widget-system.js` — Widget dashboard runtime: multi-instance architecture (createWidgetInstance), 4-size system (xs/sm/md/lg), layout persistence, grid rendering, edit mode, SortableJS integration
 - `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector). All content dynamically rendered into `#home-content` — no static clock button or ride list elements.
 - `public/rider.html` — Rider 3-step booking wizard and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention). Step 1: Where (pickup/dropoff), Step 2: When (date chips + time), Step 3: Confirm + optional recurring toggle. Auto-switches to My Rides tab on load if active rides exist.
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
@@ -224,9 +224,22 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - Logout button: `onclick="logout()"` (icon-only, no text label)
 
 ### Analytics Architecture
-- **Widget System:** Customizable dashboard with drag-and-drop widget cards (SortableJS CDN). 16 registered widgets across 8 categories. Users can add/remove/resize/reorder widgets. Three size options: small (compact), medium, large. Layout persisted per-user in localStorage with versioned schema (`WIDGET_LAYOUT_VERSION`).
-- **Widget Files:** `widget-registry.js` (static metadata), `widget-system.js` (runtime). Widget loaders registered in `app.js` DOMContentLoaded via `registerWidgetLoader()`.
-- **Widget Container IDs:** Dashboard widgets use IDs from `WIDGET_REGISTRY.containerId`. Hotspot/milestone widgets use `w-` prefix (`w-hotspot-pickups`) to avoid duplicate IDs with sub-tab containers.
+- **Widget System:** Customizable analytics with drag-and-drop widget cards (SortableJS CDN). 22 registered widgets across 9 categories. Users can add/remove/resize/reorder widgets on ALL analytics tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab stays hardcoded.
+- **4-Size System:** 4-column CSS grid with 4 visually distinct sizes:
+  - `xs` (Compact) — `span 1` (~25% width), max-height 280px, hides donut legends
+  - `sm` (Small) — `span 2` (~50% width), max-height 320px, default for most chart widgets
+  - `md` (Medium) — `span 3` (~75% width), min-height 300px
+  - `lg` (Full) — `span 4` (100% width), min-height 280px
+- **Multi-Tab Widget Grids:** Each analytics sub-tab has its own SortableJS instance, localStorage layout key, and edit mode. Widget instances created via `createWidgetInstance(tabId, config)` factory.
+  - Dashboard: `#widget-grid`, key `rideops_widget_layout_dashboard_{userId}`
+  - Hotspots: `#ht-widget-grid`, key `rideops_widget_layout_hotspots_{userId}`
+  - Milestones: `#ms-widget-grid`, key `rideops_widget_layout_milestones_{userId}`
+  - Attendance: `#att-widget-grid`, key `rideops_widget_layout_attendance_{userId}`
+- **Widget Files:** `widget-registry.js` (static metadata, per-tab default layouts), `widget-system.js` (runtime, multi-instance). Widget loaders registered in `app.js` via `registerWidgetLoader()`.
+- **Widget Container ID Prefixes:** Dashboard uses `chart-`/`w-` prefix. Hotspots tab uses `ht-` prefix. Milestones uses `ms-` prefix. Attendance uses `att-` prefix. Per-tab overrides via `containerOverrides` in widget instance config.
+- **Data Caching:** `_tardinessCache` and `_hotspotsCache` prevent duplicate API calls when multiple widgets on the same tab use the same data source.
+- **Lazy Loading:** Analytics tabs load on first switch, not all at once. `_analyticsTabsLoaded` tracks which tabs have been initialized.
+- **Layout Version:** `WIDGET_LAYOUT_VERSION = 2` — bumped from 1 to force reset of old `small/medium/large` layouts.
 - **Date Range Picker:** Quick-select buttons (Today, Week, Month, [Academic Period]) + manual from/to inputs. Last preset label driven by `academic_period_label` tenant_setting (Semester/Quarter/Trimester). Date ranges adapt per period type: Semester (Jan/May/Aug), Quarter (Jan/Mar/Jun/Sep), Trimester (Jan/May/Aug).
 - **Default Range:** Last 7 days (set on page load, persists across sub-tab switches within session)
 - **Reports Sub-Tab:** Excel export with report type selector (Full/Rides/Drivers/Riders/Fleet) + semester report + wrapped
