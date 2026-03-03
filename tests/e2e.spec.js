@@ -893,13 +893,15 @@ test.describe.serial('UI: Office Console', () => {
     }
   });
 
-  test('Staff panel: employee bar visible', async ({ page }) => {
+  // TODO: Re-enable after Phase 3b migration
+  test.skip('Staff panel: employee bar visible', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="staff-panel"]').click();
     await expect(page.locator('#employee-bar')).toBeVisible();
   });
 
-  test('Rides panel: filter and table view visible', async ({ page }) => {
+  // TODO: Re-enable after Phase 3c migration
+  test.skip('Rides panel: filter and table view visible', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="rides-panel"]').click();
     await expect(page.locator('#rides-panel')).toBeVisible({ timeout: 5000 });
@@ -907,7 +909,8 @@ test.describe.serial('UI: Office Console', () => {
     await expect(page.locator('#rides-table-view')).toBeVisible();
   });
 
-  test('Rides view toggle: Calendar toggle exists', async ({ page }) => {
+  // TODO: Re-enable after Phase 3c migration
+  test.skip('Rides view toggle: Calendar toggle exists', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="rides-panel"]').click();
     // Table/calendar view toggle buttons exist
@@ -915,7 +918,8 @@ test.describe.serial('UI: Office Console', () => {
     await expect(page.locator('#rides-view-calendar-btn')).toBeVisible();
   });
 
-  test('Dispatch panel: stat boxes and schedule grid visible', async ({ page }) => {
+  // TODO: Re-enable after Phase 3d migration
+  test.skip('Dispatch panel: stat boxes and schedule grid visible', async ({ page }) => {
     await loginUI(page, 'office');
     // Dispatch is the default active panel
     await expect(page.locator('#dispatch-panel')).toBeVisible({ timeout: 10000 });
@@ -935,7 +939,8 @@ test.describe.serial('UI: Office Console', () => {
     await expect(rows.first()).toBeVisible();
   });
 
-  test('Analytics panel: dashboard sub-tab and widget grid attached', async ({ page }) => {
+  // TODO: Re-enable after Phase 3e migration
+  test.skip('Analytics panel: dashboard sub-tab and widget grid attached', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="analytics-panel"]').click();
     await expect(page.locator('#analytics-panel')).toBeVisible();

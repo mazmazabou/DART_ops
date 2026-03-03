@@ -232,3 +232,119 @@ export function patchRideVehicle(rideId, vehicleId) {
     body: JSON.stringify({ vehicle_id: vehicleId }),
   });
 }
+
+// ===== Office: Settings =====
+export function fetchSettings() {
+  return request('/api/settings');
+}
+
+export function saveSettings(settingsArray) {
+  return request('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settingsArray),
+  });
+}
+
+// ===== Office: Admin Users =====
+export function fetchAdminUsers() {
+  return request('/api/admin/users');
+}
+
+export function createAdminUser(data) {
+  return request('/api/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateAdminUser(id, data) {
+  return request('/api/admin/users/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteAdminUser(id) {
+  return request('/api/admin/users/' + id, { method: 'DELETE' });
+}
+
+export function fetchAdminUserProfile(id) {
+  return request('/api/admin/users/' + id + '/profile');
+}
+
+export function resetAdminUserPassword(id, data) {
+  return request('/api/admin/users/' + id + '/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function resetMissCount(id) {
+  return request('/api/admin/users/' + id + '/reset-miss-count', { method: 'POST' });
+}
+
+export function fetchEmailStatus() {
+  return fetch('/api/admin/email-status')
+    .then(r => r.ok ? r.json() : { configured: false })
+    .catch(() => ({ configured: false }));
+}
+
+// ===== Office: Academic Terms =====
+export function fetchAcademicTerms() {
+  return request('/api/academic-terms');
+}
+
+export function createAcademicTerm(data) {
+  return request('/api/academic-terms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateAcademicTerm(id, data) {
+  return request('/api/academic-terms/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteAcademicTerm(id) {
+  return request('/api/academic-terms/' + id, { method: 'DELETE' });
+}
+
+// ===== Office: Program Content =====
+export function fetchProgramRules() {
+  return request('/api/program-rules');
+}
+
+export function saveProgramRules(data) {
+  return request('/api/program-rules', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ===== Office: Notification Preferences =====
+export function fetchNotifPreferences() {
+  return request('/api/notification-preferences');
+}
+
+export function saveNotifPreferences(data) {
+  return request('/api/notification-preferences', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ===== Office: Data Management =====
+export function purgeOldRides() {
+  return request('/api/rides/purge-old', { method: 'POST' });
+}
