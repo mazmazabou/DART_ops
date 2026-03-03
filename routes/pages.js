@@ -1,6 +1,17 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
+
+// Resolve rider HTML path: prefer React build, fallback to vanilla
+const riderBuildPath = path.join(__dirname, '..', 'client', 'dist', 'index.html');
+const riderLegacyPath = path.join(__dirname, '..', 'public', 'rider-legacy.html');
+const riderHtmlPath = fs.existsSync(riderBuildPath) ? riderBuildPath : riderLegacyPath;
+
+// Resolve driver HTML path: prefer React build, fallback to vanilla
+const driverBuildPath = path.join(__dirname, '..', 'client', 'dist', 'driver.html');
+const driverLegacyPath = path.join(__dirname, '..', 'public', 'driver-legacy.html');
+const driverHtmlPath = fs.existsSync(driverBuildPath) ? driverBuildPath : driverLegacyPath;
 
 module.exports = function(app, ctx) {
   const {
@@ -11,6 +22,12 @@ module.exports = function(app, ctx) {
     VALID_ORG_SLUGS,
     DEMO_MODE
   } = ctx;
+
+  // ----- React app static assets (rider + driver) -----
+  const reactDistPath = path.join(__dirname, '..', 'client', 'dist');
+  app.use('/app', require('express').static(reactDistPath, { maxAge: '1y', immutable: true }));
+  // Backward-compat alias for /rider-app
+  app.use('/rider-app', require('express').static(reactDistPath, { maxAge: '1y', immutable: true }));
 
   // ----- Org-scoped routes (must come before generic page routes) -----
   VALID_ORG_SLUGS.forEach(slug => {
@@ -28,13 +45,13 @@ module.exports = function(app, ctx) {
     // Driver view
     app.get('/' + slug + '/driver', requireAuth, (req, res) => {
       req.session.campus = slug;
-      res.sendFile(path.join(__dirname, '..', 'public', 'driver.html'));
+      res.sendFile(driverHtmlPath);
     });
 
     // Rider view
     app.get('/' + slug + '/rider', requireAuth, (req, res) => {
       req.session.campus = slug;
-      res.sendFile(path.join(__dirname, '..', 'public', 'rider.html'));
+      res.sendFile(riderHtmlPath);
     });
 
     // Campus-scoped login
@@ -76,11 +93,11 @@ module.exports = function(app, ctx) {
   });
 
   app.get('/driver', requireStaff, (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'public', 'driver.html'));
+    res.sendFile(driverHtmlPath);
   });
 
   app.get('/rider', requireRider, (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'public', 'rider.html'));
+    res.sendFile(riderHtmlPath);
   });
 
   // Demo mode routes (before static middleware)

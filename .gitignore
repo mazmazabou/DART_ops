@@ -23,6 +23,8 @@ public/.Rhistory
 
 # Build artifacts
 *.log
+client/dist/
+client/node_modules/
 
 # Tabler (loaded from CDN, never local)
 tabler/

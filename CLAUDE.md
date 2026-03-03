@@ -31,23 +31,7 @@ RideOps is an accessible campus transportation operations platform. It provides 
 - Used for chart colors, driver shift bands, and analytics visualizations
 
 ### Tenant Config Shape
-```json
-{
-  "orgName": "USC DART",
-  "orgShortName": "DART",
-  "orgTagline": "Disabled Access to Road Transportation",
-  "orgInitials": "DT",
-  "primaryColor": "#990000",
-  "secondaryColor": "#FFCC00",
-  "mapUrl": "https://maps.usc.edu/",
-  "mapEmbeddable": true,
-  "idFieldLabel": "USC ID",
-  "idFieldMaxLength": 10,
-  "idFieldPattern": "^\\d{10}$",
-  "locationsFile": "usc-buildings.js",
-  "rules": ["..."]
-}
-```
+See `tenants/usc-dart.json` for shape. Key fields: `orgName`, `primaryColor`, `secondaryColor`, `locationsFile`, `idFieldPattern`, `mapEmbeddable`, `rules`.
 
 ### Server-Side Campus Configs (tenants/campus-configs.js)
 Defines complete per-campus overrides merged into `/api/tenant-config` response: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, secondaryTextColor, sidebarBg, sidebarText, sidebarActiveBg, sidebarHover, sidebarBorder, headerBg, mapUrl, mapEmbeddable, campusKey, locationsKey, idFieldLabel, idFieldPattern, idFieldMaxLength, idFieldPlaceholder, serviceScopeText, timezone, rules. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding).
@@ -58,7 +42,8 @@ Defines complete per-campus overrides merged into `/api/tenant-config` response:
 - **Database:** PostgreSQL (via `pg` pool with connection pooling)
 - **Sessions:** `connect-pg-simple` for PostgreSQL-backed session storage (auto-creates `session` table)
 - **Rate Limiting:** `express-rate-limit` on auth endpoints (login 10/15min, signup 5/15min)
-- **Frontend:** Vanilla HTML/CSS/JS (no framework). Multi-page: index.html (office/admin), driver.html, rider.html, login.html, signup.html
+- **Frontend (Rider + Driver):** React 19 + Vite multi-page build, built to `client/dist/`, served via `/app/` static route (backward-compat `/rider-app/` alias). Source in `client/src/rider/` and `client/src/driver/`
+- **Frontend (Office/Driver):** Vanilla HTML/CSS/JS. Multi-page: index.html (office/admin), driver.html, login.html, signup.html
 - **Auth:** Session-based with async bcrypt password hashing. Default password: `demo123`
 - **Email:** Nodemailer with optional SMTP (falls back to console logging)
 - **Reports:** ExcelJS for multi-sheet .xlsx workbook generation (server-side, npm package)
@@ -69,7 +54,13 @@ Defines complete per-campus overrides merged into `/api/tenant-config` response:
 # Start server (port 3000 by default)
 node server.js
 
-# Development mode with auto-restart
+# Build React rider app (required before serving rider page)
+npm run build
+
+# Development: React rider with hot reload (port 5173, proxies API to :3000)
+npm run dev:client
+
+# Development mode with auto-restart (server only)
 npx nodemon server.js
 
 # With USC DART tenant
@@ -103,7 +94,7 @@ Default login credentials (password: `demo123`):
 
 ### Railway (Production)
 - **URL:** https://app.ride-ops.com (custom domain) / https://rideops-app-production.up.railway.app (Railway default)
-- **Config:** `railway.json` defines health check, restart policy, and Nixpacks builder
+- **Config:** `railway.json` defines health check, restart policy, Nixpacks builder, and `buildCommand` (runs `npm install && npm run build` to build React rider app)
 - **Database:** Railway PostgreSQL addon (auto-provisions, sets DATABASE_URL)
 - **SSL:** Required for database connections in production (`ssl: { rejectUnauthorized: false }`)
 - **Health check:** `GET /health` — used by Railway for readiness checks
@@ -139,7 +130,18 @@ Default login credentials (password: `demo123`):
 - `routes/profile.js` — GET/PUT /api/me
 - `routes/content.js` — Program rules
 - `routes/academic-terms.js` — Academic term CRUD
-- `routes/pages.js` — Org-scoped routes, generic pages, demo routes, static files
+- `routes/pages.js` — Org-scoped routes, generic pages, demo routes, static files. Serves React rider (client/dist/) with fallback to rider-legacy.html
+- `client/` — React rider app (Vite + React 19). Source in `client/src/`, builds to `client/dist/`
+- `client/src/rider/App.jsx` — Rider root component: auth/tenant/toast providers, tab state, auto-switch logic
+- `client/src/driver/App.jsx` — Driver root component: clock in/out, ride lifecycle, grace timer, vehicle selection
+- `client/src/api.js` — Shared fetch wrappers for rider + driver API endpoints
+- `client/src/components/booking/` — BookPanel, StepWhere, StepWhen, StepConfirm, DateChips, StepIndicator
+- `client/src/components/rides/` — MyRidesPanel, HeroCard, GraceTimer
+- `client/src/components/history/` — HistoryPanel, HistoryRow, RecurringSection
+- `client/src/components/drawers/` — SettingsDrawer, ProfileForm, AvatarPicker, PasswordChange, NotificationDrawer
+- `client/src/contexts/` — AuthContext, TenantContext, ToastContext
+- `client/src/hooks/` — usePolling, useRides, useLocations, useOpsConfig, useNotifications
+- `public/rider-legacy.html` — Vanilla rider (legacy reference, fallback if React build not present)
 - `public/app.js` — Main frontend logic for office/admin console (~4,800 lines)
 - `public/utils.js` — Shared UI utilities: empty state, dev-mode detection, toast icon helper (toast/modal functions moved to rideops-utils.js)
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
@@ -149,8 +151,9 @@ Default login credentials (password: `demo123`):
 - `public/js/widget-system.js` — Widget dashboard runtime: multi-instance architecture (createWidgetInstance), GridStack.js 12-column grid, layout persistence, edit mode (drag/resize/add/remove/set-default/reset)
 - `public/js/chart-utils.js` — Chart.js instance registry (_chartInstances, destroyChart), resolveColor, showAnalyticsSkeleton, makeSortable
 - `public/js/analytics.js` — All analytics renderers, loaders, caches, widget orchestrators (~1,800 lines). Extracted from app.js
-- `public/driver.html` — Driver-facing mobile view (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention, Map tab with campus map iframe via tenantConfig.mapUrl, per-ride vehicle selector). All content dynamically rendered into `#home-content` — no static clock button or ride list elements.
-- `public/rider.html` — Rider 3-step booking wizard and ride history (self-contained with inline JS/CSS, campus-themed header with synchronous FOUC prevention). Step 1: Where (pickup/dropoff), Step 2: When (date chips + time), Step 3: Confirm + optional recurring toggle. Auto-switches to My Rides tab on load if active rides exist.
+- ~~`public/driver.html`~~ — **Migrated to React** (see `client/src/driver/`). Legacy version at `public/driver-legacy.html`
+- `client/src/driver/` — React driver app (Vite + React 19). Components, hooks, driver.css. Builds to `client/dist/driver.html`
+- ~~`public/rider.html`~~ — **Migrated to React** (see `client/`). Legacy version at `public/rider-legacy.html`
 - `public/index.html` — Office/admin console (dispatch, rides, staff, fleet, analytics, settings, users)
 - `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~97 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization
 - `tests/uat.spec.js` — User acceptance tests (4 tests): office login, rider booking flow, office approval, driver clock-in
@@ -235,97 +238,52 @@ Default active tab is `dispatch-panel`. Navigation buttons use `data-target` att
 
 Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters: `#analytics-from`, `#analytics-to`, `#analytics-refresh-btn`.
 
-### Driver Console (driver.html)
-- Bottom tab navigation: `home-panel` (default), `rides-panel`, `account-panel`
-- **All home content is dynamically rendered** into `#home-content` by `renderHomePanel()` — no static `#clock-btn`, `#clock-status`, `#available-rides`, or `#my-rides` elements
-- Clock button: inline `onclick="toggleClock()"`, text is "CLOCK IN" or "CLOCK OUT"
-- Clock out triggers confirmation via `showModalNew()` (modal class: `ro-modal-overlay.open`)
-- Account tab has static `#profile-name` and `#profile-phone` inputs
+### Driver Console (React — client/src/driver/)
+- **Built with React 19 + Vite**, served from `client/dist/driver.html` via `/app/` static route. Legacy fallback at `public/driver-legacy.html`
+- Bottom tab navigation: `home-panel` (default), `rides-panel`, `map-panel`, `account-panel` — managed by `App.jsx` state
+- **Hooks:** useDriverData (3s polling via usePolling), useClockStatus, useDriverRides, useGraceTimer
+- Clock button: renders text "CLOCK IN" or "CLOCK OUT" (test selectors preserved)
+- Clock out triggers confirmation via shared `useModal()` (modal class: `ro-modal-overlay.open`)
+- Account tab uses shared `<ProfileForm idPrefix="profile-" />` producing `#profile-name` and `#profile-phone`
+- **Contexts:** AuthProvider(expectedRole="driver"), TenantProvider(roleLabel="Driver")
 
-### Rider Console (rider.html)
-- Bottom tab navigation: `book-panel` (default), `myrides-panel`
-- **3-step booking wizard** (not a flat form): Step 1 Where (`#step-1`, `#pickup-location`, `#dropoff-location`), Step 2 When (`#step-2`, `#date-chips`, `#ride-time`), Step 3 Confirm (`#step-3`, `#notes`, `#recurring-toggle`, `#confirm-btn`)
-- No `#ride-form`, no `input[name="ride-type"]`, no `#requested-time`, no `#rider-phone`, no `#form-message`
-- **`autoSwitchToActiveRide()`**: On load, if rider has any active rides, automatically switches to `myrides-panel`. Tests must explicitly click the Book tab to access the wizard.
-- My Rides content rendered into `#myrides-content`
-- Account settings accessed via gear button (`#gear-btn`) → drawer overlay (not a tab panel)
-- Logout button: `onclick="logout()"` (icon-only, no text label)
+### Rider Console (React — client/src/)
+- **Built with React 19 + Vite**, served from `client/dist/` via `/app/` static route (backward-compat `/rider-app/` alias)
+- Bottom tab navigation: `book-panel` (default), `myrides-panel`, `history-panel` — managed by `App.jsx` state
+- **3-step booking wizard** (React components): StepWhere (`#pickup-location`, `#dropoff-location`), StepWhen (`#step-2`, `#date-chips`, `#ride-time`), StepConfirm (`#step-3`, `#notes`, `#recurring-toggle`, `#confirm-btn`)
+- **`autoSwitchToActiveRide()`**: On initial rides load, if rider has any active rides, switches to `myrides-panel`. Tests must explicitly click the Book tab.
+- My Rides content rendered into `#myrides-content` (HeroCard + RideStrip components)
+- Grace timer: `GraceTimer.jsx` with SVG countdown circle
+- Account settings via gear button (`#gear-btn`) → `SettingsDrawer` (ProfileForm, AvatarPicker, PasswordChange)
+- Notifications via bell button → `NotificationDrawer` (selection, bulk read/clear)
+- **Contexts:** AuthContext (user, logout), TenantContext (config, theming), ToastContext (showToast)
+- **Hooks:** usePolling (5s rides, 30s notifications, visibilitychange pause), useRides, useLocations, useOpsConfig, useNotifications
+- **All test-critical element IDs preserved** from vanilla version (#book-panel, #myrides-panel, #pickup-location, etc.)
 
 ### Analytics Architecture
-- **Widget System:** Customizable analytics with drag-and-drop widget cards (GridStack.js CDN). 22 registered widgets across 9 categories. Users can add/remove/resize/reorder widgets on ALL analytics tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab stays hardcoded.
-- **GridStack.js 12-Column Grid:** Replaced the old 4-column CSS grid + SortableJS with GridStack.js v12 (CDN, not npm). 12-column layout with `cellHeight: 80px`, `margin: 8px`, `float: false`. Responsive breakpoints: 12 cols (>=1200px), 8 cols (>=996px), 4 cols (>=768px), 1 col (>=480px).
-- **Logical Size Derivation:** Widget logical size derived from GridStack column width: `w<=3` → xs, `w<=6` → sm, `w<=9` → md, `w>=10` → lg. Stored as `data-logical-size` attribute on `.grid-stack-item` elements for CSS styling. Re-evaluated on resize; if logical size crosses a threshold, the widget loader re-renders content.
-- **GridStack v12 API:** Widgets are pre-built as DOM elements with `gs-*` attributes (gs-id, gs-x, gs-y, gs-w, gs-h, gs-min-w, gs-max-w, gs-min-h, gs-max-h, gs-no-resize, gs-no-move), appended to the grid container, then `GridStack.init()` auto-discovers them. For dynamically added widgets (Add Widget picker), use `grid.makeWidget(el)` after appending. Do NOT use `grid.addWidget(el, opts)` — deprecated in v12.
-- **Multi-Tab Widget Grids:** Each analytics sub-tab has its own GridStack instance, localStorage layout key, and edit mode. Widget instances created via `createWidgetInstance(tabId, config)` factory.
-  - Dashboard: `#widget-grid`, key `rideops_widget_layout_dashboard_{userId}`
-  - Hotspots: `#ht-widget-grid`, key `rideops_widget_layout_hotspots_{userId}`
-  - Milestones: `#ms-widget-grid`, key `rideops_widget_layout_milestones_{userId}`
-  - Attendance: `#att-widget-grid`, key `rideops_widget_layout_attendance_{userId}`
-- **Edit Mode:** `grid.setStatic(true/false)` toggles drag/resize. Toolbar buttons: Done, Set Default, Add Widget, Reset. Drag handle: `.widget-card__drag-handle`. Remove button: `.widget-action--remove`.
-- **Set Default / Reset:** "Set Default" saves the current layout as a custom default per tab per user (localStorage key: `rideops_widget_custom_default_{prefix}_{userId}`). "Reset" restores to the custom default if one exists, otherwise falls back to the built-in `DEFAULT_*_LAYOUT` from widget-registry.js.
-- **Layout Persistence:** `grid.save(false)` serializes widget positions. Saved as `{version, widgets: [{id, x, y, w, h}]}` in localStorage. Auto-saved on `change` and `resizestop` events.
-- **Widget Files:** `widget-registry.js` (static metadata, constraints: minW/maxW/minH/maxH/noResize, per-tab default layouts in `{id, x, y, w, h}` format), `widget-system.js` (runtime, multi-instance). Widget loaders registered in `app.js` via `registerWidgetLoader()`.
-- **Widget Container ID Prefixes:** Dashboard uses `chart-`/`w-` prefix. Hotspots tab uses `ht-` prefix. Milestones uses `ms-` prefix. Attendance uses `att-` prefix. Per-tab overrides via `containerOverrides` in widget instance config.
-- **Data Caching:** `_tardinessCache` and `_hotspotsCache` prevent duplicate API calls when multiple widgets on the same tab use the same data source.
-- **Lazy Loading:** Analytics tabs load on first switch, not all at once. `_analyticsTabsLoaded` tracks which tabs have been initialized.
-- **Layout Version:** `WIDGET_LAYOUT_VERSION = 3` — bumped from 2 to force reset of old 4-column layouts to new 12-column GridStack format.
-- **Date Range Picker:** Quick-select buttons: Today, Week, Month, plus one button per user-defined academic term from `academic_terms` table. If >4 terms, shows 3 most recent + "More" dropdown. Terms managed in Settings > Academic Terms. Deprecated: hardcoded semester/quarter/trimester date calculations via `academic_period_label`.
-- **Default Range:** Last 7 days (set on page load, persists across sub-tab switches within session)
-- **Reports Sub-Tab:** Excel export with report type selector (Full/Rides/Drivers/Riders/Fleet) + semester report + wrapped
-- **Excel Export:** 8-sheet workbook via exceljs: Summary, Daily Volume, Routes, Driver Performance, Rider Analysis, Fleet, Shift Coverage, Peak Hours — all with conditional formatting
-- **Loading States:** Skeleton placeholders (pulse animation) shown for all chart containers during fetch
-- **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming
-- **Sortable Tables:** Top Routes and Driver Leaderboard tables support click-to-sort on column headers
-- **Calendar View Filters:** Calendar (FullCalendar) respects the same status/date/text filter pills as the table view via `renderRideViews()` helper
-- **Chart.js v4 (Canvas):** Donut, bar, and line/area charts use Chart.js v4 (`<canvas>` via CDN). `responsive: true` + `maintainAspectRatio: false` fills widget cards automatically. Chart instances tracked in `_chartInstances` registry — `destroyChart(containerId)` called before re-render. CSS variables resolved to hex via `resolveColor()` for canvas rendering. Center text on donuts via inline `afterDraw` plugins. HTML-based charts (hotspot bars, stacked bars, tables, heatmaps, KPI cards) remain unchanged.
+- **Widget System:** 22 widgets across 9 categories on 4 tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab stays hardcoded. GridStack.js v12 (CDN, not npm) for 12-column drag-and-drop layout.
+- **GridStack v12 API:** Use `grid.makeWidget(el)` for dynamically added widgets. Do NOT use `grid.addWidget(el, opts)` — deprecated in v12. Widgets use `gs-*` attributes (gs-id, gs-x, gs-y, gs-w, gs-h, etc.).
+- **Widget Container ID Prefixes:** Dashboard `chart-`/`w-`, Hotspots `ht-`, Milestones `ms-`, Attendance `att-`. Per-tab overrides via `containerOverrides` in widget instance config.
+- **Layout Version:** `WIDGET_LAYOUT_VERSION = 3` in widget-system.js — bump this to force layout reset when changing default layouts.
+- **Chart.js v4:** `_chartInstances` registry tracks instances; always call `destroyChart(containerId)` before re-render. `resolveColor()` converts CSS custom properties to hex for canvas rendering.
+- **Data Caching:** `_tardinessCache` and `_hotspotsCache` prevent duplicate API calls when multiple widgets share the same data source.
+- **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming.
+- **Excel Export:** 8-sheet workbook via exceljs (Summary, Daily Volume, Routes, Driver Performance, Rider Analysis, Fleet, Shift Coverage, Peak Hours).
+- **Calendar View Filters:** Calendar (FullCalendar) respects the same status/date/text filter pills as the table view via `renderRideViews()` helper.
 
 ## Database Schema
 
+14 tables — see `db/schema.sql` for full field definitions, `lib/db.js` for migrations.
+
 ### Tables
-- **users** — All users (office, drivers, riders)
-  - `role`: 'office', 'driver', or 'rider'
-  - `active`: TRUE when driver is clocked in (only for drivers)
-  - Fields: id, username, password_hash, name, email, phone, member_id, role, active, avatar_url, preferred_name, major, graduation_year, bio, must_change_password, password_changed_at, created_at, updated_at
-- **shifts** — Weekly schedule for drivers
-  - Fields: id, employee_id, day_of_week (0-4 for Mon-Fri), start_time, end_time, week_start (DATE, nullable), notes
-  - When `week_start` is set, the shift only appears on that specific week. When NULL, it acts as a recurring template.
-- **rides** — All ride requests and their lifecycle
-  - Fields: id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, vehicle_id, cancelled_by, created_at, updated_at
-- **ride_events** — Audit log of all ride status changes
-  - Fields: id, ride_id, actor_user_id, type, at (timestamp), notes, initials
-- **recurring_rides** — Templates for recurring weekly ride patterns
-  - Fields: id, rider_id, pickup_location, dropoff_location, time_of_day, days_of_week (array), start_date, end_date, status
-- **rider_miss_counts** — Tracks consecutive no-shows per rider email
-  - Fields: email (PK), count
-- **vehicles** — Fleet management
-  - Fields: id, name, type (standard/accessible), status (available/in_use/retired), total_miles, last_maintenance_date, notes, created_at
-- **maintenance_logs** — Vehicle service history
-  - Fields: id, vehicle_id, service_date, notes, mileage_at_service, performed_by, created_at
-- **clock_events** — Historical record of driver clock-in/out with tardiness tracking
-  - Fields: id, employee_id, shift_id, event_date (DATE), scheduled_start (TIME), clock_in_at, clock_out_at, tardiness_minutes, created_at
-- **tenant_settings** — Configurable system settings
-  - Fields: id, setting_key (UNIQUE), setting_value, setting_type (string/number/boolean/time/select), label, description, category (general/rides/staff/operations/notifications/data), updated_at
-- **notification_preferences** — Per-user, per-event-type, per-channel notification settings
-  - Fields: id, user_id, event_type, channel, enabled, threshold_value, threshold_unit, created_at, updated_at
-  - UNIQUE(user_id, event_type, channel)
-- **notifications** — In-app notifications
-  - Fields: id, user_id, event_type, title, body, metadata (JSONB), read, created_at
-- **program_content** — Editable program rules/guidelines
-  - Fields: id, rules_html, updated_at
-- **academic_terms** — User-defined academic calendar terms for analytics date picker
-  - Fields: id, name, start_date (DATE), end_date (DATE), sort_order, created_at, updated_at
+users, shifts, rides, ride_events, recurring_rides, rider_miss_counts, vehicles, maintenance_logs, clock_events, tenant_settings, notification_preferences, notifications, program_content, academic_terms
 
-### ID Generation
-IDs follow pattern: `prefix_${random}` (e.g., `ride_abc123`, `shift_xyz789`, `driver_xy12ab`, `rider_ab34cd`, `veh_cart1`, `notif_abc123`)
-
-### Indexes
-The following indexes are created by `runMigrations()`:
-- `idx_rides_status`, `idx_rides_requested_time`, `idx_rides_rider_id`, `idx_rides_assigned_driver`, `idx_rides_rider_email`, `idx_rides_vehicle_id`, `idx_rides_status_time` (compound)
-- `idx_ride_events_ride_id`
-- `idx_shifts_employee_id`
-- `idx_clock_events_employee`, `idx_clock_events_date`, `idx_clock_events_employee_date` (compound)
-- `idx_notifications_user_read` (compound), `idx_notifications_user_id`, `idx_notifications_created_at`
-- `idx_academic_terms_sort` (compound: sort_order, start_date DESC)
+### Key Gotchas
+- **IDs are text, not UUID:** Pattern `prefix_${random}` (e.g., `ride_abc123`). Always use `$1::text[]` for array casts, never `$1::uuid[]`
+- **rider_miss_counts:** Keyed by `email` (PK), not user ID — tracks consecutive no-shows per rider email
+- **shifts.week_start:** When set (DATE), shift only appears that specific week. When NULL, acts as a recurring template
+- **users.active:** Only meaningful for drivers — TRUE when clocked in, FALSE otherwise
+- **notification_preferences:** UNIQUE(user_id, event_type, channel) — lazy-seeded on first GET
 
 ### Configurable Settings (tenant_settings)
 | Key | Default | Type | Category |
@@ -384,78 +342,16 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 
 ## API Endpoints Overview
 
-### Infrastructure & Auth
-- `GET /health` — Health check (unauthenticated)
-- `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
-- `POST /api/auth/signup` — Rider signup (if enabled), `GET /api/auth/signup-allowed`
-- `POST /api/auth/change-password`
+15 route modules in `routes/` — see individual files for full endpoint listings. Role middleware: `requireAuth`, `requireOffice`, `requireStaff`, `requireRider`.
 
-### Configuration (public)
-- `GET /api/tenant-config?campus=slug` — Tenant branding, includes `grace_period_minutes` and `academic_period_label`
-- `GET /api/client-config` — isDev flag
-
-### User Management (requireOffice)
-- `GET /api/admin/users`, `POST /api/admin/users`, `PUT /api/admin/users/:id`, `DELETE /api/admin/users/:id`
-- `GET /api/admin/users/search?member_id=...`, `GET /api/admin/users/:id/profile`
-- `POST /api/admin/users/:id/reset-miss-count`, `POST /api/admin/users/:id/reset-password`
-- `GET /api/admin/email-status`
-
-### Profile (self-service)
-- `GET /api/me`, `PUT /api/me` — Own name/phone
-
-### Employees (requireStaff)
-- `GET /api/employees`, `POST /api/employees/clock-in`, `POST /api/employees/clock-out`
-- `GET /api/employees/today-status`, `GET /api/employees/:id/tardiness` (`?from=&to=`)
-
-### Shifts (requireOffice)
-- `GET /api/shifts`, `POST /api/shifts`, `PUT /api/shifts/:id`, `DELETE /api/shifts/:id`
-
-### Rides
-- `GET /api/rides` — List (requireStaff, optional `?status=`), `POST /api/rides` — Create (requireAuth)
-- `GET /api/my-rides` — Rider's own, `GET /api/locations` — Campus locations
-- Lifecycle: `POST /api/rides/:id/` + `approve|deny|claim|on-the-way|here|complete|no-show|cancel`
-- `POST /api/rides/:id/unassign`, `POST /api/rides/:id/reassign` (`{ driverId }`)
-- `POST /api/rides/:id/set-vehicle`, `PATCH /api/rides/:id/vehicle` (`{ vehicle_id }`, requireStaff)
-- `PUT /api/rides/:id` — Edit with change notes (requireOffice)
-- `POST /api/rides/bulk-delete` (`{ ids: [...] }`), `POST /api/rides/purge-old` (requireOffice)
-
-### Recurring Rides (requireRider)
-- `POST /api/recurring-rides`, `GET /api/recurring-rides/my`, `PATCH /api/recurring-rides/:id`
-
-### Vehicles
-- `GET /api/vehicles` (`?includeRetired=true`), `POST`, `PUT /:id`, `DELETE /:id` (requireOffice)
-- `POST /api/vehicles/:id/retire`, `POST /api/vehicles/:id/maintenance` (requireOffice)
-- `GET /api/vehicles/:id/maintenance` (requireStaff)
-
-### Analytics (requireOffice, all support `?from=&to=`)
-- `summary`, `hotspots`, `frequency`, `vehicles`, `milestones` (no date filter), `semester-report`
-- `tardiness`, `ride-volume` (`?granularity=day|week|month`), `ride-outcomes`, `peak-hours`
-- `routes` (`?limit=20`), `driver-performance`, `driver-utilization`
-- `rider-cohorts`, `rider-no-shows`, `fleet-utilization`, `vehicle-demand`, `shift-coverage`
-- `export-report` — Multi-sheet Excel (.xlsx) download
-
-### Settings (requireOffice)
-- `GET /api/settings`, `PUT /api/settings` (body: `[{ key, value }, ...]`, NOT a plain object)
-- `GET /api/settings/public/operations` (unauthenticated), `GET /api/settings/:key`
-
-### Notifications
-- `GET /api/notifications` (paginated, returns `totalCount`)
-- `PUT /api/notifications/read-all`, `PUT /api/notifications/:id/read`
-- `POST /api/notifications/bulk-delete`, `DELETE /api/notifications/all`, `DELETE /api/notifications/:id`
-
-### Notification Preferences (requireOffice)
-- `GET /api/notification-preferences` (lazy-seeds defaults), `PUT /api/notification-preferences`
-
-### Program Content
-- `GET /api/program-rules` (public), `PUT /api/program-rules` (requireOffice)
-
-### Academic Terms
-- `GET /api/academic-terms` (requireStaff), `POST /api/academic-terms` (requireOffice)
-- `PUT /api/academic-terms/:id` (requireOffice), `DELETE /api/academic-terms/:id` (requireOffice)
-
-### Constants & Dev Tools
-- `NOTIFICATION_EVENT_TYPES`: driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request
-- `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
+### Key Non-Obvious Patterns
+- **`PUT /api/settings`** expects a bare array `[{ key, value }, ...]`, NOT a plain object
+- **Bulk-delete:** Rides and notifications use `POST /api/rides/bulk-delete` / `POST /api/notifications/bulk-delete` with `{ ids: [...] }` body. Notifications also have `DELETE /api/notifications/all` for clearing beyond the 50-item page limit
+- **Analytics endpoints** all support `?from=&to=` date filtering (except `milestones`). Use `GET /api/analytics/{endpoint}`
+- **Ride lifecycle actions:** `POST /api/rides/:id/{action}` where action is `approve|deny|claim|on-the-way|here|complete|no-show|cancel`. Office can claim on behalf with `{ driverId }` in body
+- **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
+- **`NOTIFICATION_EVENT_TYPES`:** driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request
+- **Dev-only:** `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
 
 ## Code Conventions
 
@@ -541,10 +437,10 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 
 ## What NOT to Do
 
-- Don't add React, Vue, or any frontend framework — keep it vanilla JS
+- **React migration in progress:** Rider and driver pages are React (`client/src/rider/`, `client/src/driver/`). Office page remains vanilla JS — don't add React to it yet
 - Don't replace Express with another framework
 - Don't change ride status names (referenced across frontend + backend)
-- Don't use ES module syntax (`import/export`) — project uses CommonJS
+- Don't use ES module syntax (`import/export`) in backend — project uses CommonJS. `client/` uses ES modules (Vite)
 - Don't remove business rule validations (service hours, no-shows, grace period, etc.)
 - Don't expose sensitive data (password hashes, tokens) in API responses
 - Don't skip server-side validation — never trust client input

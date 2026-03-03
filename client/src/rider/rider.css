@@ -1,0 +1,54 @@
+body { padding-bottom: 56px; }
+
+.rider-header { position: sticky; top: 0; z-index: 20; height: 48px; background: var(--color-header-bg); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.rider-header__left { display: flex; align-items: center; gap: 8px; }
+.rider-header__left span { font-weight: 700; font-size: 14px; }
+.rider-main { max-width: 600px; margin: 0 auto; padding: 24px 16px 16px; }
+
+/* Step form */
+.step { display: none; }
+.step.active { display: block; }
+.step-back { background: none; border: none; color: var(--color-primary); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 12px; font-family: inherit; }
+.step-back:hover { text-decoration: underline; }
+
+/* Date chips */
+.date-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+
+/* Confirm summary */
+.confirm-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; }
+.confirm-row:last-child { border-bottom: none; }
+.confirm-label { color: var(--color-text-muted); }
+.confirm-value { font-weight: 600; text-align: right; max-width: 60%; }
+
+/* Hero ride card */
+.ride-hero { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 20px; text-align: center; margin-bottom: 16px; }
+.ride-hero__status { margin-bottom: 12px; }
+.ride-hero__status .status-badge { font-size: 14px; padding: 4px 16px; }
+.ride-hero__route { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.ride-hero__time { font-size: 12px; color: var(--color-text-muted); margin-bottom: 12px; }
+.ride-hero__message { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 16px; line-height: 1.5; }
+
+/* Pulsing dot animation */
+.pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--status-pending); animation: pulse 1.5s ease-in-out infinite; margin-right: 6px; vertical-align: middle; }
+.pulse-dot.approved { background: var(--status-approved); }
+.pulse-dot.on-the-way { background: var(--status-on-the-way); }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+
+/* Animated dots */
+.animated-dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+@keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+/* History row */
+.history-row { padding: 12px 0; border-bottom: 1px solid var(--color-border-light); cursor: pointer; }
+.history-row:last-child { border-bottom: none; }
+.history-row__main { display: flex; justify-content: space-between; align-items: center; }
+.history-row__left { flex: 1; }
+.history-row__route { font-size: 13px; font-weight: 600; }
+.history-row__meta { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.history-row__detail { display: none; padding: 8px 0 4px; font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; }
+.history-row__detail.expanded { display: block; }
+
+/* Recurring rides section */
+.recurring-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+.recurring-item { padding: 10px 0; border-bottom: 1px solid var(--color-border-light); }
+.recurring-item:last-child { border-bottom: none; }

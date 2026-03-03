@@ -1,0 +1,1072 @@
+<!-- LEGACY: kept for reference during migration. Active rider is React (client/). -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rider Console</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="/css/rideops-theme.css">
+  <script src="/js/rideops-utils.js"></script>
+  <script src="/campus-themes.js"></script>
+  <script>
+    // Synchronous FOUC prevention: apply campus colors and title before first paint
+    (function() {
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      var slug = ['usc','stanford','ucla','uci'].indexOf(parts[0]) !== -1 ? parts[0] : null;
+      if (slug) {
+        var titles = { usc: 'USC DART', stanford: 'Stanford ATS', ucla: 'UCLA BruinAccess', uci: 'UCI AnteaterExpress' };
+        if (titles[slug]) document.title = titles[slug] + ' Rider';
+      }
+      if (slug && typeof CAMPUS_THEMES !== 'undefined' && CAMPUS_THEMES[slug]) {
+        var ct = CAMPUS_THEMES[slug];
+        var root = document.documentElement;
+        root.style.setProperty('--color-primary', ct.primaryColor);
+        root.style.setProperty('--color-primary-rgb', hexToRgb(ct.primaryColor));
+        if (ct.headerBg) root.style.setProperty('--color-header-bg', ct.headerBg);
+        if (ct.secondaryColor) root.style.setProperty('--color-secondary', ct.secondaryColor);
+        if (ct.secondaryColor) root.style.setProperty('--color-accent', ct.secondaryColor);
+      }
+    })();
+  </script>
+  <!-- Locations loaded dynamically from /api/locations -->
+  <style>
+    body { padding-bottom: 56px; }
+    .rider-header { position: sticky; top: 0; z-index: 20; height: 48px; background: var(--color-header-bg); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+    .rider-header__left { display: flex; align-items: center; gap: 8px; }
+    .rider-header__left span { font-weight: 700; font-size: 14px; }
+    .rider-main { max-width: 600px; margin: 0 auto; padding: 24px 16px 16px; }
+
+    /* Step form */
+    .step { display: none; }
+    .step.active { display: block; }
+    .step-back { background: none; border: none; color: var(--color-primary); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 12px; font-family: inherit; }
+    .step-back:hover { text-decoration: underline; }
+
+    /* Date chips */
+    .date-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+
+    /* Confirm summary */
+    .confirm-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; }
+    .confirm-row:last-child { border-bottom: none; }
+    .confirm-label { color: var(--color-text-muted); }
+    .confirm-value { font-weight: 600; text-align: right; max-width: 60%; }
+
+    /* Hero ride card */
+    .ride-hero { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 20px; text-align: center; margin-bottom: 16px; }
+    .ride-hero__status { margin-bottom: 12px; }
+    .ride-hero__status .status-badge { font-size: 14px; padding: 4px 16px; }
+    .ride-hero__route { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .ride-hero__time { font-size: 12px; color: var(--color-text-muted); margin-bottom: 12px; }
+    .ride-hero__message { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 16px; line-height: 1.5; }
+
+    /* Pulsing dot animation */
+    .pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--status-pending); animation: pulse 1.5s ease-in-out infinite; margin-right: 6px; vertical-align: middle; }
+    .pulse-dot.approved { background: var(--status-approved); }
+    .pulse-dot.on-the-way { background: var(--status-on-the-way); }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+
+    /* Animated dots */
+    .animated-dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+    @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+    /* History row */
+    .history-row { padding: 12px 0; border-bottom: 1px solid var(--color-border-light); cursor: pointer; }
+    .history-row:last-child { border-bottom: none; }
+    .history-row__main { display: flex; justify-content: space-between; align-items: center; }
+    .history-row__left { flex: 1; }
+    .history-row__route { font-size: 13px; font-weight: 600; }
+    .history-row__meta { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+    .history-row__detail { display: none; padding: 8px 0 4px; font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; }
+    .history-row__detail.expanded { display: block; }
+
+    /* Recurring rides section */
+    .recurring-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+    .recurring-item { padding: 10px 0; border-bottom: 1px solid var(--color-border-light); }
+    .recurring-item:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+  <header class="rider-header">
+    <div class="rider-header__left">
+      <span id="org-short-name">RideOps</span>
+      <span style="color:var(--color-text-muted); font-weight:400;">Rider</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="notif-bell" id="notif-bell-btn" title="Notifications">
+        <i class="ti ti-bell"></i>
+        <span class="notif-badge" id="notif-badge"></span>
+      </button>
+      <button class="ro-btn ro-btn--outline ro-btn--sm" id="gear-btn"><i class="ti ti-settings"></i></button>
+    </div>
+  </header>
+
+  <main class="rider-main">
+    <div id="terminated-banner" style="display:none; background:rgba(239,68,68,0.08); color:var(--status-no-show); padding:14px 16px; border-radius:var(--radius-sm); margin:0 16px 12px; font-size:13px; font-weight:600; line-height:1.5;">
+      <i class="ti ti-alert-circle" style="vertical-align:middle; margin-right:4px;"></i>
+      Your ride privileges have been suspended due to repeated no-shows. Please contact the transportation office to reinstate your account.
+    </div>
+    <!-- Book Panel -->
+    <div class="tab-panel active" id="book-panel">
+      <div class="step-indicator mb-16" id="step-indicator">
+        <div class="step-dot active" data-step="1"></div>
+        <div class="step-dot" data-step="2"></div>
+        <div class="step-dot" data-step="3"></div>
+      </div>
+
+      <!-- Step 1: Where -->
+      <div class="step active" id="step-1">
+        <h3 style="font-size:16px; font-weight:700; margin:0 0 4px;">Where are you going?</h3>
+        <p class="text-muted text-sm mb-16" id="service-scope-text">Campus locations only.</p>
+        <div style="margin-bottom:12px;">
+          <label class="ro-label">From</label>
+          <select id="pickup-location" class="ro-select"><option value="">Select pickup</option></select>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label class="ro-label">To</label>
+          <select id="dropoff-location" class="ro-select"><option value="">Select dropoff</option></select>
+        </div>
+        <button class="ro-btn ro-btn--primary ro-btn--full" id="step1-next">NEXT <i class="ti ti-arrow-right"></i></button>
+      </div>
+
+      <!-- Step 2: When -->
+      <div class="step" id="step-2">
+        <button class="step-back" id="step2-back"><i class="ti ti-arrow-left"></i> Back</button>
+        <h3 style="font-size:16px; font-weight:700; margin:0 0 4px;">When do you need a ride?</h3>
+        <p class="text-muted text-sm mb-16">Mon-Fri, 8:00 AM - 7:00 PM</p>
+        <label class="ro-label">Date</label>
+        <div class="date-chips" id="date-chips"></div>
+        <div style="margin-bottom:16px;">
+          <label class="ro-label">Time</label>
+          <input type="time" id="ride-time" class="ro-input" min="08:00" max="19:00">
+        </div>
+        <button class="ro-btn ro-btn--primary ro-btn--full" id="step2-next" disabled>NEXT <i class="ti ti-arrow-right"></i></button>
+      </div>
+
+      <!-- Step 3: Confirm -->
+      <div class="step" id="step-3">
+        <button class="step-back" id="step3-back"><i class="ti ti-arrow-left"></i> Back</button>
+        <h3 style="font-size:16px; font-weight:700; margin:0 0 12px;">Confirm your ride</h3>
+        <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:16px; margin-bottom:16px;">
+          <div class="confirm-row"><span class="confirm-label">From</span><span class="confirm-value" id="confirm-from"></span></div>
+          <div class="confirm-row"><span class="confirm-label">To</span><span class="confirm-value" id="confirm-to"></span></div>
+          <div class="confirm-row"><span class="confirm-label">When</span><span class="confirm-value" id="confirm-when"></span></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label class="ro-label">Notes (optional)</label>
+          <textarea id="notes" class="ro-input" rows="3" placeholder="Accessibility needs, exact spot, etc."></textarea>
+        </div>
+        <!-- Recurring ride toggle -->
+        <div style="margin-bottom:16px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; font-weight:600;">
+            <input type="checkbox" id="recurring-toggle" style="width:18px; height:18px; accent-color:var(--color-primary);">
+            <i class="ti ti-repeat" style="font-size:16px; color:var(--color-primary);"></i> Make this a recurring ride
+          </label>
+        </div>
+        <div id="recurring-options" style="display:none; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:16px; margin-bottom:16px;">
+          <label class="ro-label">Repeat on (Mon–Fri)</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;" id="recurring-days">
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="1" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Mon</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="2" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Tue</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="3" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Wed</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="4" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Thu</label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;"><input type="checkbox" value="5" class="recurring-day-cb" style="accent-color:var(--color-primary);"> Fri</label>
+          </div>
+          <label class="ro-label">End date</label>
+          <input type="date" id="recurring-end-date" class="ro-input">
+        </div>
+        <button class="ro-btn ro-btn--primary ro-btn--action ro-btn--full" id="confirm-btn">CONFIRM REQUEST</button>
+      </div>
+    </div>
+
+    <!-- My Rides Panel -->
+    <div class="tab-panel" id="myrides-panel">
+      <div id="myrides-content"></div>
+    </div>
+
+    <!-- History Panel -->
+    <div class="tab-panel" id="history-panel">
+      <h3 style="font-size:16px; font-weight:700; margin:0 0 16px;">Ride History</h3>
+      <div id="history-content"></div>
+      <div id="history-load-more" style="text-align:center; padding:12px; display:none;">
+        <button class="ro-btn ro-btn--outline ro-btn--sm" id="load-more-btn">Load More</button>
+      </div>
+      <div class="recurring-section" id="recurring-section" style="display:none;">
+        <h4 style="font-size:14px; font-weight:700; margin:0 0 12px;"><i class="ti ti-repeat" style="margin-right:4px;"></i> Recurring Rides</h4>
+        <div id="recurring-content"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Tabs -->
+  <nav class="ro-bottom-tabs">
+    <button class="ro-bottom-tab active" data-target="book-panel"><i class="ti ti-plus"></i>Book</button>
+    <button class="ro-bottom-tab" data-target="myrides-panel"><i class="ti ti-list"></i>My Rides</button>
+    <button class="ro-bottom-tab" data-target="history-panel"><i class="ti ti-clock-hour-3"></i>History</button>
+  </nav>
+
+  <script>
+    var locations = [];
+    var meUser = null;
+    var allRides = [];
+    var historyLimit = 20;
+    var selectedDate = null;
+    var graceInterval = null;
+    var lastHistoryHash = '';
+
+    // ── Init ──
+    var opsConfig = null;
+    async function init() {
+      var me = await fetchMe();
+      if (!me) { window.location.href = '/login'; return; }
+      if (!me.demoMode && me.role !== 'rider') {
+        window.location.href = me.role === 'office' ? '/' : '/driver.html';
+        return;
+      }
+      meUser = me;
+      // Show termination banner if rider is suspended
+      if (me.terminated) {
+        document.getElementById('terminated-banner').style.display = 'block';
+        document.getElementById('book-panel').style.display = 'none';
+        // Switch to My Rides tab since booking is disabled
+        var myRidesTab = document.querySelector('[data-target="myrides-panel"]');
+        if (myRidesTab) myRidesTab.click();
+      }
+      // Enrich meUser with profile fields from /api/me
+      fetch('/api/me').then(function(r) { return r.json(); }).then(function(p) {
+        Object.assign(meUser, p);
+      }).catch(function() {});
+      opsConfig = await getOpsConfig();
+      applyTenantTheme();
+      initBottomTabs();
+      await loadLocations();
+      initStepNav();
+      applyDynamicServiceHours();
+      buildDateChips();
+      setDefaultTime();
+      document.getElementById('gear-btn').onclick = openAccountDrawer;
+      initNotificationBell('#notif-bell-btn');
+      await loadAllRides();
+      autoSwitchToActiveRide();
+      function startRiderPolling() {
+        stopRiderPolling();
+        window._pollIntervals = [setInterval(loadAllRides, 5000)];
+      }
+      function stopRiderPolling() {
+        if (window._pollIntervals) {
+          window._pollIntervals.forEach(function(id) { clearInterval(id); });
+          window._pollIntervals = [];
+        }
+      }
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) { stopRiderPolling(); }
+        else { loadAllRides(); startRiderPolling(); }
+      });
+      startRiderPolling();
+    }
+
+    function applyDynamicServiceHours() {
+      // Update service hours text
+      var svcText = document.querySelector('#step-2 .text-muted.text-sm');
+      if (svcText && opsConfig) svcText.textContent = formatServiceHoursText(opsConfig);
+      // Update time input min/max
+      var timeInput = document.getElementById('ride-time');
+      if (timeInput && opsConfig) {
+        timeInput.min = opsConfig.service_hours_start || '08:00';
+        timeInput.max = opsConfig.service_hours_end || '19:00';
+      }
+      // Build recurring day checkboxes dynamically
+      var recurDaysContainer = document.getElementById('recurring-days');
+      if (recurDaysContainer && opsConfig) {
+        var opDays = String(opsConfig.operating_days || '0,1,2,3,4').split(',').map(Number).sort();
+        var labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        recurDaysContainer.innerHTML = '';
+        opDays.forEach(function(d) {
+          var lbl = document.createElement('label');
+          lbl.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;';
+          lbl.innerHTML = '<input type="checkbox" value="' + d + '" class="recurring-day-cb" style="accent-color:var(--color-primary);"> ' + labels[d];
+          recurDaysContainer.appendChild(lbl);
+        });
+        // Update label text
+        var recurLabel = recurDaysContainer.previousElementSibling;
+        if (recurLabel && recurLabel.classList.contains('ro-label')) {
+          var dayRange = opDays.length > 2 ? labels[opDays[0]] + '\u2013' + labels[opDays[opDays.length - 1]] : opDays.map(function(d) { return labels[d]; }).join(', ');
+          recurLabel.textContent = 'Repeat on (' + dayRange + ')';
+        }
+      }
+    }
+
+    async function fetchMe() {
+      try { var res = await fetch('/api/auth/me'); if (!res.ok) return null; return res.json(); }
+      catch(e) { return null; }
+    }
+
+    // ── Tenant config ──
+    (function() {
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      var campusSlug = ['usc','stanford','ucla','uci'].indexOf(parts[0]) !== -1 ? parts[0] : '';
+      var url = '/api/tenant-config' + (campusSlug ? '?campus=' + campusSlug : '');
+      fetch(url).then(function(r) { return r.ok ? r.json() : null; }).then(function(c) {
+        if (!c) return;
+        document.title = (c.orgShortName || 'RideOps') + ' Rider';
+        var el = document.getElementById('org-short-name');
+        if (el) el.textContent = c.orgShortName || 'RideOps';
+        // applyTenantTheme() is called by init() — no need to double-fetch here
+      }).catch(function() {});
+    })();
+
+    // ── Locations ──
+    async function loadLocations() {
+      try { var res = await fetch(locationsUrl()); locations = await res.json(); }
+      catch(e) { locations = []; }
+      var pickupSel = document.getElementById('pickup-location');
+      var dropoffSel = document.getElementById('dropoff-location');
+      [pickupSel, dropoffSel].forEach(function(sel) {
+        sel.innerHTML = '<option value="">Select location</option>';
+        locations.forEach(function(loc) {
+          var label = typeof loc === 'string' ? loc : (loc.label || loc.value);
+          if (!label) return;
+          var opt = document.createElement('option');
+          opt.value = label;
+          opt.textContent = label;
+          sel.appendChild(opt);
+        });
+      });
+    }
+
+    // ── 3-Step Booking ──
+    var currentStep = 1;
+
+    function initStepNav() {
+      var pickupSel = document.getElementById('pickup-location');
+      var dropoffSel = document.getElementById('dropoff-location');
+      var step1Next = document.getElementById('step1-next');
+      var step2Next = document.getElementById('step2-next');
+      var rideTime = document.getElementById('ride-time');
+
+      pickupSel.onchange = function() { pickupSel.style.borderColor = ''; };
+      dropoffSel.onchange = function() { dropoffSel.style.borderColor = ''; };
+
+      step1Next.onclick = function() {
+        if (!pickupSel.value) {
+          pickupSel.style.borderColor = 'var(--status-no-show)';
+          showToastNew('Please select a pickup location', 'error');
+          return;
+        }
+        if (!dropoffSel.value) {
+          dropoffSel.style.borderColor = 'var(--status-no-show)';
+          showToastNew('Please select a dropoff location', 'error');
+          return;
+        }
+        pickupSel.style.borderColor = '';
+        dropoffSel.style.borderColor = '';
+        goToStep(2);
+      };
+      document.getElementById('step2-back').onclick = function() { goToStep(1); };
+      document.getElementById('step3-back').onclick = function() { goToStep(2); };
+
+      function checkStep2() {
+        step2Next.disabled = !(selectedDate && rideTime.value);
+      }
+      rideTime.onchange = checkStep2;
+      rideTime.oninput = checkStep2;
+
+      step2Next.onclick = function() {
+        // Populate confirm
+        document.getElementById('confirm-from').textContent = pickupSel.value;
+        document.getElementById('confirm-to').textContent = dropoffSel.value;
+        var dt = new Date(selectedDate + 'T' + rideTime.value + ':00');
+        document.getElementById('confirm-when').textContent = dt.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+        // Reset recurring toggle and pre-check matching day
+        document.getElementById('recurring-toggle').checked = false;
+        document.getElementById('recurring-options').style.display = 'none';
+        document.getElementById('confirm-btn').textContent = 'CONFIRM REQUEST';
+        // Pre-check the matching day (0=Mon convention)
+        var jsDay = new Date(selectedDate + 'T12:00:00').getDay();
+        var ourDay = jsDateToOurDay(jsDay);
+        document.querySelectorAll('.recurring-day-cb').forEach(function(cb) {
+          cb.checked = (Number(cb.value) === ourDay);
+        });
+        // Set end date min to selected date
+        var endDateInput = document.getElementById('recurring-end-date');
+        endDateInput.min = selectedDate;
+        endDateInput.value = '';
+
+        goToStep(3);
+      };
+
+      document.getElementById('confirm-btn').onclick = submitRide;
+
+      // Recurring toggle behavior
+      var recurToggle = document.getElementById('recurring-toggle');
+      var recurOptions = document.getElementById('recurring-options');
+      var confirmBtn = document.getElementById('confirm-btn');
+      recurToggle.onchange = function() {
+        recurOptions.style.display = recurToggle.checked ? 'block' : 'none';
+        confirmBtn.textContent = recurToggle.checked ? 'CONFIRM RECURRING REQUEST' : 'CONFIRM REQUEST';
+      };
+    }
+
+    function goToStep(step) {
+      currentStep = step;
+      document.querySelectorAll('.step').forEach(function(s) { s.classList.remove('active'); });
+      var el = document.getElementById('step-' + step);
+      if (el) el.classList.add('active');
+      // Update step indicator
+      document.querySelectorAll('.step-dot').forEach(function(dot) {
+        var s = parseInt(dot.dataset.step);
+        dot.classList.remove('active', 'completed');
+        if (s === step) dot.classList.add('active');
+        else if (s < step) dot.classList.add('completed');
+      });
+      // Re-check step 2 validity when navigating to it
+      if (step === 2) {
+        var rideTime = document.getElementById('ride-time');
+        document.getElementById('step2-next').disabled = !(selectedDate && rideTime.value);
+      }
+    }
+
+    function buildDateChips() {
+      var container = document.getElementById('date-chips');
+      container.innerHTML = '';
+      var today = new Date();
+      today.setHours(0,0,0,0);
+      var chips = [];
+      var d = new Date(today);
+      var count = 0;
+      var opDays = opsConfig ? String(opsConfig.operating_days || '0,1,2,3,4').split(',').map(Number) : [0,1,2,3,4];
+      // Generate next 7 operating days
+      for (var i = 0; i < 30 && count < 7; i++) {
+        var test = new Date(d);
+        test.setDate(test.getDate() + i);
+        var dow = test.getDay();
+        if (opDays.indexOf(jsDateToOurDay(dow)) === -1) continue;
+        var label;
+        if (count === 0 && test.getTime() === today.getTime() && today.getDay() >= 1 && today.getDay() <= 5) {
+          label = 'Today';
+        } else if (count <= 1) {
+          var tmrw = new Date(today);
+          tmrw.setDate(tmrw.getDate() + 1);
+          if (test.getTime() === tmrw.getTime()) label = 'Tomorrow';
+          else label = test.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        } else {
+          label = test.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+        var iso = test.getFullYear() + '-' + String(test.getMonth()+1).padStart(2,'0') + '-' + String(test.getDate()).padStart(2,'0');
+        chips.push({ label: label, value: iso });
+        count++;
+      }
+      chips.forEach(function(chip) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'filter-pill';
+        btn.textContent = chip.label;
+        btn.dataset.date = chip.value;
+        btn.onclick = function() {
+          container.querySelectorAll('.filter-pill').forEach(function(p) { p.classList.remove('active'); });
+          btn.classList.add('active');
+          selectedDate = chip.value;
+          // Re-check step 2
+          var rideTime = document.getElementById('ride-time');
+          document.getElementById('step2-next').disabled = !(selectedDate && rideTime.value);
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function setDefaultTime() {
+      var svcStart = opsConfig ? String(opsConfig.service_hours_start || '08:00').split(':').map(Number) : [8, 0];
+      var svcEnd = opsConfig ? String(opsConfig.service_hours_end || '19:00').split(':').map(Number) : [19, 0];
+      var startH = svcStart[0], endH = svcEnd[0];
+      var now = new Date();
+      var h = now.getHours();
+      var m = now.getMinutes();
+      m = m > 30 ? 0 : 30;
+      if (m === 0) h++;
+      if (h < startH) h = startH;
+      if (h >= endH) h = startH;
+      document.getElementById('ride-time').value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+
+    async function submitRide() {
+      var btn = document.getElementById('confirm-btn');
+      var isRecurring = document.getElementById('recurring-toggle').checked;
+      var btnLabel = isRecurring ? 'CONFIRM RECURRING REQUEST' : 'CONFIRM REQUEST';
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+      var pickup = document.getElementById('pickup-location').value;
+      var dropoff = document.getElementById('dropoff-location').value;
+      var time = document.getElementById('ride-time').value;
+      var notes = document.getElementById('notes').value.trim();
+
+      try {
+        var res;
+        if (isRecurring) {
+          // Gather selected days
+          var days = [];
+          document.querySelectorAll('.recurring-day-cb:checked').forEach(function(cb) {
+            days.push(Number(cb.value));
+          });
+          if (!days.length) {
+            showToastNew('Select at least one day of the week', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          var endDate = document.getElementById('recurring-end-date').value;
+          if (!endDate) {
+            showToastNew('Select an end date for the recurring rides', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          res = await fetch('/api/recurring-rides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickup,
+              dropoffLocation: dropoff,
+              timeOfDay: time,
+              daysOfWeek: days,
+              startDate: selectedDate,
+              endDate: endDate,
+              notes: notes,
+              riderPhone: meUser.phone || null
+            })
+          });
+          if (!res.ok) {
+            var err = await res.json();
+            showToastNew(err.error || 'Could not create recurring rides', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          var data = await res.json();
+          showToastNew(data.createdRides + ' recurring ride' + (data.createdRides !== 1 ? 's' : '') + ' created!', 'success');
+        } else {
+          var requestedTime = new Date(selectedDate + 'T' + time + ':00').toISOString();
+          res = await fetch('/api/rides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickup,
+              dropoffLocation: dropoff,
+              requestedTime: requestedTime,
+              riderName: meUser.name,
+              notes: notes
+            })
+          });
+          if (!res.ok) {
+            var err = await res.json();
+            showToastNew(err.error || 'Could not submit request', 'error');
+            btn.disabled = false;
+            btn.textContent = btnLabel;
+            return;
+          }
+          showToastNew('Ride requested!', 'success');
+        }
+        // Reset form
+        document.getElementById('pickup-location').value = '';
+        document.getElementById('dropoff-location').value = '';
+        document.getElementById('notes').value = '';
+        document.getElementById('recurring-toggle').checked = false;
+        document.getElementById('recurring-options').style.display = 'none';
+        selectedDate = null;
+        document.querySelectorAll('#date-chips .filter-pill').forEach(function(p) { p.classList.remove('active'); });
+        goToStep(1);
+        // Switch to My Rides
+        switchToTab('myrides-panel');
+        await loadAllRides();
+      } catch(e) {
+        showToastNew('Network error', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'CONFIRM REQUEST';
+      }
+    }
+
+    // ── Rides Loading ──
+    async function loadAllRides() {
+      try {
+        var res = await fetch('/api/my-rides');
+        if (!res.ok) throw new Error();
+        allRides = await res.json();
+      } catch(e) {
+        allRides = [];
+      }
+      renderMyRides();
+      renderHistory();
+      loadRecurring();
+    }
+
+    function isActiveStatus(status) {
+      return ['pending','approved','scheduled','driver_on_the_way','driver_arrived_grace'].indexOf(status) >= 0;
+    }
+
+    function isTerminalStatus(status) {
+      return ['completed','no_show','denied','cancelled'].indexOf(status) >= 0;
+    }
+
+    function autoSwitchToActiveRide() {
+      var hasActiveRide = allRides.some(function(r) { return isActiveStatus(r.status); });
+      if (hasActiveRide) {
+        switchToTab('myrides-panel');
+      } else {
+        switchToTab('book-panel');
+      }
+    }
+
+    function switchToTab(targetId) {
+      document.querySelectorAll('.ro-bottom-tab').forEach(function(t) { t.classList.remove('active'); });
+      var matchTab = document.querySelector('.ro-bottom-tab[data-target="' + targetId + '"]');
+      if (matchTab) matchTab.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+      var panel = document.getElementById(targetId);
+      if (panel) panel.classList.add('active');
+    }
+
+    // ── My Rides Panel ──
+    function renderMyRides() {
+      var container = document.getElementById('myrides-content');
+      var active = allRides.filter(function(r) { return isActiveStatus(r.status); });
+      active.sort(function(a,b) { return new Date(a.requestedTime) - new Date(b.requestedTime); });
+
+      if (active.length === 0) {
+        container.innerHTML =
+          '<div class="ro-empty">' +
+          '<i class="ti ti-car-off"></i>' +
+          '<div class="ro-empty__title">No active rides</div>' +
+          '<div class="ro-empty__message">Book a ride to get started!</div>' +
+          '<button class="ro-btn ro-btn--primary ro-btn--sm" style="margin-top:12px;" onclick="switchToTab(\'book-panel\')"><i class="ti ti-plus"></i> Book a Ride</button>' +
+          '</div>';
+        if (graceInterval) { clearInterval(graceInterval); graceInterval = null; }
+        return;
+      }
+
+      var html = '';
+      // Hero card for the first active ride
+      var hero = active[0];
+      html += renderHeroCard(hero);
+
+      // Additional active rides as strip rows
+      if (active.length > 1) {
+        html += '<div style="margin-top:16px;">';
+        html += '<div class="text-sm fw-600 text-muted mb-8">' + (active.length - 1) + ' more active ride' + (active.length > 2 ? 's' : '') + '</div>';
+        html += '<div class="strip-list">';
+        for (var i = 1; i < active.length; i++) {
+          var r = active[i];
+          html += '<div class="strip-row" style="flex-direction:column; align-items:flex-start; gap:4px;">';
+          html += '<div>' + statusBadge(r.status) + '</div>';
+          html += '<div style="font-size:13px; font-weight:600;">' + escHtml(r.pickupLocation) + ' <i class="ti ti-arrow-right" style="font-size:12px;"></i> ' + escHtml(r.dropoffLocation) + '</div>';
+          html += '<div class="text-xs text-muted">' + formatDateTime(r.requestedTime) + '</div>';
+          if (r.status === 'pending' || (r.status === 'approved' && !r.assignedDriverId)) {
+            html += '<button class="ro-btn ro-btn--outline ro-btn--sm" onclick="cancelRide(\'' + r.id + '\')">Cancel</button>';
+          }
+          html += '</div>';
+        }
+        html += '</div></div>';
+      }
+
+      container.innerHTML = html;
+
+      // Start grace timer if needed
+      if (hero.status === 'driver_arrived_grace' && hero.graceStartTime) {
+        startGraceTimer(hero.graceStartTime);
+      } else {
+        if (graceInterval) { clearInterval(graceInterval); graceInterval = null; }
+      }
+    }
+
+    function renderHeroCard(ride) {
+      var h = '<div class="ride-hero">';
+      h += '<div class="ride-hero__status">' + statusBadge(ride.status) + '</div>';
+      h += '<div class="ride-hero__route">' + escHtml(ride.pickupLocation) + ' <i class="ti ti-arrow-right" style="font-size:14px; vertical-align:middle;"></i> ' + escHtml(ride.dropoffLocation) + '</div>';
+      h += '<div class="ride-hero__time">' + formatDateTime(ride.requestedTime) + '</div>';
+
+      // Status-specific content
+      if (ride.status === 'pending') {
+        h += '<div class="ride-hero__message"><span class="pulse-dot"></span> Waiting for approval<span class="animated-dots"></span></div>';
+      } else if (ride.status === 'approved') {
+        h += '<div class="ride-hero__message"><span class="pulse-dot approved"></span> Approved! Waiting for a driver<span class="animated-dots"></span></div>';
+      } else if (ride.status === 'scheduled') {
+        h += '<div class="ride-hero__message"><i class="ti ti-user-check" style="color:var(--status-scheduled);"></i> Driver assigned</div>';
+      } else if (ride.status === 'driver_on_the_way') {
+        h += '<div class="ride-hero__message"><span class="pulse-dot on-the-way"></span> Your driver is on the way<span class="animated-dots"></span></div>';
+      } else if (ride.status === 'driver_arrived_grace') {
+        h += '<div class="ride-hero__message"><i class="ti ti-map-pin-check" style="color:var(--status-grace); font-size:18px;"></i> Your driver has arrived!</div>';
+        h += '<div class="grace-timer" id="grace-timer-container">';
+        h += '<div class="grace-timer__circle">';
+        h += '<svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="54"></circle><circle class="progress" id="grace-progress" cx="60" cy="60" r="54" stroke-dasharray="339.3" stroke-dashoffset="0"></circle></svg>';
+        var graceMinDisplay = opsConfig ? Math.round(Number(opsConfig.grace_period_minutes || 5)) : 5;
+        h += '<div class="grace-timer__time" id="grace-time-display">' + graceMinDisplay + ':00</div>';
+        h += '</div>';
+        h += '<div class="grace-timer__label">Your driver is waiting</div>';
+        h += '</div>';
+      }
+
+      // Driver profile card for active rides with an assigned driver
+      if (['scheduled','driver_on_the_way','driver_arrived_grace'].indexOf(ride.status) >= 0 && ride.assignedDriverId) {
+        var driverProfile = {
+          name: ride.driverName,
+          preferredName: ride.driverPreferredName,
+          avatarUrl: ride.driverAvatar,
+          bio: ride.driverBio
+        };
+        h += '<div style="margin-top:16px;">' + profileCardHTML(driverProfile, { variant: 'hero' }) + '</div>';
+        if (ride.driverPhone) {
+          h += '<a href="sms:' + escHtml(ride.driverPhone) + '" class="ro-btn ro-btn--outline ro-btn--full" style="margin-top:12px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px;">';
+          h += '<i class="ti ti-message"></i> Text Driver';
+          h += '</a>';
+        }
+      }
+
+      if (ride.notes) {
+        h += '<div style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"><i class="ti ti-note" style="margin-right:4px;"></i> ' + escHtml(ride.notes) + '</div>';
+      }
+
+      // Cancel button for pending/approved only
+      if (ride.status === 'pending' || (ride.status === 'approved' && !ride.assignedDriverId)) {
+        h += '<button class="ro-btn ro-btn--outline ro-btn--full" style="margin-top:16px;" onclick="cancelRide(\'' + ride.id + '\')">Cancel Ride</button>';
+      }
+
+      h += '</div>';
+      return h;
+    }
+
+    function startGraceTimer(graceStartTime) {
+      if (graceInterval) clearInterval(graceInterval);
+      var graceMins = opsConfig ? Number(opsConfig.grace_period_minutes || 5) : 5;
+      var GRACE_MS = graceMins * 60 * 1000;
+      var circumference = 2 * Math.PI * 54;
+
+      function updateTimer() {
+        var elapsed = Date.now() - new Date(graceStartTime).getTime();
+        var remaining = Math.max(0, GRACE_MS - elapsed);
+        var mins = Math.floor(remaining / 60000);
+        var secs = Math.floor((remaining % 60000) / 1000);
+        var display = document.getElementById('grace-time-display');
+        var progress = document.getElementById('grace-progress');
+        if (display) display.textContent = mins + ':' + String(secs).padStart(2, '0');
+        if (progress) {
+          var fraction = remaining / GRACE_MS;
+          progress.setAttribute('stroke-dashoffset', String(circumference * (1 - fraction)));
+        }
+        if (remaining <= 0 && graceInterval) {
+          clearInterval(graceInterval);
+          graceInterval = null;
+        }
+      }
+      updateTimer();
+      graceInterval = setInterval(updateTimer, 1000);
+    }
+
+    // ── History Panel ──
+    function renderHistory() {
+      var container = document.getElementById('history-content');
+      var terminal = allRides.filter(function(r) { return isTerminalStatus(r.status); });
+      terminal.sort(function(a,b) { return new Date(b.requestedTime) - new Date(a.requestedTime); });
+      // Skip re-render if data hasn't changed (preserves expanded rows)
+      var hash = terminal.map(function(r) { return r.id + r.status; }).join(',');
+      if (hash === lastHistoryHash) return;
+      lastHistoryHash = hash;
+
+      if (terminal.length === 0) {
+        container.innerHTML =
+          '<div class="ro-empty">' +
+          '<i class="ti ti-history-off"></i>' +
+          '<div class="ro-empty__title">No ride history yet</div>' +
+          '<div class="ro-empty__message">Your completed rides will appear here.</div>' +
+          '</div>';
+        document.getElementById('history-load-more').style.display = 'none';
+        return;
+      }
+
+      var limited = terminal.slice(0, historyLimit);
+      var html = '';
+      limited.forEach(function(ride, idx) {
+        html += '<div class="history-row" onclick="toggleHistoryDetail(' + idx + ')">';
+        html += '<div class="history-row__main">';
+        html += '<div class="history-row__left">';
+        html += '<div class="history-row__route">' + escHtml(ride.pickupLocation) + ' <i class="ti ti-arrow-right" style="font-size:11px;"></i> ' + escHtml(ride.dropoffLocation) + '</div>';
+        html += '<div class="history-row__meta">' + formatDate(ride.requestedTime) + ' &middot; ' + formatTime(ride.requestedTime) + '</div>';
+        html += '</div>';
+        html += statusBadge(ride.status);
+        html += '</div>';
+        html += '<div class="history-row__detail" id="history-detail-' + idx + '">';
+        html += '<div>Requested: ' + formatDateTime(ride.requestedTime) + '</div>';
+        if (ride.notes) html += '<div>Notes: ' + escHtml(ride.notes) + '</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+
+      // Show/hide load more
+      var loadMoreWrap = document.getElementById('history-load-more');
+      if (terminal.length > historyLimit) {
+        loadMoreWrap.style.display = 'block';
+        document.getElementById('load-more-btn').onclick = function() {
+          historyLimit += 20;
+          renderHistory();
+        };
+      } else {
+        loadMoreWrap.style.display = 'none';
+      }
+    }
+
+    function toggleHistoryDetail(idx) {
+      var el = document.getElementById('history-detail-' + idx);
+      if (el) el.classList.toggle('expanded');
+    }
+
+    // ── Recurring Rides ──
+    async function loadRecurring() {
+      try {
+        var res = await fetch('/api/recurring-rides/my');
+        if (!res.ok) return;
+        var rows = await res.json();
+        renderRecurring(rows);
+      } catch(e) {}
+    }
+
+    function renderRecurring(rows) {
+      var section = document.getElementById('recurring-section');
+      var container = document.getElementById('recurring-content');
+      if (!rows || rows.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = 'block';
+      var html = '';
+      rows.forEach(function(r) {
+        html += '<div class="recurring-item">';
+        html += '<div style="font-size:13px; font-weight:600;">' + escHtml(r.pickup_location) + ' <i class="ti ti-arrow-right" style="font-size:11px;"></i> ' + escHtml(r.dropoff_location) + '</div>';
+        html += '<div class="text-xs text-muted" style="margin-top:2px;">' + formatTimeAmPm(r.time_of_day) + ' &middot; ' + formatDaysOfWeek(r.days_of_week) + '</div>';
+        html += '<div class="text-xs text-muted">' + formatDateReadable(r.start_date) + ' \u2013 ' + formatDateReadable(r.end_date) + '</div>';
+        var statusLabel = r.status.charAt(0).toUpperCase() + r.status.slice(1);
+        html += '<div class="text-xs text-muted">' + statusLabel + ' &middot; ' + (r.upcomingCount || 0) + ' upcoming</div>';
+        if (r.status === 'active') {
+          html += '<button class="ro-btn ro-btn--outline ro-btn--sm" style="margin-top:6px;" onclick="cancelRecurring(\'' + r.id + '\')">Cancel Series</button>';
+        }
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }
+
+    // ── Cancel Actions ──
+    async function cancelRide(id) {
+      showModalNew({
+        title: 'Cancel Ride',
+        body: 'Are you sure you want to cancel this ride request?',
+        confirmLabel: 'Cancel Ride',
+        confirmClass: 'ro-btn--danger',
+        onConfirm: async function() {
+          try {
+            var res = await fetch('/api/rides/' + id + '/cancel', { method: 'POST' });
+            if (!res.ok) {
+              var err = await res.json();
+              showToastNew(err.error || 'Could not cancel', 'error');
+              return;
+            }
+            showToastNew('Ride cancelled', 'success');
+            await loadAllRides();
+          } catch(e) {
+            showToastNew('Network error', 'error');
+          }
+        }
+      });
+    }
+
+    async function cancelRecurring(id) {
+      showModalNew({
+        title: 'Cancel Recurring Series',
+        body: 'Cancel this series and all future rides?',
+        confirmLabel: 'Cancel Series',
+        confirmClass: 'ro-btn--danger',
+        onConfirm: async function() {
+          try {
+            var res = await fetch('/api/recurring-rides/' + id, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'cancelled' })
+            });
+            if (!res.ok) {
+              showToastNew('Could not cancel', 'error');
+              return;
+            }
+            showToastNew('Series cancelled', 'success');
+            await loadAllRides();
+          } catch(e) {
+            showToastNew('Network error', 'error');
+          }
+        }
+      });
+    }
+
+    // ── Account Drawer ──
+    function openAccountDrawer() {
+      var html = '';
+      html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">';
+      html += profileAvatarHTML(meUser.avatar_url, meUser.name, 'lg');
+      html += '<div><div style="font-weight:700; font-size:15px;">' + escHtml(meUser.preferred_name || meUser.name || '') + '</div>';
+      html += '<div class="text-xs text-muted">' + escHtml(meUser.email || '') + '</div></div></div>';
+
+      // No-show count
+      var missCount = 0;
+      var activeRide = allRides.find(function(r) { return isActiveStatus(r.status); });
+      if (activeRide) missCount = activeRide.consecutiveMisses || 0;
+      if (missCount > 0) {
+        var bannerClass = missCount >= 5 ? 'noshows-critical' : missCount >= 3 ? 'noshows-warn' : 'noshows-clear';
+        html += '<div class="drawer-noshows-banner ' + bannerClass + '">';
+        html += '<div class="drawer-noshows-count">' + missCount + '/5</div>';
+        html += '<div class="drawer-noshows-label">consecutive no-shows</div>';
+        html += '</div>';
+      }
+
+      // Profile fields
+      html += '<div class="drawer-section">';
+      html += '<div class="drawer-section-title">Profile</div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label" id="drawer-memberid-label">Member ID</label><input type="text" class="ro-input" id="drawer-memberid" readonly></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Email</label><input type="text" class="ro-input" id="drawer-email" readonly></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Full Name</label><input type="text" class="ro-input" id="drawer-name"></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Phone</label><input type="tel" class="ro-input" id="drawer-phone"></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Preferred Name</label><input type="text" class="ro-input" id="drawer-preferred-name" placeholder="What should drivers call you?" maxlength="50"></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Major</label><input type="text" class="ro-input" id="drawer-major" placeholder="e.g. Computer Science" maxlength="100"></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Graduation Year</label><select class="ro-input" id="drawer-grad-year"><option value="">—</option>';
+      var _curYr = new Date().getFullYear();
+      for (var yr = _curYr; yr <= _curYr + 6; yr++) html += '<option value="' + yr + '">' + yr + '</option>';
+      html += '</select></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Bio</label><input type="text" class="ro-input" id="drawer-bio" placeholder="Quick note for your driver (120 chars)" maxlength="120"></div>';
+      html += '<div style="margin-bottom:12px;"><label class="ro-label">Avatar</label><div id="rider-avatar-picker-wrap"></div></div>';
+      html += '<button class="ro-btn ro-btn--primary ro-btn--sm" id="drawer-save-btn">Save</button>';
+      html += '</div>';
+
+      // Change password
+      html += '<div class="drawer-section">';
+      html += '<div class="drawer-section-title">Change Password</div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Current Password</label><input type="password" class="ro-input" id="drawer-pw-current"></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">New Password (min 8)</label><input type="password" class="ro-input" id="drawer-pw-new"></div>';
+      html += '<div style="margin-bottom:8px;"><label class="ro-label">Confirm</label><input type="password" class="ro-input" id="drawer-pw-confirm"></div>';
+      html += '<button class="ro-btn ro-btn--outline ro-btn--sm" id="drawer-pw-btn">Update Password</button>';
+      html += '</div>';
+
+      // Logout
+      html += '<hr class="drawer-divider">';
+      html += '<button class="ro-btn ro-btn--danger ro-btn--full" onclick="logout()"><i class="ti ti-logout"></i> Logout</button>';
+
+      openDrawer(html);
+
+      // Load profile into drawer
+      setTimeout(function() {
+        var _selectedAvatarUrl = null;
+        fetch('/api/me').then(function(r) { return r.json(); }).then(function(p) {
+          var el;
+          el = document.getElementById('drawer-memberid'); if (el) el.value = p.member_id || '';
+          el = document.getElementById('drawer-email'); if (el) el.value = p.email || '';
+          el = document.getElementById('drawer-name'); if (el) el.value = p.name || '';
+          el = document.getElementById('drawer-phone'); if (el) el.value = p.phone || '';
+          el = document.getElementById('drawer-preferred-name'); if (el) el.value = p.preferred_name || '';
+          el = document.getElementById('drawer-major'); if (el) el.value = p.major || '';
+          el = document.getElementById('drawer-grad-year'); if (el) el.value = p.graduation_year || '';
+          el = document.getElementById('drawer-bio'); if (el) el.value = p.bio || '';
+          _selectedAvatarUrl = p.avatar_url || null;
+          var wrap = document.getElementById('rider-avatar-picker-wrap');
+          if (wrap) {
+            wrap.innerHTML = avatarPickerHTML(p.avatar_url, p.id);
+            initAvatarPicker('rider-avatar-picker-wrap', p.id, function(url) { _selectedAvatarUrl = url; });
+          }
+        }).catch(function() {});
+
+        var saveBtn = document.getElementById('drawer-save-btn');
+        if (saveBtn) saveBtn.onclick = async function() {
+          var name = document.getElementById('drawer-name').value.trim();
+          var phone = document.getElementById('drawer-phone').value.trim();
+          var preferredName = document.getElementById('drawer-preferred-name').value.trim();
+          var major = document.getElementById('drawer-major').value.trim();
+          var gradYear = document.getElementById('drawer-grad-year').value;
+          var bio = document.getElementById('drawer-bio').value.trim();
+          var body = { name: name, phone: phone, preferredName: preferredName || null, major: major || null, graduationYear: gradYear ? parseInt(gradYear, 10) : null, bio: bio || null };
+          if (_selectedAvatarUrl !== undefined) body.avatarUrl = _selectedAvatarUrl;
+          var res = await fetch('/api/me', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          var data = await res.json();
+          if (!res.ok) { showToastNew(data.error || 'Could not save', 'error'); return; }
+          meUser = data;
+          showToastNew('Profile saved', 'success');
+        };
+
+        var pwBtn = document.getElementById('drawer-pw-btn');
+        if (pwBtn) pwBtn.onclick = async function() {
+          var cur = document.getElementById('drawer-pw-current').value;
+          var nw = document.getElementById('drawer-pw-new').value;
+          var conf = document.getElementById('drawer-pw-confirm').value;
+          if (!cur || !nw || !conf) { showToastNew('All fields required', 'error'); return; }
+          if (nw.length < 8) { showToastNew('Min 8 characters', 'error'); return; }
+          if (nw !== conf) { showToastNew('Passwords do not match', 'error'); return; }
+          try {
+            var res = await fetch('/api/auth/change-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ currentPassword: cur, newPassword: nw })
+            });
+            var data = await res.json();
+            if (!res.ok) { showToastNew(data.error || 'Failed', 'error'); return; }
+            showToastNew('Password updated', 'success');
+            document.getElementById('drawer-pw-current').value = '';
+            document.getElementById('drawer-pw-new').value = '';
+            document.getElementById('drawer-pw-confirm').value = '';
+          } catch(e) { showToastNew('Network error', 'error'); }
+        };
+      }, 50);
+    }
+
+    // ── Helpers ──
+    function escHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    function formatDaysOfWeek(arr) {
+      var names = {1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',0:'Sun'};
+      return (arr||[]).map(function(d) { return names[d]||d; }).join(', ') || '\u2014';
+    }
+
+    function formatTimeAmPm(t) {
+      if (!t) return '\u2014';
+      var p = t.split(':'); var h = parseInt(p[0],10); var m = p[1]||'00';
+      var ap = h >= 12 ? 'PM' : 'AM';
+      if (h === 0) h = 12; else if (h > 12) h -= 12;
+      return h + ':' + m + ' ' + ap;
+    }
+
+    function formatDateReadable(d) {
+      if (!d) return '\u2014';
+      // Handle full ISO timestamps (e.g. 2026-02-23T05:00:00.000Z)
+      var str = String(d);
+      if (str.indexOf('T') >= 0) str = str.split('T')[0];
+      var dt = new Date(str + 'T00:00:00');
+      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    async function logout() {
+      if (window._pollIntervals) {
+        window._pollIntervals.forEach(id => clearInterval(id));
+        window._pollIntervals = [];
+      }
+      await fetch('/api/auth/logout', { method: 'POST' });
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      var slugs = ['usc', 'stanford', 'ucla', 'uci'];
+      var org = (parts.length > 0 && slugs.indexOf(parts[0]) !== -1) ? parts[0] : null;
+      window.location.href = org ? '/' + org : '/login';
+    }
+
+    init();
+  </script>
+</body>
+</html>

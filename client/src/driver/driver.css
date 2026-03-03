@@ -1,0 +1,13 @@
+body { padding-bottom: 56px; background: rgba(var(--color-primary-rgb, 70,130,180), 0.03); }
+
+.driver-header { position: sticky; top: 0; z-index: 20; height: 48px; background: var(--color-primary); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #fff; }
+.driver-header__left { display: flex; align-items: center; gap: 8px; }
+.driver-header__left span { font-weight: 700; font-size: 14px; color: #fff; }
+.driver-header__right { display: flex; align-items: center; gap: 10px; }
+.driver-header__right #driver-name { font-size: 13px; color: rgba(255,255,255,0.85); }
+.driver-header .notif-bell { color: #fff; }
+.driver-header .ro-btn--outline { color: #fff; border-color: rgba(255,255,255,0.5); }
+.driver-header .ro-btn--outline:hover { background: rgba(255,255,255,0.15); }
+.driver-main { max-width: 600px; margin: 0 auto; padding: 24px 16px 16px; }
+.active-ride-card { border-left: 4px solid var(--color-primary); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
+.grace-timer__circle circle.progress { stroke: var(--color-primary) !important; }

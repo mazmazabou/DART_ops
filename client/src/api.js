@@ -1,0 +1,234 @@
+import { getCampusSlug } from './utils/campus';
+
+function campusParam() {
+  const slug = getCampusSlug();
+  return slug ? '?campus=' + encodeURIComponent(slug) : '';
+}
+
+async function request(url, opts = {}) {
+  const res = await fetch(url, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+// Auth
+export function fetchMe() {
+  return fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null);
+}
+
+export function doLogout() {
+  return fetch('/api/auth/logout', { method: 'POST' });
+}
+
+// Tenant
+export function fetchTenantConfig() {
+  return request('/api/tenant-config' + campusParam());
+}
+
+// Locations
+export function fetchLocations() {
+  return request('/api/locations' + campusParam());
+}
+
+// Operations config
+export function fetchOpsConfig() {
+  return fetch('/api/settings/public/operations')
+    .then(r => r.ok ? r.json() : null)
+    .then(cfg => cfg || {
+      service_hours_start: '08:00',
+      service_hours_end: '19:00',
+      operating_days: '0,1,2,3,4',
+      grace_period_minutes: '5',
+    })
+    .catch(() => ({
+      service_hours_start: '08:00',
+      service_hours_end: '19:00',
+      operating_days: '0,1,2,3,4',
+      grace_period_minutes: '5',
+    }));
+}
+
+// Rides
+export function fetchMyRides() {
+  return request('/api/my-rides');
+}
+
+export function submitRide(data) {
+  return request('/api/rides', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function cancelRide(id) {
+  return request('/api/rides/' + id + '/cancel', { method: 'POST' });
+}
+
+// Recurring rides
+export function fetchRecurringRides() {
+  return request('/api/recurring-rides/my');
+}
+
+export function createRecurringRides(data) {
+  return request('/api/recurring-rides', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function cancelRecurringSeries(id) {
+  return request('/api/recurring-rides/' + id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'cancelled' }),
+  });
+}
+
+// Profile
+export function fetchProfile() {
+  return request('/api/me');
+}
+
+export function updateProfile(data) {
+  return request('/api/me', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function changePassword(data) {
+  return request('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// Notifications
+export function fetchNotifications(limit = 50) {
+  return request('/api/notifications?limit=' + limit);
+}
+
+export function fetchUnreadCount() {
+  return fetch('/api/notifications?limit=1&unread_only=true')
+    .then(r => r.ok ? r.json() : null)
+    .catch(() => null);
+}
+
+export function markNotifRead(id) {
+  return fetch('/api/notifications/' + id + '/read', { method: 'PUT' });
+}
+
+export function markAllNotifsRead() {
+  return fetch('/api/notifications/read-all', { method: 'PUT' });
+}
+
+export function bulkReadNotifs(ids) {
+  return fetch('/api/notifications/bulk-read', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function bulkDeleteNotifs(ids) {
+  return fetch('/api/notifications/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function deleteAllNotifs() {
+  return fetch('/api/notifications/all', { method: 'DELETE' });
+}
+
+// Driver: employees & clock
+export function fetchEmployees() {
+  return request('/api/employees');
+}
+
+export function clockIn(employeeId) {
+  return request('/api/employees/clock-in', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeId }),
+  });
+}
+
+export function clockOut(employeeId) {
+  return request('/api/employees/clock-out', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeId }),
+  });
+}
+
+// Driver: rides
+export function fetchAllRides() {
+  return request('/api/rides');
+}
+
+export function fetchVehicles() {
+  return request('/api/vehicles');
+}
+
+export function claimRide(rideId) {
+  return request('/api/rides/' + rideId + '/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+}
+
+export function rideOnTheWay(rideId) {
+  return fetch('/api/rides/' + rideId + '/on-the-way', { method: 'POST' })
+    .then(r => {
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Failed'); });
+      return r.json();
+    });
+}
+
+export function rideArrived(rideId) {
+  return fetch('/api/rides/' + rideId + '/here', { method: 'POST' })
+    .then(r => {
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Failed'); });
+      return r.json();
+    });
+}
+
+export function completeRide(rideId) {
+  return fetch('/api/rides/' + rideId + '/complete', { method: 'POST' })
+    .then(r => {
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Failed'); });
+      return r.json();
+    });
+}
+
+export function markNoShow(rideId) {
+  return fetch('/api/rides/' + rideId + '/no-show', { method: 'POST' })
+    .then(r => {
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Failed'); });
+      return r.json();
+    });
+}
+
+export function setRideVehicle(rideId, vehicleId) {
+  return request('/api/rides/' + rideId + '/set-vehicle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vehicleId }),
+  });
+}
+
+export function patchRideVehicle(rideId, vehicleId) {
+  return request('/api/rides/' + rideId + '/vehicle', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vehicle_id: vehicleId }),
+  });
+}

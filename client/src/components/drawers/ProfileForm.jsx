@@ -1,0 +1,101 @@
+import { useState, useEffect } from 'react';
+import { fetchProfile, updateProfile } from '../../api';
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
+import AvatarPicker from './AvatarPicker';
+
+export default function ProfileForm({ idPrefix = 'drawer-', placeholderWho = 'drivers' }) {
+  const { updateUser } = useAuth();
+  const { showToast } = useToast();
+  const [profile, setProfile] = useState(null);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [preferredName, setPreferredName] = useState('');
+  const [major, setMajor] = useState('');
+  const [gradYear, setGradYear] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(null);
+
+  useEffect(() => {
+    fetchProfile().then(p => {
+      setProfile(p);
+      setName(p.name || '');
+      setPhone(p.phone || '');
+      setPreferredName(p.preferred_name || '');
+      setMajor(p.major || '');
+      setGradYear(p.graduation_year || '');
+      setBio(p.bio || '');
+      setAvatarUrl(p.avatar_url || null);
+    }).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    const body = {
+      name,
+      phone,
+      preferredName: preferredName || null,
+      major: major || null,
+      graduationYear: gradYear ? parseInt(gradYear, 10) : null,
+      bio: bio || null,
+    };
+    if (avatarUrl !== undefined) body.avatarUrl = avatarUrl;
+    try {
+      const data = await updateProfile(body);
+      updateUser(data);
+      showToast('Profile saved', 'success');
+    } catch (e) {
+      showToast(e.message || 'Could not save', 'error');
+    }
+  };
+
+  const curYear = new Date().getFullYear();
+  const years = Array.from({ length: 7 }, (_, i) => curYear + i);
+
+  if (!profile) return null;
+
+  return (
+    <div className="drawer-section">
+      <div className="drawer-section-title">Profile</div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label" id={idPrefix + 'memberid-label'}>Member ID</label>
+        <input type="text" className="ro-input" id={idPrefix + 'memberid'} value={profile.member_id || ''} readOnly />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Email</label>
+        <input type="text" className="ro-input" id={idPrefix + 'email'} value={profile.email || ''} readOnly />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Full Name</label>
+        <input type="text" className="ro-input" id={idPrefix + 'name'} value={name} onChange={e => setName(e.target.value)} />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Phone</label>
+        <input type="tel" className="ro-input" id={idPrefix + 'phone'} value={phone} onChange={e => setPhone(e.target.value)} />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Preferred Name</label>
+        <input type="text" className="ro-input" id={idPrefix + 'preferred-name'} value={preferredName} onChange={e => setPreferredName(e.target.value)} placeholder={`What should ${placeholderWho} call you?`} maxLength={50} />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Major</label>
+        <input type="text" className="ro-input" id={idPrefix + 'major'} value={major} onChange={e => setMajor(e.target.value)} placeholder="e.g. Computer Science" maxLength={100} />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Graduation Year</label>
+        <select className="ro-input" id={idPrefix + 'grad-year'} value={gradYear} onChange={e => setGradYear(e.target.value)}>
+          <option value="">{'\u2014'}</option>
+          {years.map(yr => <option key={yr} value={yr}>{yr}</option>)}
+        </select>
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label className="ro-label">Bio</label>
+        <input type="text" className="ro-input" id={idPrefix + 'bio'} value={bio} onChange={e => setBio(e.target.value)} placeholder={`Quick note for your ${placeholderWho === 'drivers' ? 'driver' : 'riders'} (120 chars)`} maxLength={120} />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label className="ro-label">Avatar</label>
+        <AvatarPicker currentUrl={avatarUrl} userId={profile.id} onSelect={setAvatarUrl} />
+      </div>
+      <button className="ro-btn ro-btn--primary ro-btn--sm" id={idPrefix + 'save-btn'} onClick={handleSave}>Save</button>
+    </div>
+  );
+}
