@@ -180,7 +180,7 @@ Default login credentials (password: `demo123`):
 - `docs/audits/` — Historical audit reports (.docx)
 
 ### Screenshots (`screenshots/`)
-- `screenshots/marketing/` — Automated product screenshots (16 images: dispatch, rides, analytics, driver, rider, themes)
+- `screenshots/marketing/` — Automated product screenshots (19 images: dispatch, rides, analytics, driver, rider, rider wizard carousel, themes)
 - `screenshots/linkedin/` — Marketing screenshots for social media
 - `screenshots/design-inspiration/` — UI reference material with subdirectories by feature area
 - `screenshots/development/` — Development verification screenshots (theme checks, UI states, etc.)

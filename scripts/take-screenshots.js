@@ -436,7 +436,53 @@ async function main() {
       await ctx.close();
     }
 
-    // ── 13-16. Multi-Tenant Theming ──
+    // ── 13-15. Rider Wizard Carousel (Casey, USC, mobile) ──
+    console.log('\n📸 Rider Wizard Carousel');
+    {
+      const ctx = await browser.newContext({ viewport: MOBILE });
+      const page = await ctx.newPage();
+      await loginCampus(page, 'usc', 'casey');
+
+      // Force Book tab (autoSwitchToActiveRide may redirect to My Rides)
+      await page.click('button[data-target="book-panel"]');
+      await delay(800);
+
+      // Step 1: Where — select pickup & dropoff
+      await page.selectOption('#pickup-location', { label: 'Cinematic Arts (SCA)' });
+      await page.selectOption('#dropoff-location', { label: 'Annenberg School for Communication and Journalism (ASC)' });
+      await delay(400);
+      await shot(page, 'rider-step1-where.png');
+
+      // Click Next to go to Step 2
+      await page.click('#step1-next');
+      await delay(800);
+
+      // Step 2: When — click 3rd date chip (a weekday), set time to 9:00 AM
+      const chips = await page.$$('#date-chips .filter-pill');
+      if (chips.length >= 3) {
+        await chips[2].click();
+      } else if (chips.length > 0) {
+        await chips[chips.length - 1].click();
+      }
+      await delay(300);
+      await page.fill('#ride-time', '09:00');
+      await page.dispatchEvent('#ride-time', 'change');
+      await delay(400);
+      await shot(page, 'rider-step2-when.png');
+
+      // Click Next to go to Step 3
+      await page.click('#step2-next');
+      await delay(800);
+
+      // Step 3: Confirm — add notes
+      await page.fill('#notes', "I'll be waiting near the coffee bean!");
+      await delay(400);
+      await shot(page, 'rider-step3-confirm.png');
+
+      await ctx.close();
+    }
+
+    // ── 16-19. Multi-Tenant Theming ──
     console.log('\n📸 Multi-Tenant Theming');
     const campuses = ['usc', 'ucla', 'stanford', 'uci'];
     for (const campus of campuses) {
