@@ -1,6 +1,17 @@
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { WIDGET_REGISTRY, WIDGET_CATEGORIES } from './constants';
 
 export default function WidgetLibraryDrawer({ open, onClose, visibleWidgetIds, allowedWidgets, onAddWidget }) {
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
   const visibleSet = new Set(visibleWidgetIds);
   const allowedSet = allowedWidgets ? new Set(allowedWidgets) : null;
 
@@ -10,16 +21,21 @@ export default function WidgetLibraryDrawer({ open, onClose, visibleWidgetIds, a
     return true;
   });
 
-  // Group by category
+  // Separate KPI widgets from chart widgets
+  const kpis = available.filter(id => WIDGET_REGISTRY[id].isKPI);
+  const charts = available.filter(id => !WIDGET_REGISTRY[id].isKPI);
+
+  // Group chart widgets by category
   const groups = {};
-  available.forEach(id => {
+  charts.forEach(id => {
     const def = WIDGET_REGISTRY[id];
     const cat = def.category || 'other';
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(id);
   });
 
-  return (
+  // Portal to document.body to avoid stacking context issues
+  return createPortal(
     <>
       <div
         className={`widget-library-backdrop${open ? ' open' : ''}`}
@@ -40,37 +56,66 @@ export default function WidgetLibraryDrawer({ open, onClose, visibleWidgetIds, a
               <div className="ro-empty__message">Every available widget is on this tab.</div>
             </div>
           ) : (
-            Object.keys(groups).map(cat => (
-              <div key={cat} className="widget-library-group">
-                <div className="widget-library-group__label">
-                  {WIDGET_CATEGORIES[cat] || cat}
+            <>
+              {kpis.length > 0 && (
+                <div className="widget-library-group">
+                  <div className="widget-library-group__label">KPIs</div>
+                  {kpis.map(id => {
+                    const def = WIDGET_REGISTRY[id];
+                    return (
+                      <div key={id} className="widget-library-item">
+                        <div className="widget-library-item__icon">
+                          <i className={`ti ${def.icon}`}></i>
+                        </div>
+                        <div className="widget-library-item__info">
+                          <div className="widget-library-item__name">{def.title}</div>
+                          <div className="widget-library-item__desc">{def.description || ''}</div>
+                        </div>
+                        <button
+                          className="ro-btn ro-btn--outline ro-btn--xs widget-library-item__add"
+                          title="Add to tab"
+                          onClick={() => onAddWidget(id)}
+                        >
+                          <i className="ti ti-plus"></i>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-                {groups[cat].map(id => {
-                  const def = WIDGET_REGISTRY[id];
-                  return (
-                    <div key={id} className="widget-library-item">
-                      <div className="widget-library-item__icon">
-                        <i className={`ti ${def.icon}`}></i>
+              )}
+              {Object.keys(groups).map(cat => (
+                <div key={cat} className="widget-library-group">
+                  <div className="widget-library-group__label">
+                    {WIDGET_CATEGORIES[cat] || cat}
+                  </div>
+                  {groups[cat].map(id => {
+                    const def = WIDGET_REGISTRY[id];
+                    return (
+                      <div key={id} className="widget-library-item">
+                        <div className="widget-library-item__icon">
+                          <i className={`ti ${def.icon}`}></i>
+                        </div>
+                        <div className="widget-library-item__info">
+                          <div className="widget-library-item__name">{def.title}</div>
+                          <div className="widget-library-item__desc">{def.description || ''}</div>
+                        </div>
+                        <button
+                          className="ro-btn ro-btn--outline ro-btn--xs widget-library-item__add"
+                          title="Add to tab"
+                          onClick={() => onAddWidget(id)}
+                        >
+                          <i className="ti ti-plus"></i>
+                        </button>
                       </div>
-                      <div className="widget-library-item__info">
-                        <div className="widget-library-item__name">{def.title}</div>
-                        <div className="widget-library-item__desc">{def.description || ''}</div>
-                      </div>
-                      <button
-                        className="ro-btn ro-btn--outline ro-btn--xs widget-library-item__add"
-                        title="Add to tab"
-                        onClick={() => onAddWidget(id)}
-                      >
-                        <i className="ti ti-plus"></i>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ))
+                    );
+                  })}
+                </div>
+              ))}
+            </>
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
