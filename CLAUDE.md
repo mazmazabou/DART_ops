@@ -43,7 +43,7 @@ Defines complete per-campus overrides merged into `/api/tenant-config` response:
 - **Sessions:** `connect-pg-simple` for PostgreSQL-backed session storage (auto-creates `session` table)
 - **Rate Limiting:** `express-rate-limit` on auth endpoints (login 10/15min, signup 5/15min)
 - **Frontend (Rider + Driver + Office):** React 19 + Vite multi-page build, built to `client/dist/`, served via `/app/` static route (backward-compat `/rider-app/` alias). Source in `client/src/rider/`, `client/src/driver/`, and `client/src/office/`
-- **Frontend (Office — partial migration):** Office shell (layout, sidebar, header) + Map, Profile, Settings panels migrated to React (Phase 3a). Rides panel migrated (Phase 3c). Dispatch, Staff, Fleet, Analytics panels are placeholders pending Phases 3b–3e. Legacy vanilla JS fallback at `public/index-legacy.html`
+- **Frontend (Office — partial migration):** Office shell (layout, sidebar, header) + Map, Profile, Settings panels migrated to React (Phase 3a). Rides panel migrated (Phase 3c). Analytics panel migrated (Phase 3e) with Chart.js v4 via react-chartjs-2 (npm) and react-grid-layout v2 (npm) for widget dashboard. Dispatch, Staff, Fleet panels are placeholders pending Phases 3b/3d. Legacy vanilla JS fallback at `public/index-legacy.html`
 - **Auth:** Session-based with async bcrypt password hashing. Default password: `demo123`
 - **Email:** Nodemailer with optional SMTP (falls back to console logging)
 - **Reports:** ExcelJS for multi-sheet .xlsx workbook generation (server-side, npm package)
@@ -151,10 +151,14 @@ Default login credentials (password: `demo123`):
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
-- `public/js/widget-registry.js` — Widget definitions (WIDGET_REGISTRY, WIDGET_CATEGORIES, 22 widgets, 9 categories, per-tab default layouts: DEFAULT_WIDGET_LAYOUT, DEFAULT_HOTSPOTS_LAYOUT, DEFAULT_MILESTONES_LAYOUT, DEFAULT_ATTENDANCE_LAYOUT)
-- `public/js/widget-system.js` — Widget dashboard runtime: multi-instance architecture (createWidgetInstance), GridStack.js 12-column grid, layout persistence, edit mode (drag/resize/add/remove/set-default/reset)
-- `public/js/chart-utils.js` — Chart.js instance registry (_chartInstances, destroyChart), resolveColor, showAnalyticsSkeleton, makeSortable
-- `public/js/analytics.js` — All analytics renderers, loaders, caches, widget orchestrators (~1,800 lines). Extracted from app.js
+- `client/src/office/components/analytics/constants.js` — Widget registry (WIDGET_REGISTRY, WIDGET_CATEGORIES, 31 widgets, 8 categories, per-tab default layouts, WIDGET_LAYOUT_VERSION = 7, isKPI flag for headerless KPI widgets)
+- `client/src/office/components/analytics/WidgetGrid.jsx` — Widget dashboard grid using react-grid-layout v2 (12-column, drag/resize/vertical-compact). WidgetCard uses React.forwardRef
+- `client/src/office/components/analytics/chartSetup.js` — Chart.js component registration (CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Filler, Legend, Tooltip). Imported once in AnalyticsPanel
+- `client/src/office/components/analytics/widgets/KPISingleWidget.jsx` — Individual KPI card widget (headerless, fluid sizing, used for both dashboard and attendance KPIs)
+- `public/js/widget-registry.js` — **Legacy** widget definitions for vanilla JS office (22 widgets, 9 categories, per-tab default layouts). Used only by `public/index-legacy.html`
+- `public/js/widget-system.js` — **Legacy** widget dashboard runtime: GridStack.js 12-column grid. Used only by `public/index-legacy.html`
+- `public/js/chart-utils.js` — **Legacy** Chart.js instance registry. Used only by `public/index-legacy.html`
+- `public/js/analytics.js` — **Legacy** analytics renderers (~1,800 lines). Used only by `public/index-legacy.html`
 - ~~`public/driver.html`~~ — **Migrated to React** (see `client/src/driver/`). Legacy version at `public/driver-legacy.html`
 - `client/src/driver/` — React driver app (Vite + React 19). Components, hooks, driver.css. Builds to `client/dist/driver.html`
 - ~~`public/rider.html`~~ — **Migrated to React** (see `client/`). Legacy version at `public/rider-legacy.html`
@@ -171,7 +175,7 @@ Default login credentials (password: `demo123`):
 - `tenants/uci-locations.js` — 25 UCI campus locations
 - `tenants/default-locations.js` — 32 generic campus locations (default when no tenant)
 - `email.js` — Email sending (nodemailer) with tenant-aware brand colors
-- `notification-service.js` — Notification dispatch engine: `dispatchNotification()` sends to office staff via preferences, `sendRiderEmail()` sends directly to riders, `setTenantConfig()` injects org branding into email templates
+- `notification-service.js` — Notification dispatch engine: `dispatchNotification()` sends to office staff via preferences, `sendRiderEmail()` sends directly to riders, `setTenantConfig()` injects org branding into email templates. Includes templates for driver_missed_ride notifications
 - `demo-seed.js` — Seeds demo data: 650+ rides, 5 weeks of shifts, clock events, recurring rides, vehicles, notifications
 - `public/favicon.svg` — RideOps favicon (blue circle with RO)
 - `db/schema.sql` — PostgreSQL schema reference
@@ -232,7 +236,8 @@ Default login credentials (password: `demo123`):
 - Sidebar navigation with 8 nav items: dispatch, rides, staff, fleet, analytics, map, settings, profile
 - **Migrated panels (Phase 3a):** Map, Profile, Settings (6 sub-tabs: Users, Business Rules, Notifications, Guidelines, Data, Academic Terms)
 - **Migrated panels (Phase 3c):** Rides (table view, schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export)
-- **Placeholder panels (pending):** Dispatch (3d), Staff & Shifts (3b), Fleet (3b), Analytics (3e)
+- **Migrated panels (Phase 3e):** Analytics (31 widgets across 4 sub-tabs: Dashboard, Hotspots, Milestones, Attendance + hardcoded Reports tab)
+- **Placeholder panels (pending):** Dispatch (3d), Staff & Shifts (3b), Fleet (3b)
 - **Contexts:** AuthProvider(expectedRole="office"), TenantProvider(roleLabel="Office")
 - Panel mounting: all panels mount simultaneously, toggle with `.tab-panel.active` CSS class
 
@@ -273,16 +278,17 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - **Hooks:** usePolling (5s rides, 30s notifications, visibilitychange pause), useRides, useLocations, useOpsConfig, useNotifications
 - **All test-critical element IDs preserved** from vanilla version (#book-panel, #myrides-panel, #pickup-location, etc.)
 
-### Analytics Architecture
-- **Widget System:** 22 widgets across 9 categories on 4 tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab stays hardcoded. GridStack.js v12 (CDN, not npm) for 12-column drag-and-drop layout.
-- **GridStack v12 API:** Use `grid.makeWidget(el)` for dynamically added widgets. Do NOT use `grid.addWidget(el, opts)` — deprecated in v12. Widgets use `gs-*` attributes (gs-id, gs-x, gs-y, gs-w, gs-h, etc.).
-- **Widget Container ID Prefixes:** Dashboard `chart-`/`w-`, Hotspots `ht-`, Milestones `ms-`, Attendance `att-`. Per-tab overrides via `containerOverrides` in widget instance config.
-- **Layout Version:** `WIDGET_LAYOUT_VERSION = 3` in widget-system.js — bump this to force layout reset when changing default layouts.
-- **Chart.js v4:** `_chartInstances` registry tracks instances; always call `destroyChart(containerId)` before re-render. `resolveColor()` converts CSS custom properties to hex for canvas rendering.
-- **Data Caching:** `_tardinessCache` and `_hotspotsCache` prevent duplicate API calls when multiple widgets share the same data source.
+### Analytics Architecture (React — client/src/office/components/analytics/)
+- **Widget System:** 31 widgets across 8 categories on 4 tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab is hardcoded (no widget grid). **react-grid-layout v2** (npm in `client/`) for 12-column drag-and-drop layout with vertical compaction.
+- **react-grid-layout:** Replaced GridStack.js entirely. React-native, handles drag/resize/compact natively. `WidgetCard` uses `React.forwardRef` — react-grid-layout injects resize handle elements as `{children}`.
+- **KPI widgets are individual:** 6 dashboard KPIs (`kpi-total-rides`, `kpi-completion-rate`, `kpi-no-show-rate`, `kpi-active-riders`, `kpi-driver-punctuality`, `kpi-fleet-available`) and 5 attendance KPIs (`kpi-total-clock-ins`, `kpi-on-time-rate`, `kpi-tardy-count`, `kpi-avg-tardiness`, `kpi-missed-shifts`). All headerless (`isKPI: true`), min 2×2, individually removable/resizable.
+- **Layout Version:** `WIDGET_LAYOUT_VERSION = 7` in `constants.js` — bump to force localStorage layout reset when changing default layouts.
+- **Chart.js v4 (npm):** `chart.js` + `react-chartjs-2` installed in `client/`. `chartSetup.js` registers all components once. CDN Chart.js removed from `office.html` (remains only in legacy `public/index-legacy.html`).
 - **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming.
+- **Doughnut charts:** Must include `hoverOffset: 6` and `hoverBorderWidth: 3` in datasets for the pop-out hover effect.
 - **Excel Export:** 8-sheet workbook via exceljs (Summary, Daily Volume, Routes, Driver Performance, Rider Analysis, Fleet, Shift Coverage, Peak Hours).
 - **Calendar View Filters:** Calendar (FullCalendar) respects the same status/date/text filter pills as the table view via `renderRideViews()` helper.
+- **FullCalendar deferred mount:** FullCalendar and other dimension-dependent components must not mount while their panel is hidden. Use `isVisible` + `hasBeenVisible` deferred-mount pattern with a shimmer placeholder. See ShiftCalendar and MapPanel for reference.
 
 ## Database Schema
 
@@ -363,7 +369,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Analytics endpoints** all support `?from=&to=` date filtering (except `milestones`). Use `GET /api/analytics/{endpoint}`
 - **Ride lifecycle actions:** `POST /api/rides/:id/{action}` where action is `approve|deny|claim|on-the-way|here|complete|no-show|cancel`. Office can claim on behalf with `{ driverId }` in body
 - **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
-- **`NOTIFICATION_EVENT_TYPES`:** driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request
+- **`NOTIFICATION_EVENT_TYPES`:** driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request, driver_missed_ride
 - **Dev-only:** `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
 
 ## Code Conventions
@@ -386,6 +392,10 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Polling:** All polling intervals must pause via `visibilitychange` listener when tab is backgrounded
 - **URL references:** Use extensionless paths (`/login` not `/login.html`)
 - **Fetch response checks:** All `fetch()` calls MUST check `res.ok` before showing success feedback. Always handle error responses with `showToastNew(data.error, 'error')`
+- **NPM in client/:** `chart.js`, `react-chartjs-2`, and `react-grid-layout` are npm dependencies inside `client/`. The CDN rule ("Don't npm install Tabler, FullCalendar...") applies only to vanilla JS pages in `public/`. React components in `client/src/` should use npm imports
+- **KPI widgets are headerless** (`isKPI: true` in WIDGET_REGISTRY) — content scales with container. All widgets should be resizable (never use `noResize: true` or `static: true`)
+- **WidgetCard forwardRef:** react-grid-layout injects resize handle elements as children. `WidgetCard` must use `React.forwardRef` and include `{children}` at the end of its render output
+- **FullCalendar deferred mount:** FullCalendar and other dimension-dependent components must not mount while their panel is hidden. Use `isVisible` + `hasBeenVisible` deferred-mount pattern with a shimmer placeholder
 
 ## Testing
 
@@ -412,9 +422,11 @@ The frontend uses a Tabler-based design system.
 - Tabler CSS: `https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css`
 - Tabler Icons: `https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css`
 - FullCalendar: `https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js` (office view only)
-- GridStack.js: `https://cdn.jsdelivr.net/npm/gridstack@12/dist/gridstack-all.js` + `gridstack.min.css` (analytics widget grid layout, drag-and-drop, resize)
-- Chart.js v4: `https://cdn.jsdelivr.net/npm/chart.js@4` (donut, bar, line/area charts — canvas-based, auto-resize)
 - DiceBear API: `https://api.dicebear.com/9.x` — client-side avatar generation, no API key needed
+
+### npm Dependencies in client/ (do NOT load from CDN)
+- `chart.js` + `react-chartjs-2` — Chart.js v4 for React (doughnut, bar, line/area charts). CDN tag removed from `office.html`. CDN version remains only in legacy `public/index-legacy.html`
+- `react-grid-layout` v2 — 12-column widget dashboard layout (drag/resize/vertical-compact). Replaced GridStack.js entirely. CSS imported via `react-grid-layout/css/styles.css` and `react-resizable/css/styles.css`
 
 ### Color System (Three-Layer Theming)
 - **Layer 1 — Platform defaults** (in rideops-theme.css :root): SteelBlue #4682B4 primary, Tan #D2B48C accent
@@ -450,7 +462,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 
 ## What NOT to Do
 
-- **React migration in progress:** Rider, driver, office shell, and rides panel are React (`client/src/rider/`, `client/src/driver/`, `client/src/office/`). Office dispatch, staff, fleet, and analytics panels are placeholders — migrate in Phases 3b–3e
+- **React migration in progress:** Rider, driver, office shell, rides panel, and analytics panel are React (`client/src/rider/`, `client/src/driver/`, `client/src/office/`). Office dispatch, staff, fleet panels are placeholders — migrate in Phases 3b/3d
 - Don't replace Express with another framework
 - Don't change ride status names (referenced across frontend + backend)
 - Don't use ES module syntax (`import/export`) in backend — project uses CommonJS. `client/` uses ES modules (Vite)
@@ -459,7 +471,11 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 - Don't skip server-side validation — never trust client input
 - Don't hardcode hex colors in HTML or JS — use CSS custom properties from rideops-theme.css
 - Don't use Material Symbols — use Tabler Icons (ti ti-*)
-- Don't npm install Tabler, FullCalendar, or any CDN dependency — load from CDN only
+- Don't npm install Tabler or FullCalendar — load from CDN only. Chart.js and react-grid-layout are npm in `client/` (not CDN)
+- Don't use GridStack — removed from the project. react-grid-layout is the widget layout library
+- Don't add Chart.js or GridStack CDN tags to `client/office.html` — they're npm packages now
+- Don't forget `{children}` in WidgetCard — react-grid-layout injects resize handles as children
+- Don't set `noResize: true` or `static: true` on widget registry entries — all widgets should be resizable
 - Don't hardcode organization-specific text — use tenant config, default to "RideOps"
 - Don't remove `.tab-panel` / `.sub-panel` CSS classes from panel elements
 - Don't use `$1::uuid[]` for array parameter casts — IDs are text format, use `$1::text[]`
