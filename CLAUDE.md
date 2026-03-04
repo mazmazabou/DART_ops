@@ -43,7 +43,7 @@ Defines complete per-campus overrides merged into `/api/tenant-config` response:
 - **Sessions:** `connect-pg-simple` for PostgreSQL-backed session storage (auto-creates `session` table)
 - **Rate Limiting:** `express-rate-limit` on auth endpoints (login 10/15min, signup 5/15min)
 - **Frontend (Rider + Driver + Office):** React 19 + Vite multi-page build, built to `client/dist/`, served via `/app/` static route (backward-compat `/rider-app/` alias). Source in `client/src/rider/`, `client/src/driver/`, and `client/src/office/`
-- **Frontend (Office — partial migration):** Office shell (layout, sidebar, header) + Map, Profile, Settings panels migrated to React (Phase 3a). Rides panel migrated (Phase 3c). Analytics panel migrated (Phase 3e) with Chart.js v4 via react-chartjs-2 (npm) and react-grid-layout v2 (npm) for widget dashboard. Dispatch, Staff, Fleet panels are placeholders pending Phases 3b/3d. Legacy vanilla JS fallback at `public/index-legacy.html`
+- **Frontend (Office — fully migrated):** All 8 office panels are React. Shell + Map + Profile + Settings (Phase 3a), Rides (Phase 3c), Staff & Fleet (Phase 3b), Dispatch (Phase 3d), Analytics (Phase 3e) with Chart.js v4 via react-chartjs-2 (npm) and react-grid-layout v2 (npm) for widget dashboard. Legacy vanilla JS fallback at `public/index-legacy.html` (no longer used in production)
 - **Auth:** Session-based with async bcrypt password hashing. Default password: `demo123`
 - **Email:** Nodemailer with optional SMTP (falls back to console logging)
 - **Reports:** ExcelJS for multi-sheet .xlsx workbook generation (server-side, npm package)
@@ -137,7 +137,10 @@ Default login credentials (password: `demo123`):
 - `client/src/office/App.jsx` — Office root component: sidebar nav, panel switching, notification drawer, rules modal
 - `client/src/office/components/layout/` — OfficeLayout, Sidebar, OfficeHeader, MobileWarning
 - `client/src/office/components/settings/` — SettingsPanel + 6 sub-panels (Users, BusinessRules, Notifications, Guidelines, Data, AcademicTerms) + UserDrawer
+- `client/src/office/components/dispatch/` — DispatchPanel, KPIBar, PendingQueue, DispatchGrid, DriverRow, RideStrip, NowLine (5s polling, reuses RideDrawer/RideEditModal from rides/)
 - `client/src/office/components/rides/` — RidesPanel + FilterBar, Toolbar, RidesTable, RideRow, ScheduleGrid, RideChip, RideDrawer, RideEditModal
+- `client/src/office/components/staff/` — StaffPanel, EmployeeBar, ShiftCalendar (FullCalendar with deferred mount, drag-to-create, right-click context menu, per-driver campus palette colors)
+- `client/src/office/components/fleet/` — FleetPanel, VehicleCard, VehicleDrawer (add/retire/delete/reactivate/maintenance modals)
 - `client/src/api.js` — Shared fetch wrappers for rider + driver API endpoints
 - `client/src/components/booking/` — BookPanel, StepWhere, StepWhen, StepConfirm, DateChips, StepIndicator
 - `client/src/components/rides/` — MyRidesPanel, HeroCard, GraceTimer
@@ -146,7 +149,7 @@ Default login credentials (password: `demo123`):
 - `client/src/contexts/` — AuthContext, TenantContext, ToastContext
 - `client/src/hooks/` — usePolling, useRides, useLocations, useOpsConfig, useNotifications
 - `public/rider-legacy.html` — Vanilla rider (legacy reference, fallback if React build not present)
-- `public/app.js` — Main frontend logic for office/admin console (~4,800 lines)
+- `public/app.js` — **Legacy** office/admin console logic (~4,800 lines). Used only by `public/index-legacy.html`. Not loaded by the React office app (`client/office.html`)
 - `public/utils.js` — Shared UI utilities: empty state, dev-mode detection, toast icon helper (toast/modal functions moved to rideops-utils.js)
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
@@ -234,10 +237,13 @@ Default login credentials (password: `demo123`):
 ### Office Console (React — client/src/office/)
 - **Built with React 19 + Vite**, served from `client/dist/office.html` via `/app/` static route. Legacy fallback at `public/index-legacy.html`
 - Sidebar navigation with 8 nav items: dispatch, rides, staff, fleet, analytics, map, settings, profile
-- **Migrated panels (Phase 3a):** Map, Profile, Settings (6 sub-tabs: Users, Business Rules, Notifications, Guidelines, Data, Academic Terms)
-- **Migrated panels (Phase 3c):** Rides (table view, schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export)
-- **Migrated panels (Phase 3e):** Analytics (31 widgets across 4 sub-tabs: Dashboard, Hotspots, Milestones, Attendance + hardcoded Reports tab)
-- **Placeholder panels (pending):** Dispatch (3d), Staff & Shifts (3b), Fleet (3b)
+- **All 8 panels fully migrated:** Map + Profile + Settings (Phase 3a), Rides (Phase 3c), Staff & Shifts + Fleet (Phase 3b), Dispatch (Phase 3d), Analytics (Phase 3e)
+- **Settings sub-tabs:** Users, Business Rules, Notifications, Guidelines, Data, Academic Terms
+- **Rides panel:** Table view, schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export
+- **Dispatch panel:** KPIBar, PendingQueue, DispatchGrid with per-driver rows and ride strips, 5s polling
+- **Staff panel:** EmployeeBar + ShiftCalendar (FullCalendar with deferred mount, drag-to-create, context menu, per-driver campus palette colors)
+- **Fleet panel:** VehicleCard grid, VehicleDrawer, add/retire/delete/reactivate/maintenance modals
+- **Analytics panel:** 31 widgets across 4 sub-tabs (Dashboard, Hotspots, Milestones, Attendance) + hardcoded Reports tab
 - **Contexts:** AuthProvider(expectedRole="office"), TenantProvider(roleLabel="Office")
 - Panel mounting: all panels mount simultaneously, toggle with `.tab-panel.active` CSS class
 
@@ -462,7 +468,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 
 ## What NOT to Do
 
-- **React migration in progress:** Rider, driver, office shell, rides panel, and analytics panel are React (`client/src/rider/`, `client/src/driver/`, `client/src/office/`). Office dispatch, staff, fleet panels are placeholders — migrate in Phases 3b/3d
+- **React migration complete:** All views (rider, driver, office) are fully React (`client/src/rider/`, `client/src/driver/`, `client/src/office/`). `public/app.js` and `public/index-legacy.html` are legacy fallback only — do not add new features to them
 - Don't replace Express with another framework
 - Don't change ride status names (referenced across frontend + backend)
 - Don't use ES module syntax (`import/export`) in backend — project uses CommonJS. `client/` uses ES modules (Vite)
