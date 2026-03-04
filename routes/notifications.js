@@ -21,11 +21,8 @@ module.exports = function(app, ctx) {
   // ── Notification Preferences ──
   app.get('/api/notification-preferences', requireOffice, wrapAsync(async (req, res) => {
     try {
-      // Lazy-seed if no preferences exist for this user
-      const check = await query('SELECT COUNT(*) FROM notification_preferences WHERE user_id = $1', [req.session.userId]);
-      if (parseInt(check.rows[0].count) === 0) {
-        await seedNotificationPreferences(req.session.userId);
-      }
+      // Seed any missing preference rows (idempotent via ON CONFLICT DO NOTHING)
+      await seedNotificationPreferences(req.session.userId);
 
       const result = await query(
         'SELECT * FROM notification_preferences WHERE user_id = $1 ORDER BY event_type, channel',

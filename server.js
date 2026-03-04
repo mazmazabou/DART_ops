@@ -280,6 +280,51 @@ let server;
     } catch (err) {
       console.error('[Notifications] Stale check error:', err.message);
     }
+
+    // Check for driver-missed-ride (scheduled rides past their requested time)
+    try {
+      const missedPref = await query(`
+        SELECT DISTINCT threshold_value FROM notification_preferences
+        WHERE event_type = 'driver_missed_ride' AND enabled = true AND threshold_value IS NOT NULL
+      `);
+      if (missedPref.rowCount) {
+        const minMissedThreshold = Math.min(...missedPref.rows.map(r => r.threshold_value));
+        const missedCutoff = new Date(Date.now() - minMissedThreshold * 60000);
+
+        const missedRides = await query(`
+          SELECT r.*, u.name as driver_name, ru.name as rider_display_name
+          FROM rides r
+          JOIN users u ON u.id = r.assigned_driver_id
+          LEFT JOIN users ru ON ru.id = r.rider_id
+          WHERE r.status = 'scheduled'
+            AND r.assigned_driver_id IS NOT NULL
+            AND r.requested_time <= $1
+        `, [missedCutoff.toISOString()]);
+
+        for (const ride of missedRides.rows) {
+          // Deduplicate: skip if we already notified about this ride
+          const existing = await query(
+            `SELECT 1 FROM notifications WHERE event_type = 'driver_missed_ride' AND metadata->>'rideId' = $1 LIMIT 1`,
+            [ride.id]
+          );
+          if (existing.rowCount > 0) continue;
+
+          const minutesOverdue = Math.round((Date.now() - new Date(ride.requested_time).getTime()) / 60000);
+          dispatchNotification('driver_missed_ride', {
+            rideId: ride.id,
+            riderName: ride.rider_display_name || ride.rider_name || 'Unknown',
+            driverName: ride.driver_name || 'Unknown',
+            pickup: ride.pickup_location,
+            dropoff: ride.dropoff_location,
+            requestedTime: new Date(ride.requested_time).toLocaleString('en-US', { timeZone: TENANT.timezone }),
+            minutesOverdue,
+            thresholdCheck: minutesOverdue
+          }, query).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('[Notifications] Missed ride check error:', err.message);
+    }
   }, 5 * 60 * 1000);
 })().catch((err) => {
   console.error('Failed to initialize database', err);

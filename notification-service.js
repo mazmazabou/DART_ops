@@ -105,6 +105,24 @@ const TEMPLATES = {
     `)
   }),
 
+  driver_missed_ride: (data) => ({
+    subject: `${data.driverName} hasn't started ride for ${data.riderName}`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Driver Missed Assigned Ride</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        <strong>${data.driverName}</strong> was assigned a ride but has not started it.
+        The ride's requested time was <strong>${data.minutesOverdue} minutes ago</strong>.
+      </p>
+      <div style="background: #FEF2F2; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Rider:</strong> ${data.riderName}</div>
+        <div><strong>Route:</strong> ${data.pickup} &rarr; ${data.dropoff}</div>
+        <div><strong>Requested:</strong> ${data.requestedTime}</div>
+        <div><strong>Driver:</strong> ${data.driverName}</div>
+        <div><strong>Overdue by:</strong> ${data.minutesOverdue} minutes</div>
+      </div>
+    `)
+  }),
+
   new_ride_request: (data) => ({
     subject: `New ride request - ${data.riderName}`,
     html: wrapTemplate(`
@@ -198,6 +216,10 @@ const IN_APP_TEMPLATES = {
   ride_pending_stale: (data) => ({
     title: 'Stale Ride Request',
     body: `${data.riderName}'s ride pending ${data.minutesPending} minutes`
+  }),
+  driver_missed_ride: (data) => ({
+    title: 'Driver Missed Ride',
+    body: `${data.driverName} hasn't started ${data.riderName}'s ride (${data.minutesOverdue}m overdue)`
   }),
   new_ride_request: (data) => ({
     title: 'New Ride Request',
