@@ -900,8 +900,7 @@ test.describe.serial('UI: Office Console', () => {
     await expect(page.locator('#employee-bar')).toBeVisible();
   });
 
-  // TODO: Re-enable after Phase 3c migration
-  test.skip('Rides panel: filter and table view visible', async ({ page }) => {
+  test('Rides panel: filter and table view visible', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="rides-panel"]').click();
     await expect(page.locator('#rides-panel')).toBeVisible({ timeout: 5000 });
@@ -909,8 +908,7 @@ test.describe.serial('UI: Office Console', () => {
     await expect(page.locator('#rides-table-view')).toBeVisible();
   });
 
-  // TODO: Re-enable after Phase 3c migration
-  test.skip('Rides view toggle: Calendar toggle exists', async ({ page }) => {
+  test('Rides view toggle: Calendar toggle exists', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="rides-panel"]').click();
     // Table/calendar view toggle buttons exist
@@ -939,8 +937,7 @@ test.describe.serial('UI: Office Console', () => {
     await expect(rows.first()).toBeVisible();
   });
 
-  // TODO: Re-enable after Phase 3e migration
-  test.skip('Analytics panel: dashboard sub-tab and widget grid attached', async ({ page }) => {
+  test('Analytics panel: dashboard sub-tab and widget grid attached', async ({ page }) => {
     await loginUI(page, 'office');
     await page.locator('button[data-target="analytics-panel"]').click();
     await expect(page.locator('#analytics-panel')).toBeVisible();

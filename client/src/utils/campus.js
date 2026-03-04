@@ -31,4 +31,11 @@ export function getLoginUrl() {
   return slug ? '/' + slug + '/login' : '/login';
 }
 
+export function getCampusPalette(campusKey) {
+  if (typeof window.getCampusPalette === 'function') {
+    return window.getCampusPalette(campusKey);
+  }
+  return ['#4682B4','#36648B','#B0C4DE','#D2B48C','#C4A067','#8FAF9F','#7A9DBF','#BFA98A'];
+}
+
 export { VALID_SLUGS };

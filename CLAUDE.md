@@ -43,7 +43,7 @@ Defines complete per-campus overrides merged into `/api/tenant-config` response:
 - **Sessions:** `connect-pg-simple` for PostgreSQL-backed session storage (auto-creates `session` table)
 - **Rate Limiting:** `express-rate-limit` on auth endpoints (login 10/15min, signup 5/15min)
 - **Frontend (Rider + Driver + Office):** React 19 + Vite multi-page build, built to `client/dist/`, served via `/app/` static route (backward-compat `/rider-app/` alias). Source in `client/src/rider/`, `client/src/driver/`, and `client/src/office/`
-- **Frontend (Office — partial migration):** Office shell (layout, sidebar, header) + Map, Profile, Settings panels migrated to React (Phase 3a). Dispatch, Rides, Staff, Fleet, Analytics panels are placeholders pending Phases 3b–3e. Legacy vanilla JS fallback at `public/index-legacy.html`
+- **Frontend (Office — partial migration):** Office shell (layout, sidebar, header) + Map, Profile, Settings panels migrated to React (Phase 3a). Rides panel migrated (Phase 3c). Dispatch, Staff, Fleet, Analytics panels are placeholders pending Phases 3b–3e. Legacy vanilla JS fallback at `public/index-legacy.html`
 - **Auth:** Session-based with async bcrypt password hashing. Default password: `demo123`
 - **Email:** Nodemailer with optional SMTP (falls back to console logging)
 - **Reports:** ExcelJS for multi-sheet .xlsx workbook generation (server-side, npm package)
@@ -137,6 +137,7 @@ Default login credentials (password: `demo123`):
 - `client/src/office/App.jsx` — Office root component: sidebar nav, panel switching, notification drawer, rules modal
 - `client/src/office/components/layout/` — OfficeLayout, Sidebar, OfficeHeader, MobileWarning
 - `client/src/office/components/settings/` — SettingsPanel + 6 sub-panels (Users, BusinessRules, Notifications, Guidelines, Data, AcademicTerms) + UserDrawer
+- `client/src/office/components/rides/` — RidesPanel + FilterBar, Toolbar, RidesTable, RideRow, ScheduleGrid, RideChip, RideDrawer, RideEditModal
 - `client/src/api.js` — Shared fetch wrappers for rider + driver API endpoints
 - `client/src/components/booking/` — BookPanel, StepWhere, StepWhen, StepConfirm, DateChips, StepIndicator
 - `client/src/components/rides/` — MyRidesPanel, HeroCard, GraceTimer
@@ -230,7 +231,8 @@ Default login credentials (password: `demo123`):
 - **Built with React 19 + Vite**, served from `client/dist/office.html` via `/app/` static route. Legacy fallback at `public/index-legacy.html`
 - Sidebar navigation with 8 nav items: dispatch, rides, staff, fleet, analytics, map, settings, profile
 - **Migrated panels (Phase 3a):** Map, Profile, Settings (6 sub-tabs: Users, Business Rules, Notifications, Guidelines, Data, Academic Terms)
-- **Placeholder panels (pending):** Dispatch (3d), Rides (3c), Staff & Shifts (3b), Fleet (3b), Analytics (3e)
+- **Migrated panels (Phase 3c):** Rides (table view, schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export)
+- **Placeholder panels (pending):** Dispatch (3d), Staff & Shifts (3b), Fleet (3b), Analytics (3e)
 - **Contexts:** AuthProvider(expectedRole="office"), TenantProvider(roleLabel="Office")
 - Panel mounting: all panels mount simultaneously, toggle with `.tab-panel.active` CSS class
 
@@ -448,7 +450,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 
 ## What NOT to Do
 
-- **React migration in progress:** Rider, driver, and office shell are React (`client/src/rider/`, `client/src/driver/`, `client/src/office/`). Office dispatch, rides, staff, fleet, and analytics panels are placeholders — migrate in Phases 3b–3e
+- **React migration in progress:** Rider, driver, office shell, and rides panel are React (`client/src/rider/`, `client/src/driver/`, `client/src/office/`). Office dispatch, staff, fleet, and analytics panels are placeholders — migrate in Phases 3b–3e
 - Don't replace Express with another framework
 - Don't change ride status names (referenced across frontend + backend)
 - Don't use ES module syntax (`import/export`) in backend — project uses CommonJS. `client/` uses ES modules (Vite)

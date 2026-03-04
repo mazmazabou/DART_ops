@@ -41,6 +41,20 @@ export function jsDateToOurDay(jsDay) {
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
+// Our day (0=Mon) to FullCalendar/JS day (0=Sun, 1=Mon)
+export function ourDayToFCDay(ourDay) {
+  return (ourDay + 1) % 7;
+}
+
+// Contrast text color for shift calendar events
+export function contrastTextColor(hex) {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#222' : '#fff';
+}
+
 export function formatServiceHoursText(cfg) {
   const opDays = String(cfg.operating_days || '0,1,2,3,4').split(',').map(Number).sort();
   const labels = opDays.map(ourDayLabel);

@@ -233,6 +233,61 @@ export function patchRideVehicle(rideId, vehicleId) {
   });
 }
 
+// Shifts
+export function fetchShifts() {
+  return request('/api/shifts');
+}
+
+// Today driver status
+export function fetchTodayDriverStatus() {
+  return request('/api/employees/today-status');
+}
+
+// ===== Office: Ride Actions =====
+export function approveRide(id) {
+  return request('/api/rides/' + id + '/approve', { method: 'POST' });
+}
+
+export function denyRide(id) {
+  return request('/api/rides/' + id + '/deny', { method: 'POST' });
+}
+
+export function unassignRide(id) {
+  return request('/api/rides/' + id + '/unassign', { method: 'POST' });
+}
+
+export function reassignRide(id, driverId) {
+  return request('/api/rides/' + id + '/reassign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ driverId }),
+  });
+}
+
+export function assignRide(id, driverId) {
+  return request('/api/rides/' + id + '/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ driverId }),
+  });
+}
+
+export function editRide(id, data) {
+  return request('/api/rides/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function bulkDeleteRides(ids) {
+  return request('/api/rides/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 // ===== Office: Settings =====
 export function fetchSettings() {
   return request('/api/settings');
@@ -347,4 +402,70 @@ export function saveNotifPreferences(data) {
 // ===== Office: Data Management =====
 export function purgeOldRides() {
   return request('/api/rides/purge-old', { method: 'POST' });
+}
+
+// ===== Office: Shift CRUD =====
+export function fetchShiftsForWeek(weekStart) {
+  return request('/api/shifts' + (weekStart ? '?weekStart=' + weekStart : ''));
+}
+
+export function createShift(data) {
+  return request('/api/shifts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateShift(id, data) {
+  return request('/api/shifts/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteShift(id) {
+  return request('/api/shifts/' + id, { method: 'DELETE' });
+}
+
+// ===== Office: Fleet =====
+export function fetchFleetVehicles() {
+  return request('/api/analytics/vehicles');
+}
+
+export function createVehicle(data) {
+  return request('/api/vehicles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateVehicle(id, data) {
+  return request('/api/vehicles/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteVehicle(id) {
+  return request('/api/vehicles/' + id, { method: 'DELETE' });
+}
+
+export function retireVehicle(id) {
+  return request('/api/vehicles/' + id + '/retire', { method: 'POST' });
+}
+
+export function logMaintenance(id, data) {
+  return request('/api/vehicles/' + id + '/maintenance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export function fetchMaintenanceLogs(id) {
+  return request('/api/vehicles/' + id + '/maintenance');
 }

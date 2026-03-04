@@ -1,9 +1,13 @@
 import Sidebar from './Sidebar';
 import OfficeHeader from './OfficeHeader';
-import PlaceholderPanel from '../panels/PlaceholderPanel';
 import MapPanel from '../panels/MapPanel';
+import AnalyticsPanel from '../analytics/AnalyticsPanel';
 import ProfilePanel from '../panels/ProfilePanel';
 import SettingsPanel from '../settings/SettingsPanel';
+import RidesPanel from '../rides/RidesPanel';
+import DispatchPanel from '../dispatch/DispatchPanel';
+import StaffPanel from '../staff/StaffPanel';
+import FleetPanel from '../fleet/FleetPanel';
 
 export default function OfficeLayout({
   activePanel, onPanelChange, panelTitle,
@@ -32,19 +36,19 @@ export default function OfficeLayout({
         />
         <div className="ro-content">
           <section id="dispatch-panel" className={`tab-panel${activePanel === 'dispatch-panel' ? ' active' : ''}`}>
-            <PlaceholderPanel icon="broadcast" title="Dispatch" phase="3d" />
+            <DispatchPanel />
           </section>
           <section id="rides-panel" className={`tab-panel${activePanel === 'rides-panel' ? ' active' : ''}`}>
-            <PlaceholderPanel icon="car" title="Rides" phase="3c" />
+            <RidesPanel />
           </section>
           <section id="staff-panel" className={`tab-panel${activePanel === 'staff-panel' ? ' active' : ''}`}>
-            <PlaceholderPanel icon="users" title="Staff & Shifts" phase="3b" />
+            <StaffPanel />
           </section>
           <section id="fleet-panel" className={`tab-panel${activePanel === 'fleet-panel' ? ' active' : ''}`}>
-            <PlaceholderPanel icon="bus" title="Fleet" phase="3b" />
+            <FleetPanel />
           </section>
           <section id="analytics-panel" className={`tab-panel${activePanel === 'analytics-panel' ? ' active' : ''}`}>
-            <PlaceholderPanel icon="chart-bar" title="Analytics" phase="3e" />
+            <AnalyticsPanel />
           </section>
           <section id="map-panel" className={`tab-panel${activePanel === 'map-panel' ? ' active' : ''}`}>
             <MapPanel isVisible={activePanel === 'map-panel'} />
