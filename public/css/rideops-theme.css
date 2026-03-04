@@ -150,10 +150,10 @@ body {
 .strip-row__actions { margin-left: auto; display: flex; gap: 6px; }
 
 /* ── Section 10: Table ── */
-.ro-table-wrap { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface); }
+.ro-table-wrap { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; overflow-x: auto; background: var(--color-surface); }
 .ro-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.ro-table thead { background: var(--color-primary); }
-.ro-table th { padding: 10px 12px; text-align: left; font-weight: 600; color: var(--color-secondary, #fff); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.15); }
+.ro-table thead { background: var(--color-surface-dim); }
+.ro-table th { padding: 10px 12px; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--color-primary); }
 .ro-table td { padding: 10px 12px; }
 .ro-table--sm th { padding: 6px 10px; font-size: 10px; }
 .ro-table--sm td { padding: 6px 10px; font-size: 12px; }
@@ -1005,7 +1005,7 @@ input[type="checkbox"]:disabled {
 .delta i { font-size: 12px; margin-right: 2px; }
 
 /* ── Wrapped 2×2 Grid ── */
-.wrapped-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.wrapped-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 @media (max-width: 480px) { .wrapped-grid { grid-template-columns: 1fr; } }
 .wrapped-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px; text-align: center; }
 .wrapped-card__icon { font-size: 24px; color: var(--color-primary); margin-bottom: 6px; }
@@ -1126,35 +1126,62 @@ input[type="checkbox"]:disabled {
 /* lg KPI bar: remove excessive min-height, let content dictate height */
 .grid-stack-item[data-logical-size="lg"] .kpi-bar { padding: 4px 0; }
 
-/* Widget card header base styles */
+/* Widget card header base styles — neutral header, colored icon */
 .widget-card__header {
-  background: var(--color-primary);
-  color: var(--color-secondary);
-  padding: 10px 16px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border-light);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
 }
 .widget-card__title {
-  color: inherit;
+  color: var(--color-text);
   margin: 0;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   flex: 1;
 }
-.widget-card__title i { margin-right: 4px; color: inherit; opacity: 0.8; }
+.widget-card__title i { margin-right: 4px; color: var(--color-primary); opacity: 1; }
 .widget-card__body { padding: 12px 16px 16px; flex: 1; min-height: 0; }
+
+/* ── Accent variant (primary-colored header) ── */
+.widget-card--accent .widget-card__header {
+  background: var(--color-primary);
+  color: #fff;
+  border-bottom: none;
+}
+.widget-card--accent .widget-card__title { color: #fff; }
+.widget-card--accent .widget-card__title i { color: #fff; opacity: 0.85; }
+.widget-card--accent .widget-card__header select {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.75rem;
+}
+.widget-card--accent .widget-card__header .ro-btn {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.4);
+  font-size: 0.75rem;
+}
+.widget-card--accent .widget-card__header .ro-btn:hover {
+  background: rgba(255,255,255,0.35);
+}
 
 /* Drag handle and action buttons — hidden by default, shown in edit mode */
 .widget-card__drag-handle {
   display: none;
   cursor: grab;
-  color: inherit;
-  opacity: 0.6;
+  color: var(--color-text-muted);
+  opacity: 0.8;
   font-size: 16px;
   padding: 0 2px;
 }
@@ -1168,8 +1195,8 @@ input[type="checkbox"]:disabled {
 .widget-action {
   background: none;
   border: none;
-  color: inherit;
-  opacity: 0.6;
+  color: var(--color-text-muted);
+  opacity: 0.8;
   cursor: pointer;
   padding: 2px;
   font-size: 14px;
@@ -1179,49 +1206,144 @@ input[type="checkbox"]:disabled {
 }
 .widget-action:hover { opacity: 1; }
 
-/* Edit mode: show controls via gs-editing class on grid container */
+/* Legacy GridStack selectors — kept for backward compatibility with index-legacy.html */
 .gs-editing .widget-card__drag-handle,
 .gs-editing .widget-card__actions {
   display: flex;
 }
-.gs-editing .widget-card__drag-handle {
-  opacity: 0.85;
+
+/* ── react-grid-layout Integration ── */
+
+/* Widget card wrapper — matches old grid-stack-item-content styling */
+.widget-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  height: 100%;
+}
+.widget-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+}
+
+/* Size-specific styles using data-logical-size on .widget-card */
+.widget-card[data-logical-size="xs"] .widget-card__header { padding: 6px 10px; font-size: 11px; flex-shrink: 0; }
+.widget-card[data-logical-size="xs"] .widget-card__body { padding: 6px 10px 10px; overflow-y: auto; flex: 1; min-height: 0; }
+.widget-card[data-logical-size="xs"] .widget-card__title { font-size: 11px; }
+.widget-card[data-logical-size="xs"] .widget-card__title i { font-size: 12px; }
+
+.widget-card[data-logical-size="sm"] .widget-card__header { padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
+.widget-card[data-logical-size="sm"] .widget-card__body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 0; }
+.widget-card[data-logical-size="sm"] .widget-card__title { font-size: 12px; }
+.widget-card[data-logical-size="sm"] .widget-card__title i { font-size: 13px; }
+
+.widget-card[data-logical-size="lg"] .kpi-bar { padding: 4px 0; }
+
+/* Chart.js canvas containers — match old grid-stack-item-content rules */
+.widget-card .widget-card__body:has(canvas) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.widget-card .widget-card__body:has(canvas) > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Edit mode via widget-grid--editing class */
+.widget-grid--editing .widget-card__drag-handle,
+.widget-grid--editing .widget-card__actions {
+  display: flex;
+}
+.widget-grid--editing .widget-card__drag-handle {
+  opacity: 1;
   font-size: 18px;
 }
-.gs-editing > .grid-stack-item > .grid-stack-item-content {
-  border: 2px dashed var(--color-primary-light);
+.widget-grid--editing .widget-card {
+  border: 2px dashed #93C5FD;
+  overflow: visible; /* allow resize handle to show at edges */
 }
-.gs-editing > .grid-stack-item > .grid-stack-item-content:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+.widget-grid--editing .widget-card .widget-card__body {
+  overflow: hidden; /* keep content clipped even when card allows overflow */
+}
+.widget-grid--editing .widget-card:hover {
+  border-color: #3B82F6;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.15);
 }
 
-/* GridStack placeholder styling (the ghost during drag) */
-.grid-stack > .grid-stack-placeholder > .placeholder-content {
-  background: var(--color-primary-subtle);
-  border: 2px dashed var(--color-primary);
+/* RGL placeholder styling (the ghost during drag/resize) — green = valid drop target */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 2px dashed rgba(16, 185, 129, 0.6) !important;
   border-radius: var(--radius-md);
-  opacity: 0.5;
+  opacity: 0.8;
 }
 
-/* Resize handle visibility — only in edit mode */
-.grid-stack-item > .ui-resizable-handle {
+/* Resize handle — hidden by default, visible in edit mode (except static items) */
+.react-resizable-handle { display: none !important; }
+.widget-grid--editing .react-resizable-handle {
+  display: block !important;
+  z-index: 10;
+}
+.widget-grid--editing .react-resizable-hide > .react-resizable-handle {
+  display: none !important;
+}
+/* Visible corner indicator in edit mode */
+.widget-grid--editing .react-resizable-handle-se::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #93C5FD;
+  border-bottom: 2px solid #93C5FD;
+  transition: border-color 0.15s;
+}
+.widget-grid--editing .widget-card:hover .react-resizable-handle-se::after {
+  border-color: #3B82F6;
+}
+
+/* Attendance KPI grid */
+.att-kpi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.att-kpi-grid .kpi-card {
+  flex: 1 1 calc(20% - 0.75rem);
+  min-width: 120px;
+}
+
+/* Widget Library Drawer (overlay + slide-in panel) */
+.widget-library-backdrop {
   display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 1040;
 }
-.gs-editing > .grid-stack-item > .ui-resizable-handle {
-  display: block;
-}
+.widget-library-backdrop.open { display: block; }
 
-/* GridStack empty grid state */
-.grid-stack:empty::after {
-  content: 'No widgets on this tab. Click "Customize" to add widgets.';
-  display: block;
-  text-align: center;
-  padding: 64px 24px;
-  color: var(--color-text-muted);
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius-md);
+.widget-library-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  background: var(--color-card-bg, #fff);
+  box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+  z-index: 1050;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
+.widget-library-drawer.open { transform: translateX(0); }
 
 /* Widget Library Items */
 .widget-library-group__label {
