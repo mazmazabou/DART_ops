@@ -25,14 +25,20 @@ export default function AcademicTermsSubPanel() {
   const handleAdd = async () => {
     const ok = await showModal({
       title: 'Add Academic Term',
-      body: `
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          <div><label class="ro-label">Name</label><input class="ro-input" id="modal-term-name" placeholder="e.g. Fall 2026" /></div>
-          <div><label class="ro-label">Start Date</label><input class="ro-input" id="modal-term-start" type="date" /></div>
-          <div><label class="ro-label">End Date</label><input class="ro-input" id="modal-term-end" type="date" /></div>
-          <div><label class="ro-label">Sort Order</label><input class="ro-input" id="modal-term-sort" type="number" value="0" min="0" /></div>
+      body: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div><label className="ro-label">Name</label><input className="ro-input" id="modal-term-name" placeholder="e.g. Fall 2026" /></div>
+          <div><label className="ro-label">Start Date</label><input className="ro-input" id="modal-term-start" type="date" /></div>
+          <div><label className="ro-label">End Date</label><input className="ro-input" id="modal-term-end" type="date" /></div>
+          <div>
+            <label className="ro-label">Display Order</label>
+            <input className="ro-input" id="modal-term-sort" type="number" defaultValue="0" min="0" placeholder="0" />
+            <span className="text-xs text-muted" style={{ marginTop: '4px', display: 'block' }}>
+              Lower numbers appear first in the list
+            </span>
+          </div>
         </div>
-      `,
+      ),
       confirmLabel: 'Add Term',
     });
     if (!ok) return;
@@ -59,14 +65,20 @@ export default function AcademicTermsSubPanel() {
     const sortVal = term.sort_order || 0;
     const ok = await showModal({
       title: 'Edit Academic Term',
-      body: `
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          <div><label class="ro-label">Name</label><input class="ro-input" id="modal-term-name" value="${term.name.replace(/"/g, '&quot;')}" /></div>
-          <div><label class="ro-label">Start Date</label><input class="ro-input" id="modal-term-start" type="date" value="${startVal}" /></div>
-          <div><label class="ro-label">End Date</label><input class="ro-input" id="modal-term-end" type="date" value="${endVal}" /></div>
-          <div><label class="ro-label">Sort Order</label><input class="ro-input" id="modal-term-sort" type="number" value="${sortVal}" min="0" /></div>
+      body: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div><label className="ro-label">Name</label><input className="ro-input" id="modal-term-name" defaultValue={term.name} /></div>
+          <div><label className="ro-label">Start Date</label><input className="ro-input" id="modal-term-start" type="date" defaultValue={startVal} /></div>
+          <div><label className="ro-label">End Date</label><input className="ro-input" id="modal-term-end" type="date" defaultValue={endVal} /></div>
+          <div>
+            <label className="ro-label">Display Order</label>
+            <input className="ro-input" id="modal-term-sort" type="number" defaultValue={sortVal} min="0" />
+            <span className="text-xs text-muted" style={{ marginTop: '4px', display: 'block' }}>
+              Lower numbers appear first in the list
+            </span>
+          </div>
         </div>
-      `,
+      ),
       confirmLabel: 'Save',
     });
     if (!ok) return;
@@ -142,7 +154,7 @@ export default function AcademicTermsSubPanel() {
                 <div style={{ fontWeight: 600, fontSize: '14px' }}>{term.name}</div>
                 <div className="text-xs text-muted">
                   {term.start_date ? term.start_date.slice(0, 10) : ''} &mdash; {term.end_date ? term.end_date.slice(0, 10) : ''}
-                  {term.sort_order != null && <span> &middot; Order: {term.sort_order}</span>}
+                  {term.sort_order != null && <span> &middot; Display Order: {term.sort_order}</span>}
                 </div>
               </div>
               <div className="flex gap-4">
