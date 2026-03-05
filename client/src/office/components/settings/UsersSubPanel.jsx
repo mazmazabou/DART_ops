@@ -158,7 +158,7 @@ export default function UsersSubPanel() {
           <div><label className="ro-label">Full Name</label><input className="ro-input" placeholder="Full name" onChange={e => { formData.name = e.target.value; }} /></div>
           <div><label className="ro-label">Email</label><input className="ro-input" type="email" placeholder="Email" onChange={e => { formData.email = e.target.value; }} /></div>
           <div><label className="ro-label">Phone</label><input className="ro-input" placeholder="Phone (optional)" onChange={e => { formData.phone = e.target.value; }} /></div>
-          <div><label className="ro-label">Member ID</label><input className="ro-input" placeholder="Member ID (optional)" onChange={e => { formData.memberId = e.target.value; }} /></div>
+          <div><label className="ro-label">Member ID</label><input className="ro-input" placeholder="Member ID" onChange={e => { formData.memberId = e.target.value; }} /></div>
           <div>
             <label className="ro-label">Role</label>
             <select className="ro-input" defaultValue="rider" onChange={e => { formData.role = e.target.value; }}>
@@ -174,8 +174,8 @@ export default function UsersSubPanel() {
     });
     if (!ok) return;
     const { username, name, email, phone, memberId, role, password } = formData;
-    if (!username.trim() || !name.trim() || !password) {
-      showToast('Username, name, and password are required.', 'error');
+    if (!username.trim() || !name.trim() || !email.trim() || !memberId.trim() || !password) {
+      showToast('Username, name, email, member ID, and password are required.', 'error');
       return;
     }
     if (password.length < 8) {
