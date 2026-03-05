@@ -1,4 +1,5 @@
 import RideRow from './RideRow';
+import Pagination from './Pagination';
 
 const COLUMNS = [
   { key: 'requested', label: 'Requested' },
@@ -18,7 +19,7 @@ function SortIcon({ col, sortCol, sortDir }) {
 export default function RidesTable({
   filteredRides, selectedIds, employees,
   onToggleSelect, onToggleSelectAll, onRowClick, onApprove,
-  hasMore, onLoadMore,
+  page, pageSize, totalCount, onPageChange, onPageSizeChange,
   sortCol, sortDir, onSort,
 }) {
   const allSelected = filteredRides.length > 0 && filteredRides.every(r => selectedIds.has(r.id));
@@ -70,17 +71,17 @@ export default function RidesTable({
                 />
               ))
             )}
-            {hasMore && (
-              <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '12px' }}>
-                  <button className="ro-btn ro-btn--outline ro-btn--sm" onClick={onLoadMore}>
-                    <i className="ti ti-chevrons-down"></i> Load More
-                  </button>
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {totalCount > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalCount}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+          />
+        )}
       </div>
     </div>
   );

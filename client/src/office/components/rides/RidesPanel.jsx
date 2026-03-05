@@ -11,13 +11,12 @@ import RideDrawer from './RideDrawer';
 import RideEditModal from './RideEditModal';
 
 const IN_PROGRESS_STATUSES = ['scheduled', 'driver_on_the_way', 'driver_arrived_grace'];
-const PAGE_LIMIT = 50;
+const DEFAULT_PAGE_SIZE = 25;
 const SCHEDULE_LIMIT = 200;
 
 function buildStatusParam(statusFilter) {
   if (statusFilter.has('all')) return '';
   const statuses = [...statusFilter];
-  // Expand 'in_progress' to its constituent statuses
   const expanded = [];
   for (const s of statuses) {
     if (s === 'in_progress') {
@@ -40,9 +39,9 @@ export default function RidesPanel() {
   const [opsConfig, setOpsConfig] = useState(null);
 
   // Pagination state
-  const [nextCursor, setNextCursor] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState(() => new Set(['all']));
@@ -74,26 +73,40 @@ export default function RidesPanel() {
     searchDebounceRef.current = setTimeout(() => setDebouncedSearch(text), 300);
   }, []);
 
-  // Load rides (called by polling) — always fetches page 1
+  // Load rides — fetches current page using offset
   const loadRides = useCallback(async () => {
     try {
       const statusParam = buildStatusParam(statusFilter);
-      const limit = viewMode === 'calendar' ? SCHEDULE_LIMIT : PAGE_LIMIT;
-      const data = await fetchRidesPaginated({
-        limit,
-        status: statusParam || undefined,
-        from: dateFrom || undefined,
-        to: dateTo || undefined,
-        search: debouncedSearch || undefined,
-      });
-      setRides(data.rides);
-      setNextCursor(data.nextCursor);
-      setTotalCount(data.totalCount);
-      setHasMore(data.hasMore);
+      if (viewMode === 'calendar') {
+        // Calendar: fetch all (up to SCHEDULE_LIMIT) without offset
+        const data = await fetchRidesPaginated({
+          limit: SCHEDULE_LIMIT,
+          offset: 0,
+          status: statusParam || undefined,
+          from: dateFrom || undefined,
+          to: dateTo || undefined,
+          search: debouncedSearch || undefined,
+        });
+        setRides(data.rides);
+        setTotalCount(data.totalCount);
+      } else {
+        // Table: offset-based pagination
+        const offset = (page - 1) * pageSize;
+        const data = await fetchRidesPaginated({
+          limit: pageSize,
+          offset,
+          status: statusParam || undefined,
+          from: dateFrom || undefined,
+          to: dateTo || undefined,
+          search: debouncedSearch || undefined,
+        });
+        setRides(data.rides);
+        setTotalCount(data.totalCount);
+      }
     } catch {
       // Silently fail on polling errors
     }
-  }, [statusFilter, dateFrom, dateTo, debouncedSearch, viewMode]);
+  }, [statusFilter, dateFrom, dateTo, debouncedSearch, viewMode, page, pageSize]);
 
   usePolling(loadRides, 5000);
 
@@ -104,26 +117,16 @@ export default function RidesPanel() {
     fetchOpsConfig().then(d => setOpsConfig(d)).catch(() => {});
   }, []);
 
-  // Load more (append next page)
-  const handleLoadMore = useCallback(async () => {
-    if (!nextCursor) return;
-    try {
-      const statusParam = buildStatusParam(statusFilter);
-      const data = await fetchRidesPaginated({
-        limit: PAGE_LIMIT,
-        cursor: nextCursor,
-        status: statusParam || undefined,
-        from: dateFrom || undefined,
-        to: dateTo || undefined,
-        search: debouncedSearch || undefined,
-      });
-      setRides(prev => [...prev, ...data.rides]);
-      setNextCursor(data.nextCursor);
-      setHasMore(data.hasMore);
-    } catch (e) {
-      showToast(e.message || 'Failed to load more rides', 'error');
-    }
-  }, [nextCursor, statusFilter, dateFrom, dateTo, debouncedSearch, showToast]);
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, dateFrom, dateTo, debouncedSearch]);
+
+  // Page size change resets to page 1
+  const handlePageSizeChange = useCallback((newSize) => {
+    setPageSize(newSize);
+    setPage(1);
+  }, []);
 
   // Sort handler
   const handleSort = useCallback((col) => {
@@ -298,8 +301,11 @@ export default function RidesPanel() {
           onToggleSelectAll={toggleSelectAll}
           onRowClick={handleRowClick}
           onApprove={handleApprove}
-          hasMore={hasMore}
-          onLoadMore={handleLoadMore}
+          page={page}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
           sortCol={sortCol}
           sortDir={sortDir}
           onSort={handleSort}

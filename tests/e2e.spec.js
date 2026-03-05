@@ -572,6 +572,22 @@ test.describe.serial('API: Ride Lifecycle', () => {
     }
   });
 
+  test('GET /api/rides?limit=2&offset=0 offset pagination works', async () => {
+    const res1 = await officeCtx.get('/api/rides?limit=2&offset=0');
+    const page1 = await res1.json();
+    expect(page1.rides.length).toBeLessThanOrEqual(2);
+    if (page1.totalCount <= 2) { test.skip(); return; }
+
+    const res2 = await officeCtx.get('/api/rides?limit=2&offset=2');
+    const page2 = await res2.json();
+    expect(page2.rides.length).toBeGreaterThan(0);
+    // Pages should not overlap
+    const ids1 = new Set(page1.rides.map(r => r.id));
+    for (const r of page2.rides) {
+      expect(ids1.has(r.id)).toBeFalsy();
+    }
+  });
+
   test('GET /api/rides?limit=50&status=pending,approved multi-status filter', async () => {
     const res = await officeCtx.get('/api/rides?limit=50&status=pending,approved');
     expect(res.ok()).toBeTruthy();

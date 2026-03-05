@@ -178,9 +178,10 @@ export function fetchAllRides(params = {}) {
   return request('/api/rides' + (qStr ? '?' + qStr : ''));
 }
 
-export function fetchRidesPaginated({ limit = 50, cursor, status, from, to, search } = {}) {
+export function fetchRidesPaginated({ limit = 25, offset, cursor, status, from, to, search } = {}) {
   const qs = new URLSearchParams();
   qs.set('limit', String(limit));
+  if (offset != null) qs.set('offset', String(offset));
   if (cursor) qs.set('cursor', cursor);
   if (status) qs.set('status', status);
   if (from) qs.set('from', from);

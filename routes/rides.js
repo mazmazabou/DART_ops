@@ -28,7 +28,7 @@ module.exports = function(app, ctx) {
 
   // ----- Ride endpoints -----
   app.get('/api/rides', requireStaff, wrapAsync(async (req, res) => {
-    const { status, from, to, search, limit: limitParam, cursor } = req.query;
+    const { status, from, to, search, limit: limitParam, cursor, offset: offsetParam } = req.query;
     const baseCols = `
       r.id, r.rider_id, r.rider_name, r.rider_email, r.rider_phone, r.pickup_location, r.dropoff_location, r.notes,
       r.requested_time, r.status, r.assigned_driver_id, r.grace_start_time, r.consecutive_misses, r.recurring_id, r.cancelled_by, r.vehicle_id,
@@ -87,41 +87,55 @@ module.exports = function(app, ctx) {
 
     // Paginated mode
     const limit = Math.min(Math.max(parseInt(limitParam) || 50, 1), 200);
-    const cursorConditions = [...conditions];
-    const cursorParams = [...params];
+    const offset = Math.max(parseInt(offsetParam) || 0, 0);
 
-    if (cursor) {
+    // Build data query params
+    const dataConditions = [...conditions];
+    const dataParams = [...params];
+
+    // Cursor-based pagination (legacy / optional)
+    if (cursor && !offsetParam) {
       try {
         const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
-        cursorParams.push(decoded.t);
-        cursorParams.push(decoded.i);
-        cursorConditions.push(`(r.requested_time, r.id) < ($${cursorParams.length - 1}::timestamptz, $${cursorParams.length})`);
+        dataParams.push(decoded.t);
+        dataParams.push(decoded.i);
+        dataConditions.push(`(r.requested_time, r.id) < ($${dataParams.length - 1}::timestamptz, $${dataParams.length})`);
       } catch {
         return res.status(400).json({ error: 'Invalid cursor' });
       }
     }
 
-    const cursorWhere = cursorConditions.length > 0 ? 'WHERE ' + cursorConditions.join(' AND ') : '';
+    const dataWhere = dataConditions.length > 0 ? 'WHERE ' + dataConditions.join(' AND ') : '';
 
-    // Fetch limit+1 to detect hasMore
-    cursorParams.push(limit + 1);
+    // Fetch limit+1 to detect hasMore (for cursor mode), or exact limit with OFFSET
+    const useOffset = offsetParam != null;
+    const fetchLimit = useOffset ? limit : limit + 1;
+    dataParams.push(fetchLimit);
+    let dataQuery = `SELECT ${baseCols} ${baseFrom} ${dataWhere} ORDER BY r.requested_time DESC, r.id DESC LIMIT $${dataParams.length}`;
+    if (useOffset) {
+      dataParams.push(offset);
+      dataQuery += ` OFFSET $${dataParams.length}`;
+    }
+
     const [dataResult, countResult] = await Promise.all([
-      query(
-        `SELECT ${baseCols} ${baseFrom} ${cursorWhere} ORDER BY r.requested_time DESC, r.id DESC LIMIT $${cursorParams.length}`,
-        cursorParams
-      ),
-      query(
-        `SELECT COUNT(*) AS total ${baseFrom} ${whereClause}`,
-        params
-      ),
+      query(dataQuery, dataParams),
+      query(`SELECT COUNT(*) AS total ${baseFrom} ${whereClause}`, params),
     ]);
 
+    const totalCount = parseInt(countResult.rows[0].total);
     const rows = dataResult.rows;
-    const hasMore = rows.length > limit;
-    if (hasMore) rows.pop();
+
+    // Determine hasMore
+    let hasMore;
+    if (useOffset) {
+      hasMore = offset + limit < totalCount;
+    } else {
+      hasMore = rows.length > limit;
+      if (hasMore) rows.pop();
+    }
 
     let nextCursor = null;
-    if (hasMore && rows.length > 0) {
+    if (!useOffset && hasMore && rows.length > 0) {
       const last = rows[rows.length - 1];
       nextCursor = Buffer.from(JSON.stringify({ t: last.requested_time, i: last.id })).toString('base64');
     }
@@ -129,7 +143,7 @@ module.exports = function(app, ctx) {
     res.json({
       rides: rows.map(mapRide),
       nextCursor,
-      totalCount: parseInt(countResult.rows[0].total),
+      totalCount,
       hasMore,
     });
   }));

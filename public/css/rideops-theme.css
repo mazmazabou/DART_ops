@@ -160,6 +160,20 @@ body {
 .ro-table tbody tr { border-bottom: 1px solid var(--color-border-light); transition: background 0.1s; }
 .ro-table tbody tr:hover { background: var(--color-surface-hover); cursor: pointer; }
 
+/* ── Section 10b: Pagination ── */
+.ro-pagination { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--color-border-light); background: var(--color-surface); font-size: 12px; color: var(--color-text-secondary); gap: 16px; }
+.ro-pagination__left { display: flex; align-items: center; gap: 16px; }
+.ro-pagination__right { display: flex; align-items: center; gap: 2px; }
+.ro-pagination__per-page { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--color-text-secondary); }
+.ro-pagination__per-page select { width: auto; padding: 4px 24px 4px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: 12px; font-family: inherit; background: var(--color-surface); color: var(--color-text); cursor: pointer; transition: border-color 0.15s; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 6px center; }
+.ro-pagination__per-page select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.1); }
+.ro-pagination__info { font-size: 12px; font-weight: 500; color: var(--color-text-muted); white-space: nowrap; }
+.ro-pagination__info strong { color: var(--color-text-secondary); font-weight: 600; }
+.ro-pagination__btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-secondary); cursor: pointer; font-size: 14px; transition: all 0.15s; padding: 0; }
+.ro-pagination__btn:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); border-color: var(--color-primary); }
+.ro-pagination__btn:disabled { opacity: 0.35; cursor: not-allowed; }
+@media (max-width: 640px) { .ro-pagination { flex-wrap: wrap; gap: 8px; } .ro-pagination__left { flex: 1 1 100%; justify-content: space-between; } }
+
 /* ── Section 11: Buttons ── */
 .ro-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; line-height: 1.4; font-family: inherit; }
 .ro-btn--primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
