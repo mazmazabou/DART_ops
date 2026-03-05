@@ -157,8 +157,8 @@ module.exports = function(app, ctx) {
       if (strikesEnabled === 'true' || strikesEnabled === true) {
         const maxStrikes = parseInt(await getSetting('max_no_show_strikes')) || 5;
         const missResult = await query(
-          'SELECT count FROM rider_miss_counts WHERE email = $1',
-          [req.session.email]
+          'SELECT count FROM rider_miss_counts WHERE rider_id = $1',
+          [req.session.userId]
         );
         const missCount = missResult.rows[0]?.count || 0;
         if (missCount >= maxStrikes) {
@@ -189,7 +189,7 @@ module.exports = function(app, ctx) {
       return res.status(400).json({ error: 'Rider name is required' });
     }
 
-    const missCount = await getRiderMissCount(email);
+    const missCount = await getRiderMissCount(req.session.userId);
     const rideId = generateId('ride');
     await query(
       `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id)
@@ -219,7 +219,7 @@ module.exports = function(app, ctx) {
     const ride = rideRes.rows[0];
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
     if (ride.status !== 'pending') return res.status(400).json({ error: 'Only pending rides can be approved' });
-    const missCountRes = await query('SELECT count FROM rider_miss_counts WHERE email = $1', [ride.rider_email]);
+    const missCountRes = await query('SELECT count FROM rider_miss_counts WHERE rider_id = $1', [ride.rider_id]);
     const missCount = missCountRes.rows[0] != null ? missCountRes.rows[0].count : (ride.consecutive_misses || 0);
     const strikesEnabled = await getSetting('strikes_enabled', true);
     const maxStrikes = await getSetting('max_no_show_strikes', 5);

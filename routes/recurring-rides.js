@@ -54,7 +54,7 @@ module.exports = function(app, ctx) {
       const requestedTime = `${y}-${m}-${d}T${hourStr.padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
       if (autoDenyRecurring && !(await isWithinServiceHours(requestedTime))) continue;
       const rideId = generateId('ride');
-      const missCount = await getRiderMissCount(req.session.email);
+      const missCount = await getRiderMissCount(req.session.userId);
       await query(
         `INSERT INTO rides (id, rider_id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, recurring_id, vehicle_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, NULL, $10, $11, NULL)`,

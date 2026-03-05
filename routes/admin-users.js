@@ -234,8 +234,8 @@ module.exports = function(app, ctx) {
 
     let missCount = 0;
     let maxStrikes = parseInt(await getSetting('max_no_show_strikes')) || 5;
-    if (user.role === 'rider' && user.email) {
-      missCount = await getRiderMissCount(user.email);
+    if (user.role === 'rider') {
+      missCount = await getRiderMissCount(user.id);
     }
 
     res.json({ user, upcoming, past, missCount, maxStrikes });
@@ -247,8 +247,7 @@ module.exports = function(app, ctx) {
     if (!userRes.rowCount) return res.status(404).json({ error: 'User not found' });
     const user = userRes.rows[0];
     if (user.role !== 'rider') return res.status(400).json({ error: 'Only rider accounts have a miss count' });
-    if (!user.email) return res.status(400).json({ error: 'Rider has no email on file' });
-    await setRiderMissCount(user.email, 0);
+    await setRiderMissCount(user.id, 0);
     res.json({ success: true, missCount: 0 });
   }));
 

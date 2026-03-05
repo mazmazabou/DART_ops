@@ -169,7 +169,7 @@ module.exports = function(app, ctx) {
                    requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id`,
         [ride.id, ride.vehicle_id]
       );
-      await setRiderMissCount(ride.rider_email, 0, client);
+      await setRiderMissCount(ride.rider_id, 0, client);
       await addRideEvent(ride.id, req.session.userId, 'completed', null, null, client);
       await client.query('COMMIT');
     } catch (err) {
@@ -210,7 +210,7 @@ module.exports = function(app, ctx) {
     let newCount, result;
     try {
       await client.query('BEGIN');
-      newCount = await incrementRiderMissCount(ride.rider_email, client);
+      newCount = await incrementRiderMissCount(ride.rider_id, client);
       result = await client.query(
         `UPDATE rides SET status = 'no_show', consecutive_misses = $2, updated_at = NOW()
          WHERE id = $1

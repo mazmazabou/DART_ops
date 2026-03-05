@@ -234,7 +234,7 @@ module.exports = function(app, ctx) {
     ];
     for (const s of sampleRides) {
       const requestedTime = `${todayStr}T${String(s.hour).padStart(2, '0')}:00`;
-      const missCount = await getRiderMissCount(s.riderEmail);
+      const missCount = 0; // Dev seed — no rider_id available for sample rides
       const rideId = generateId('ride');
       await query(
         `INSERT INTO rides (id, rider_name, rider_email, rider_phone, pickup_location, dropoff_location, notes, requested_time, status, assigned_driver_id, grace_start_time, consecutive_misses, vehicle_id)

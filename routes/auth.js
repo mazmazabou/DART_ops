@@ -61,7 +61,7 @@ module.exports = function(app, ctx) {
       const strikesEnabled = await getSetting('strikes_enabled');
       if (strikesEnabled === 'true' || strikesEnabled === true) {
         const maxStrikes = parseInt(await getSetting('max_no_show_strikes')) || 5;
-        const missResult = await query('SELECT count FROM rider_miss_counts WHERE email = $1', [req.session.email]);
+        const missResult = await query('SELECT count FROM rider_miss_counts WHERE rider_id = $1', [req.session.userId]);
         const missCount = missResult.rows[0]?.count || 0;
         userData.terminated = missCount >= maxStrikes;
         userData.missCount = missCount;

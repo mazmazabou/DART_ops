@@ -958,7 +958,7 @@ module.exports = function registerAnalyticsRoutes(app, ctx) {
           [from, to + 'T23:59:59.999Z']
         ),
         // Strike counts
-        query(`SELECT email, count AS strike_count FROM rider_miss_counts`)
+        query(`SELECT rmc.rider_id, rmc.count AS strike_count, u.email FROM rider_miss_counts rmc JOIN users u ON u.id = rmc.rider_id`)
       ]);
 
       // Classify active riders
@@ -1795,7 +1795,7 @@ module.exports = function registerAnalyticsRoutes(app, ctx) {
       );
 
       // Get strike counts
-      const allStrikesRes = await query(`SELECT email, count FROM rider_miss_counts`);
+      const allStrikesRes = await query(`SELECT u.email, rmc.count FROM rider_miss_counts rmc JOIN users u ON u.id = rmc.rider_id`);
       const strikeMap = {};
       for (const s of allStrikesRes.rows) strikeMap[s.email] = parseInt(s.count) || 0;
 
