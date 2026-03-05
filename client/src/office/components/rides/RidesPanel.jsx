@@ -55,6 +55,10 @@ export default function RidesPanel() {
   // View state
   const [viewMode, setViewMode] = useState('table');
 
+  // Sort state
+  const [sortCol, setSortCol] = useState('requested');
+  const [sortDir, setSortDir] = useState('desc');
+
   // Selection (ref to survive polling, counter to trigger re-render)
   const selectedIdsRef = useRef(new Set());
   const [selectedCount, setSelectedCount] = useState(0);
@@ -121,18 +125,48 @@ export default function RidesPanel() {
     }
   }, [nextCursor, statusFilter, dateFrom, dateTo, debouncedSearch, showToast]);
 
-  // Filtered rides — sorting only (filtering is server-side now)
+  // Sort handler
+  const handleSort = useCallback((col) => {
+    setSortCol(prev => {
+      if (prev === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return col; }
+      setSortDir(col === 'requested' ? 'desc' : 'asc');
+      return col;
+    });
+  }, []);
+
+  // Client-side sort on loaded rides
   const filteredRides = useMemo(() => {
-    // Server already sorts by requested_time DESC, id DESC
-    // Keep client-side sort for consistency
     const sorted = [...rides];
+    const dir = sortDir === 'asc' ? 1 : -1;
     sorted.sort((a, b) => {
-      const da = a.requestedTime ? new Date(a.requestedTime).getTime() : 0;
-      const db = b.requestedTime ? new Date(b.requestedTime).getTime() : 0;
-      return db - da;
+      let av, bv;
+      switch (sortCol) {
+        case 'requested':
+          av = a.requestedTime ? new Date(a.requestedTime).getTime() : 0;
+          bv = b.requestedTime ? new Date(b.requestedTime).getTime() : 0;
+          return (av - bv) * dir;
+        case 'rider':
+          av = (a.riderName || '').toLowerCase();
+          bv = (b.riderName || '').toLowerCase();
+          return av < bv ? -dir : av > bv ? dir : 0;
+        case 'route':
+          av = (a.pickupLocation || '').toLowerCase();
+          bv = (b.pickupLocation || '').toLowerCase();
+          return av < bv ? -dir : av > bv ? dir : 0;
+        case 'status':
+          av = (a.status || '').toLowerCase();
+          bv = (b.status || '').toLowerCase();
+          return av < bv ? -dir : av > bv ? dir : 0;
+        case 'driver':
+          av = a.assignedDriverId ? (employees.find(e => e.id === a.assignedDriverId)?.name || '').toLowerCase() : '';
+          bv = b.assignedDriverId ? (employees.find(e => e.id === b.assignedDriverId)?.name || '').toLowerCase() : '';
+          return av < bv ? -dir : av > bv ? dir : 0;
+        default:
+          return 0;
+      }
     });
     return sorted;
-  }, [rides]);
+  }, [rides, sortCol, sortDir, employees]);
 
   // Prune selection when filtered rides change
   useEffect(() => {
@@ -266,6 +300,9 @@ export default function RidesPanel() {
           onApprove={handleApprove}
           hasMore={hasMore}
           onLoadMore={handleLoadMore}
+          sortCol={sortCol}
+          sortDir={sortDir}
+          onSort={handleSort}
         />
       ) : (
         <ScheduleGrid

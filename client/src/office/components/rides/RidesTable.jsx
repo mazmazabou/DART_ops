@@ -1,9 +1,25 @@
 import RideRow from './RideRow';
 
+const COLUMNS = [
+  { key: 'requested', label: 'Requested' },
+  { key: 'rider', label: 'Rider' },
+  { key: 'route', label: 'Route' },
+  { key: 'status', label: 'Status' },
+  { key: 'driver', label: 'Driver' },
+];
+
+function SortIcon({ col, sortCol, sortDir }) {
+  if (col !== sortCol) return <i className="ti ti-arrows-sort" style={{ opacity: 0.3, marginLeft: 4, fontSize: 12 }} />;
+  return sortDir === 'asc'
+    ? <i className="ti ti-sort-ascending" style={{ marginLeft: 4, fontSize: 12 }} />
+    : <i className="ti ti-sort-descending" style={{ marginLeft: 4, fontSize: 12 }} />;
+}
+
 export default function RidesTable({
   filteredRides, selectedIds, employees,
   onToggleSelect, onToggleSelectAll, onRowClick, onApprove,
   hasMore, onLoadMore,
+  sortCol, sortDir, onSort,
 }) {
   const allSelected = filteredRides.length > 0 && filteredRides.every(r => selectedIds.has(r.id));
 
@@ -21,11 +37,16 @@ export default function RidesTable({
                   onChange={onToggleSelectAll}
                 />
               </th>
-              <th>Requested</th>
-              <th>Rider</th>
-              <th>Route</th>
-              <th>Status</th>
-              <th>Driver</th>
+              {COLUMNS.map(col => (
+                <th
+                  key={col.key}
+                  onClick={() => onSort(col.key)}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  {col.label}
+                  <SortIcon col={col.key} sortCol={sortCol} sortDir={sortDir} />
+                </th>
+              ))}
               <th></th>
             </tr>
           </thead>
