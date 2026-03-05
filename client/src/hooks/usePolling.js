@@ -21,8 +21,8 @@ export function usePolling(callback, intervalMs) {
     }
   }, []);
 
+  // On mount: call immediately + start interval
   useEffect(() => {
-    // Call immediately
     callbackRef.current();
     start();
 
@@ -42,4 +42,10 @@ export function usePolling(callback, intervalMs) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [start, stop]);
+
+  // When callback identity changes (filter/search changed), call immediately + reset interval
+  useEffect(() => {
+    callbackRef.current();
+    start();
+  }, [callback, start]);
 }
