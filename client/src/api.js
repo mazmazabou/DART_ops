@@ -169,8 +169,24 @@ export function clockOut(employeeId) {
 }
 
 // Driver: rides
-export function fetchAllRides() {
-  return request('/api/rides');
+export function fetchAllRides(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.status) qs.set('status', params.status);
+  const qStr = qs.toString();
+  return request('/api/rides' + (qStr ? '?' + qStr : ''));
+}
+
+export function fetchRidesPaginated({ limit = 50, cursor, status, from, to, search } = {}) {
+  const qs = new URLSearchParams();
+  qs.set('limit', String(limit));
+  if (cursor) qs.set('cursor', cursor);
+  if (status) qs.set('status', status);
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  if (search) qs.set('search', search);
+  return request('/api/rides?' + qs.toString());
 }
 
 export function fetchVehicles() {
@@ -302,8 +318,13 @@ export function saveSettings(settingsArray) {
 }
 
 // ===== Office: Admin Users =====
-export function fetchAdminUsers() {
-  return request('/api/admin/users');
+export function fetchAdminUsers({ includeDeleted } = {}) {
+  const params = includeDeleted ? '?include_deleted=true' : '';
+  return request('/api/admin/users' + params);
+}
+
+export function restoreAdminUser(id) {
+  return request('/api/admin/users/' + id + '/restore', { method: 'POST' });
 }
 
 export function createAdminUser(data) {

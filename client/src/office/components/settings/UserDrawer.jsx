@@ -10,7 +10,7 @@ function defaultAvatarUrl(name) {
   return `${DICEBEAR_BASE}/initials/svg?seed=${encodeURIComponent(name || 'User')}`;
 }
 
-export default function UserDrawer({ userId, onClose, onResetPassword, onDeleteUser }) {
+export default function UserDrawer({ userId, onClose, onResetPassword, onDeleteUser, onRestoreUser }) {
   const { showToast } = useToast();
   const { user: currentUser } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -61,6 +61,18 @@ export default function UserDrawer({ userId, onClose, onResetPassword, onDeleteU
               </span>
             </div>
           </div>
+
+          {/* Deleted banner */}
+          {user.deleted_at && (
+            <div style={{
+              padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '16px',
+              background: 'rgba(107,114,128,0.1)',
+              border: '1px solid var(--color-text-muted)',
+              fontSize: '13px',
+            }}>
+              <strong>Deleted</strong> on {new Date(user.deleted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </div>
+          )}
 
           {/* No-show banner for riders */}
           {user.role === 'rider' && missCount > 0 && (
@@ -123,19 +135,30 @@ export default function UserDrawer({ userId, onClose, onResetPassword, onDeleteU
           {/* Actions */}
           {!isSelf && (
             <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
-              <button
-                className="ro-btn ro-btn--outline ro-btn--sm"
-                style={{ marginRight: '8px' }}
-                onClick={() => onResetPassword(userId, user.name)}
-              >
-                <i className="ti ti-key"></i> Reset Password
-              </button>
-              <button
-                className="ro-btn ro-btn--danger ro-btn--sm"
-                onClick={() => onDeleteUser(userId, user.name)}
-              >
-                <i className="ti ti-trash"></i> Delete User
-              </button>
+              {user.deleted_at ? (
+                <button
+                  className="ro-btn ro-btn--outline ro-btn--sm"
+                  onClick={() => onRestoreUser(userId, user.name)}
+                >
+                  <i className="ti ti-refresh"></i> Restore User
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="ro-btn ro-btn--outline ro-btn--sm"
+                    style={{ marginRight: '8px' }}
+                    onClick={() => onResetPassword(userId, user.name)}
+                  >
+                    <i className="ti ti-key"></i> Reset Password
+                  </button>
+                  <button
+                    className="ro-btn ro-btn--danger ro-btn--sm"
+                    onClick={() => onDeleteUser(userId, user.name)}
+                  >
+                    <i className="ti ti-trash"></i> Delete User
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

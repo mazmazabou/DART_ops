@@ -105,7 +105,7 @@ module.exports = function(app, ctx) {
 
     // Validate employeeId exists as a driver if provided
     if (employeeId !== undefined) {
-      const emp = await query(`SELECT id FROM users WHERE id = $1 AND role = 'driver'`, [employeeId]);
+      const emp = await query(`SELECT id FROM users WHERE id = $1 AND role = 'driver' AND deleted_at IS NULL`, [employeeId]);
       if (!emp.rowCount) {
         return res.status(400).json({ error: 'Employee not found or not a driver' });
       }

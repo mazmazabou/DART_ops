@@ -24,7 +24,7 @@ module.exports = function(app, ctx) {
   app.post('/api/employees/clock-in', requireStaff, wrapAsync(async (req, res) => {
     const { employeeId } = req.body;
     const result = await query(
-      `UPDATE users SET active = TRUE, updated_at = NOW() WHERE id = $1 AND role = 'driver' RETURNING id, username, name, email, role, active`,
+      `UPDATE users SET active = TRUE, updated_at = NOW() WHERE id = $1 AND role = 'driver' AND deleted_at IS NULL RETURNING id, username, name, email, role, active`,
       [employeeId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Employee not found' });
@@ -94,7 +94,7 @@ module.exports = function(app, ctx) {
     }
 
     const result = await query(
-      `UPDATE users SET active = FALSE, updated_at = NOW() WHERE id = $1 AND role = 'driver' RETURNING id, username, name, email, role, active`,
+      `UPDATE users SET active = FALSE, updated_at = NOW() WHERE id = $1 AND role = 'driver' AND deleted_at IS NULL RETURNING id, username, name, email, role, active`,
       [employeeId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Employee not found' });
@@ -127,7 +127,7 @@ module.exports = function(app, ctx) {
       const weekStart = formatLocalDate(monday);
 
       const [driversRes, clockRes, shiftsRes] = await Promise.all([
-        query(`SELECT id, username, name, email, phone, role, active FROM users WHERE role = 'driver' ORDER BY name`),
+        query(`SELECT id, username, name, email, phone, role, active FROM users WHERE role = 'driver' AND deleted_at IS NULL ORDER BY name`),
         query(`SELECT * FROM clock_events WHERE event_date = $1 ORDER BY clock_in_at`, [todayDate]),
         query(
           `SELECT id, employee_id, start_time, end_time, notes, week_start FROM shifts
@@ -167,7 +167,7 @@ module.exports = function(app, ctx) {
       const { from, to } = req.query;
 
       const driverRes = await query(
-        `SELECT id, username, name, email FROM users WHERE id = $1 AND role = 'driver'`, [id]
+        `SELECT id, username, name, email FROM users WHERE id = $1 AND role = 'driver' AND deleted_at IS NULL`, [id]
       );
       if (!driverRes.rowCount) return res.status(404).json({ error: 'Driver not found' });
 

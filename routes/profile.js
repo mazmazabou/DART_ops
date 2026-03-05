@@ -11,7 +11,7 @@ module.exports = function(app, ctx) {
   // Self-service profile
   app.get('/api/me', requireAuth, wrapAsync(async (req, res) => {
     const result = await query(
-      `SELECT id, username, name, email, member_id, phone, role, avatar_url, preferred_name, major, graduation_year, bio FROM users WHERE id = $1`,
+      `SELECT id, username, name, email, member_id, phone, role, avatar_url, preferred_name, major, graduation_year, bio FROM users WHERE id = $1 AND deleted_at IS NULL`,
       [req.session.userId]
     );
     const user = result.rows[0];

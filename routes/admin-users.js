@@ -3,6 +3,7 @@
 module.exports = function(app, ctx) {
   const {
     query,
+    pool,
     wrapAsync,
     requireOffice,
     bcrypt,
@@ -11,6 +12,7 @@ module.exports = function(app, ctx) {
     isValidMemberId,
     isValidPhone,
     mapRide,
+    addRideEvent,
     getSetting,
     getRiderMissCount,
     setRiderMissCount,
@@ -24,9 +26,10 @@ module.exports = function(app, ctx) {
 
   // ----- Admin endpoints -----
   app.get('/api/admin/users', requireOffice, wrapAsync(async (req, res) => {
-    const result = await query(
-      `SELECT id, username, name, email, member_id, phone, role, active FROM users ORDER BY role, name`
-    );
+    const includeDeleted = req.query.include_deleted === 'true';
+    const result = includeDeleted
+      ? await query(`SELECT id, username, name, email, member_id, phone, role, active, deleted_at FROM users ORDER BY role, name`)
+      : await query(`SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE deleted_at IS NULL ORDER BY role, name`);
     res.json(result.rows);
   }));
 
@@ -34,7 +37,7 @@ module.exports = function(app, ctx) {
     const member_id = req.query.member_id || req.query.usc_id;
     if (!member_id || !isValidMemberId(member_id)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
     const result = await query(
-      `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE member_id = $1`,
+      `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE member_id = $1 AND deleted_at IS NULL`,
       [member_id]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'No user found' });
@@ -42,30 +45,80 @@ module.exports = function(app, ctx) {
   }));
 
   app.delete('/api/admin/users/:id', requireOffice, wrapAsync(async (req, res) => {
-    if (DEMO_MODE) return res.status(403).json({ error: 'User deletion is disabled in demo mode' });
     const targetId = req.params.id;
     if (targetId === req.session.userId) return res.status(400).json({ error: 'Cannot delete your own office account' });
 
-    const userRes = await query(`SELECT id, role FROM users WHERE id = $1`, [targetId]);
+    const userRes = await query(`SELECT id, role FROM users WHERE id = $1 AND deleted_at IS NULL`, [targetId]);
     const user = userRes.rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Clear references
-    await query(`UPDATE ride_events SET actor_user_id = NULL WHERE actor_user_id = $1`, [targetId]);
-    await query(`UPDATE rides SET rider_id = NULL WHERE rider_id = $1`, [targetId]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    if (user.role === 'driver') {
-      await query(
-        `UPDATE rides
-         SET assigned_driver_id = NULL
-         WHERE assigned_driver_id = $1`,
+      // Soft-delete the user
+      await client.query(
+        `UPDATE users SET deleted_at = NOW(), active = FALSE, updated_at = NOW() WHERE id = $1`,
         [targetId]
       );
-      await query(`DELETE FROM shifts WHERE employee_id = $1`, [targetId]);
+
+      if (user.role === 'driver') {
+        // Unassign active rides and revert to approved
+        const activeRides = await client.query(
+          `SELECT id FROM rides WHERE assigned_driver_id = $1 AND status IN ('scheduled', 'driver_on_the_way', 'driver_arrived_grace')`,
+          [targetId]
+        );
+        for (const ride of activeRides.rows) {
+          await client.query(
+            `UPDATE rides SET assigned_driver_id = NULL, vehicle_id = NULL, status = 'approved', grace_start_time = NULL, updated_at = NOW() WHERE id = $1`,
+            [ride.id]
+          );
+          await addRideEvent(ride.id, req.session.userId, 'unassigned', 'Driver account deactivated', null, client);
+        }
+      } else if (user.role === 'rider') {
+        // Cancel pending/approved rides
+        const openRides = await client.query(
+          `SELECT id FROM rides WHERE rider_id = $1 AND status IN ('pending', 'approved')`,
+          [targetId]
+        );
+        for (const ride of openRides.rows) {
+          await client.query(
+            `UPDATE rides SET status = 'cancelled', cancelled_by = 'office', updated_at = NOW() WHERE id = $1`,
+            [ride.id]
+          );
+          await addRideEvent(ride.id, req.session.userId, 'cancelled_by_office', 'Rider account deactivated', null, client);
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
 
-    await query(`DELETE FROM users WHERE id = $1`, [targetId]);
     res.json({ success: true, deletedId: targetId });
+  }));
+
+  // Restore a soft-deleted user
+  app.post('/api/admin/users/:id/restore', requireOffice, wrapAsync(async (req, res) => {
+    const targetId = req.params.id;
+    const userRes = await query(`SELECT id, username, email FROM users WHERE id = $1 AND deleted_at IS NOT NULL`, [targetId]);
+    const user = userRes.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found or not deleted' });
+
+    // Check uniqueness conflicts with active users
+    const conflict = await query(
+      `SELECT id FROM users WHERE (username = $1 OR email = $2) AND id != $3 AND deleted_at IS NULL`,
+      [user.username, user.email, targetId]
+    );
+    if (conflict.rowCount) {
+      return res.status(409).json({ error: 'Cannot restore: username or email conflicts with an active user' });
+    }
+
+    await query(`UPDATE users SET deleted_at = NULL, updated_at = NOW() WHERE id = $1`, [targetId]);
+    res.json({ success: true, restoredId: targetId });
   }));
 
   app.post('/api/admin/users', requireOffice, wrapAsync(async (req, res) => {
@@ -83,7 +136,7 @@ module.exports = function(app, ctx) {
     if (!/^[a-z0-9_]+$/.test(username)) {
       return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
     }
-    const existing = await query('SELECT 1 FROM users WHERE username = $1 OR email = $2 OR member_id = $3 OR phone = $4', [username, email.toLowerCase(), memberId, phone || null]);
+    const existing = await query('SELECT 1 FROM users WHERE (username = $1 OR email = $2 OR member_id = $3 OR phone = $4) AND deleted_at IS NULL', [username, email.toLowerCase(), memberId, phone || null]);
     if (existing.rowCount) {
       return res.status(400).json({ error: `Username, email, phone, or ${TENANT.idFieldLabel} already exists` });
     }
@@ -122,11 +175,11 @@ module.exports = function(app, ctx) {
 
     // Uniqueness checks for email and member_id
     if (email) {
-      const dup = await query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.toLowerCase(), targetId]);
+      const dup = await query('SELECT id FROM users WHERE email = $1 AND id != $2 AND deleted_at IS NULL', [email.toLowerCase(), targetId]);
       if (dup.rowCount) return res.status(400).json({ error: 'Email already in use by another user' });
     }
     if (memberId) {
-      const dup = await query('SELECT id FROM users WHERE member_id = $1 AND id != $2', [memberId, targetId]);
+      const dup = await query('SELECT id FROM users WHERE member_id = $1 AND id != $2 AND deleted_at IS NULL', [memberId, targetId]);
       if (dup.rowCount) return res.status(400).json({ error: `${TENANT.idFieldLabel} already in use by another user` });
     }
 
@@ -145,7 +198,7 @@ module.exports = function(app, ctx) {
   app.get('/api/admin/users/:id/profile', requireOffice, wrapAsync(async (req, res) => {
     const key = req.params.id;
     const userRes = await query(
-      `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE id = $1 OR email = $1 OR username = $1`,
+      `SELECT id, username, name, email, member_id, phone, role, active, deleted_at FROM users WHERE id = $1 OR email = $1 OR username = $1`,
       [key]
     );
     if (!userRes.rowCount) return res.status(404).json({ error: 'User not found' });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { fetchAdminUsers, createAdminUser, deleteAdminUser, resetAdminUserPassword } from '../../../api';
+import { fetchAdminUsers, createAdminUser, deleteAdminUser, restoreAdminUser, resetAdminUserPassword } from '../../../api';
 import { useToast } from '../../../contexts/ToastContext';
 import { useModal } from '../../../components/ui/Modal';
 import UserDrawer from './UserDrawer';
@@ -10,6 +10,7 @@ export default function UsersSubPanel() {
   const [users, setUsers] = useState([]);
   const [filterText, setFilterText] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [drawerUserId, setDrawerUserId] = useState(null);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
@@ -17,12 +18,12 @@ export default function UsersSubPanel() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const data = await fetchAdminUsers();
+      const data = await fetchAdminUsers({ includeDeleted: showDeleted });
       setUsers(Array.isArray(data) ? data : []);
     } catch (e) {
       showToast(e.message, 'error');
     }
-  }, [showToast]);
+  }, [showToast, showDeleted]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
@@ -60,10 +61,11 @@ export default function UsersSubPanel() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredUsers.length) {
+    const selectable = filteredUsers.filter(u => !u.deleted_at);
+    if (selectedIds.size === selectable.length && selectable.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredUsers.map(u => u.id)));
+      setSelectedIds(new Set(selectable.map(u => u.id)));
     }
   };
 
@@ -136,11 +138,15 @@ export default function UsersSubPanel() {
   const handleResetPassword = async (userId, userName) => {
     const ok = await showModal({
       title: 'Reset Password',
-      body: `<p>Reset password for <strong>${userName}</strong>?</p>
-        <div style="margin-top:12px;">
-          <label class="ro-label">New Password</label>
-          <input class="ro-input" id="modal-reset-pw" type="password" placeholder="Min 8 characters" />
-        </div>`,
+      body: (
+        <>
+          <p>Reset password for <strong>{userName}</strong>?</p>
+          <div style={{ marginTop: 12 }}>
+            <label className="ro-label">New Password</label>
+            <input className="ro-input" id="modal-reset-pw" type="password" placeholder="Min 8 characters" />
+          </div>
+        </>
+      ),
       confirmLabel: 'Reset Password',
       confirmClass: 'ro-btn--danger',
     });
@@ -161,14 +167,30 @@ export default function UsersSubPanel() {
   const handleDeleteUser = async (userId, userName) => {
     const ok = await showModal({
       title: 'Delete User',
-      body: `Are you sure you want to delete <strong>${userName}</strong>? This cannot be undone.`,
+      body: <>Are you sure you want to deactivate <strong>{userName}</strong>? Their data will be preserved for audit trails. You can restore them later.</>,
       confirmLabel: 'Delete',
       confirmClass: 'ro-btn--danger',
     });
     if (!ok) return;
     try {
       await deleteAdminUser(userId);
-      showToast('User deleted.', 'success');
+      showToast('User deactivated.', 'success');
+      loadUsers();
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  const handleRestoreUser = async (userId, userName) => {
+    const ok = await showModal({
+      title: 'Restore User',
+      body: <>Restore <strong>{userName}</strong>? They will be able to log in again.</>,
+      confirmLabel: 'Restore',
+    });
+    if (!ok) return;
+    try {
+      await restoreAdminUser(userId);
+      showToast('User restored.', 'success');
       loadUsers();
     } catch (e) {
       showToast(e.message, 'error');
@@ -194,7 +216,7 @@ export default function UsersSubPanel() {
 
   return (
     <>
-      <div className="filter-bar">
+      <div className="filter-bar" style={{ alignItems: 'center' }}>
         <input
           type="text"
           id="admin-user-filter"
@@ -203,6 +225,10 @@ export default function UsersSubPanel() {
           style={{ maxWidth: '400px' }}
           onChange={handleFilterChange}
         />
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--color-text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)} />
+          Show deleted
+        </label>
       </div>
       <div className="ro-section">
         <div className="text-sm text-muted mb-16">
@@ -230,27 +256,39 @@ export default function UsersSubPanel() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map(u => (
-                <tr key={u.id} style={{ cursor: 'pointer' }} onClick={() => setDrawerUserId(u.id)}>
-                  <td onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleSelect(u.id)} />
-                  </td>
-                  <td>{u.name}</td>
-                  <td>{u.email || '\u2014'}</td>
-                  <td className="text-muted">{u.username}</td>
-                  <td><span className={roleBadgeClass(u.role)}>{u.role}</span></td>
-                  <td className="text-muted">{u.member_id || '\u2014'}</td>
-                  <td className="text-muted">{u.phone || '\u2014'}</td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <div style={{ position: 'relative' }}>
-                      <KebabMenu
-                        onResetPassword={() => handleResetPassword(u.id, u.name)}
-                        onDelete={() => handleDeleteUser(u.id, u.name)}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredUsers.map(u => {
+                const isDeleted = !!u.deleted_at;
+                return (
+                  <tr key={u.id} style={{ cursor: 'pointer', opacity: isDeleted ? 0.5 : 1 }} onClick={() => setDrawerUserId(u.id)}>
+                    <td onClick={e => e.stopPropagation()}>
+                      {!isDeleted && <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleSelect(u.id)} />}
+                    </td>
+                    <td style={isDeleted ? { textDecoration: 'line-through' } : undefined}>
+                      {u.name}
+                      {isDeleted && <span className="status-badge status-badge--denied" style={{ marginLeft: '6px', fontSize: '10px' }}>Deleted</span>}
+                    </td>
+                    <td>{u.email || '\u2014'}</td>
+                    <td className="text-muted">{u.username}</td>
+                    <td><span className={roleBadgeClass(u.role)}>{u.role}</span></td>
+                    <td className="text-muted">{u.member_id || '\u2014'}</td>
+                    <td className="text-muted">{u.phone || '\u2014'}</td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <div style={{ position: 'relative' }}>
+                        {isDeleted ? (
+                          <KebabMenu
+                            onRestore={() => handleRestoreUser(u.id, u.name)}
+                          />
+                        ) : (
+                          <KebabMenu
+                            onResetPassword={() => handleResetPassword(u.id, u.name)}
+                            onDelete={() => handleDeleteUser(u.id, u.name)}
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {filteredUsers.length === 0 && (
                 <tr><td colSpan={8} className="text-center text-muted" style={{ padding: '24px' }}>No users found.</td></tr>
               )}
@@ -312,12 +350,13 @@ export default function UsersSubPanel() {
         onClose={() => { setDrawerUserId(null); loadUsers(); }}
         onResetPassword={handleResetPassword}
         onDeleteUser={handleDeleteUser}
+        onRestoreUser={handleRestoreUser}
       />
     </>
   );
 }
 
-function KebabMenu({ onResetPassword, onDelete }) {
+function KebabMenu({ onResetPassword, onDelete, onRestore }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -326,12 +365,20 @@ function KebabMenu({ onResetPassword, onDelete }) {
       </button>
       {open && (
         <div className="kebab-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 10 }}>
-          <button className="kebab-item" onClick={() => { setOpen(false); onResetPassword(); }}>
-            <i className="ti ti-key"></i> Reset Password
-          </button>
-          <button className="kebab-item" style={{ color: 'var(--status-denied)' }} onClick={() => { setOpen(false); onDelete(); }}>
-            <i className="ti ti-trash"></i> Delete
-          </button>
+          {onRestore ? (
+            <button className="kebab-item" onClick={() => { setOpen(false); onRestore(); }}>
+              <i className="ti ti-refresh"></i> Restore
+            </button>
+          ) : (
+            <>
+              <button className="kebab-item" onClick={() => { setOpen(false); onResetPassword(); }}>
+                <i className="ti ti-key"></i> Reset Password
+              </button>
+              <button className="kebab-item" style={{ color: 'var(--status-denied)' }} onClick={() => { setOpen(false); onDelete(); }}>
+                <i className="ti ti-trash"></i> Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </>

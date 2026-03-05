@@ -33,7 +33,7 @@ module.exports = function(app, ctx) {
 
     const driverId = req.session.role === 'driver' ? req.session.userId : req.body.driverId;
     const vehicleId = req.body.vehicleId || null;
-    const driverRes = await query(`SELECT id, active FROM users WHERE id = $1 AND role = 'driver'`, [driverId]);
+    const driverRes = await query(`SELECT id, active FROM users WHERE id = $1 AND role = 'driver' AND deleted_at IS NULL`, [driverId]);
     const driver = driverRes.rows[0];
     if (!driver) return res.status(400).json({ error: 'Driver not found' });
     if (!driver.active) return res.status(400).json({ error: 'Driver must be clocked in to claim rides' });

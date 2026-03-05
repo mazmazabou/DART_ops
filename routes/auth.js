@@ -25,7 +25,7 @@ module.exports = function(app, ctx) {
   // ----- Auth endpoints -----
   app.post('/api/auth/login', loginLimiter, wrapAsync(async (req, res) => {
     const { username, password } = req.body;
-    const userRes = await query('SELECT * FROM users WHERE username = $1', [username.toLowerCase()]);
+    const userRes = await query('SELECT * FROM users WHERE username = $1 AND deleted_at IS NULL', [username.toLowerCase()]);
     const user = userRes.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: 'Invalid username or password' });
@@ -144,7 +144,7 @@ module.exports = function(app, ctx) {
       return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
     }
     const uname = email.toLowerCase().split('@')[0];
-    const existing = await query('SELECT 1 FROM users WHERE username = $1 OR email = $2 OR phone = $3 OR member_id = $4', [uname, email.toLowerCase(), phone || null, memberId]);
+    const existing = await query('SELECT 1 FROM users WHERE (username = $1 OR email = $2 OR phone = $3 OR member_id = $4) AND deleted_at IS NULL', [uname, email.toLowerCase(), phone || null, memberId]);
     if (existing.rowCount) {
       return res.status(400).json({ error: `Username, email, phone, or ${TENANT.idFieldLabel} already exists` });
     }

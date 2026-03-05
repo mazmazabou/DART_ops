@@ -117,10 +117,10 @@ Default login credentials (password: `demo123`):
 - `lib/helpers.js` — Business logic helpers: createHelpers(pool, query, TENANT, ...) → generateId, mapRide, addRideEvent, getSetting, validators, service hours, miss counts, recurring ride helpers
 - `lib/auth-middleware.js` — Auth: wrapAsync, createAuthMiddleware(query) → requireAuth/Office/Staff/Rider, createRateLimiters(isProduction)
 - `routes/auth.js` — Login, logout, signup, change-password, tenant-config, client-config
-- `routes/rides.js` — Ride CRUD, approve/deny, cancel, bulk-delete, unassign, reassign, edit, locations
+- `routes/rides.js` — Ride CRUD with cursor-based pagination, server-side filtering (status, date, search), approve/deny, cancel, bulk-delete, unassign, reassign, edit, locations
 - `routes/driver-actions.js` — claim, on-the-way, here, complete, no-show, vehicle assignment
 - `routes/analytics.js` — All 19 analytics API endpoints + export-report (~2,100 lines)
-- `routes/admin-users.js` — 9 admin user management endpoints
+- `routes/admin-users.js` — Admin user management: CRUD, soft-delete, restore, reset-password, reset-miss-count, profile, search, email status
 - `routes/employees.js` — Clock in/out, today-status, tardiness
 - `routes/shifts.js` — Shift CRUD
 - `routes/vehicles.js` — Vehicle CRUD, retire, maintenance
@@ -308,6 +308,7 @@ users, shifts, rides, ride_events, recurring_rides, rider_miss_counts, vehicles,
 - **rider_miss_counts:** Keyed by `email` (PK), not user ID — tracks consecutive no-shows per rider email
 - **shifts.week_start:** When set (DATE), shift only appears that specific week. When NULL, acts as a recurring template
 - **users.active:** Only meaningful for drivers — TRUE when clocked in, FALSE otherwise
+- **users.deleted_at:** Soft-delete timestamp. NULL = active, non-NULL = deleted. Login, auth middleware, and all operational queries filter `WHERE deleted_at IS NULL`. Analytics/ride JOINs do NOT filter (preserve historical names). Username/email uniqueness enforced only among active users via partial unique indexes
 - **notification_preferences:** UNIQUE(user_id, event_type, channel) — lazy-seeded on first GET
 
 ### Configurable Settings (tenant_settings)
@@ -374,6 +375,8 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Bulk-delete:** Rides and notifications use `POST /api/rides/bulk-delete` / `POST /api/notifications/bulk-delete` with `{ ids: [...] }` body. Notifications also have `DELETE /api/notifications/all` for clearing beyond the 50-item page limit
 - **Analytics endpoints** all support `?from=&to=` date filtering (except `milestones`). Use `GET /api/analytics/{endpoint}`
 - **Ride lifecycle actions:** `POST /api/rides/:id/{action}` where action is `approve|deny|claim|on-the-way|here|complete|no-show|cancel`. Office can claim on behalf with `{ driverId }` in body
+- **`GET /api/rides` pagination:** Without `limit` param returns flat array (legacy). With `limit` returns `{ rides, nextCursor, totalCount, hasMore }`. Server-side filters: `status` (comma-separated), `from`/`to` (date range), `search` (ILIKE). Cursor: base64-encoded `{t,i}`, order `requested_time DESC, id DESC`. Max limit: 200
+- **Soft-delete users:** `DELETE /api/admin/users/:id` sets `deleted_at = NOW()` (no hard delete). `POST /api/admin/users/:id/restore` clears `deleted_at`. `GET /api/admin/users?include_deleted=true` shows deleted users
 - **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
 - **`NOTIFICATION_EVENT_TYPES`:** driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request, driver_missed_ride
 - **Dev-only:** `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
@@ -492,7 +495,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 
 ### Open Issues
-- **No pagination on rides API:** Returns all rides every 5 seconds.
+- **Rides pagination:** RidesPanel uses paginated API (50/page with Load More). Dispatch and driver still fetch all today's rides (date-filtered, no cursor pagination).
 - **Railway custom domain:** `app.ride-ops.com` CNAME configured in Squarespace DNS pointing to Railway service.
 - **Phone numbers not validated:** `riderPhone` stored without format validation (server-side).
 - **Rate limiting disabled in dev:** Login allows 1000 req/15min in development (10 in production). Intentional.
