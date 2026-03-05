@@ -117,7 +117,7 @@ Default login credentials (password: `demo123`):
 - `lib/helpers.js` — Business logic helpers: createHelpers(pool, query, TENANT, ...) → generateId, mapRide, addRideEvent, getSetting, validators, service hours, miss counts, recurring ride helpers
 - `lib/auth-middleware.js` — Auth: wrapAsync, createAuthMiddleware(query) → requireAuth/Office/Staff/Rider, createRateLimiters(isProduction)
 - `routes/auth.js` — Login, logout, signup, change-password, tenant-config, client-config
-- `routes/rides.js` — Ride CRUD with cursor-based pagination, server-side filtering (status, date, search), approve/deny, cancel, bulk-delete, unassign, reassign, edit, locations
+- `routes/rides.js` — Ride CRUD with offset+cursor pagination, server-side filtering (status, date, search), approve/deny, cancel, bulk-delete, unassign, reassign, edit, locations
 - `routes/driver-actions.js` — claim, on-the-way, here, complete, no-show, vehicle assignment
 - `routes/analytics.js` — All 19 analytics API endpoints + export-report (~2,100 lines)
 - `routes/admin-users.js` — Admin user management: CRUD, soft-delete, restore, reset-password, reset-miss-count, profile, search, email status
@@ -138,7 +138,7 @@ Default login credentials (password: `demo123`):
 - `client/src/office/components/layout/` — OfficeLayout, Sidebar, OfficeHeader, MobileWarning
 - `client/src/office/components/settings/` — SettingsPanel + 6 sub-panels (Users, BusinessRules, Notifications, Guidelines, Data, AcademicTerms) + UserDrawer
 - `client/src/office/components/dispatch/` — DispatchPanel, KPIBar, PendingQueue, DispatchGrid, DriverRow, RideStrip, NowLine (5s polling, reuses RideDrawer/RideEditModal from rides/)
-- `client/src/office/components/rides/` — RidesPanel + FilterBar, Toolbar, RidesTable, RideRow, ScheduleGrid, RideChip, RideDrawer, RideEditModal
+- `client/src/office/components/rides/` — RidesPanel + FilterBar, Toolbar, RidesTable, RideRow, Pagination, ScheduleGrid, RideChip, RideDrawer, RideEditModal
 - `client/src/office/components/staff/` — StaffPanel, EmployeeBar, ShiftCalendar (FullCalendar with deferred mount, drag-to-create, right-click context menu, per-driver campus palette colors)
 - `client/src/office/components/fleet/` — FleetPanel, VehicleCard, VehicleDrawer (add/retire/delete/reactivate/maintenance modals)
 - `client/src/api.js` — Shared fetch wrappers for rider + driver API endpoints
@@ -166,7 +166,7 @@ Default login credentials (password: `demo123`):
 - `client/src/driver/` — React driver app (Vite + React 19). Components, hooks, driver.css. Builds to `client/dist/driver.html`
 - ~~`public/rider.html`~~ — **Migrated to React** (see `client/`). Legacy version at `public/rider-legacy.html`
 - `public/index-legacy.html` — Legacy vanilla JS office/admin console (fallback when React build not present)
-- `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~97 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization
+- `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~99 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization, pagination, soft-delete/restore
 - `tests/uat.spec.js` — User acceptance tests (4 tests): office login, rider booking flow, office approval, driver clock-in
 - `public/login.html` / `signup.html` — Auth pages with org-scoped URL support. `/login` shows campus selector (no login form); `/:slug/login` shows campus-branded login form
 - `public/demo.html` — Demo mode role picker with campus-specific links
@@ -239,7 +239,7 @@ Default login credentials (password: `demo123`):
 - Sidebar navigation with 8 nav items: dispatch, rides, staff, fleet, analytics, map, settings, profile
 - **All 8 panels fully migrated:** Map + Profile + Settings (Phase 3a), Rides (Phase 3c), Staff & Shifts + Fleet (Phase 3b), Dispatch (Phase 3d), Analytics (Phase 3e)
 - **Settings sub-tabs:** Users, Business Rules, Notifications, Guidelines, Data, Academic Terms
-- **Rides panel:** Table view, schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export
+- **Rides panel:** Table view (sortable columns, page-based pagination with 25/50/100 rows per page), schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export
 - **Dispatch panel:** KPIBar, PendingQueue, DispatchGrid with per-driver rows and ride strips, 5s polling
 - **Staff panel:** EmployeeBar + ShiftCalendar (FullCalendar with deferred mount, drag-to-create, context menu, per-driver campus palette colors)
 - **Fleet panel:** VehicleCard grid, VehicleDrawer, add/retire/delete/reactivate/maintenance modals
@@ -375,7 +375,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Bulk-delete:** Rides and notifications use `POST /api/rides/bulk-delete` / `POST /api/notifications/bulk-delete` with `{ ids: [...] }` body. Notifications also have `DELETE /api/notifications/all` for clearing beyond the 50-item page limit
 - **Analytics endpoints** all support `?from=&to=` date filtering (except `milestones`). Use `GET /api/analytics/{endpoint}`
 - **Ride lifecycle actions:** `POST /api/rides/:id/{action}` where action is `approve|deny|claim|on-the-way|here|complete|no-show|cancel`. Office can claim on behalf with `{ driverId }` in body
-- **`GET /api/rides` pagination:** Without `limit` param returns flat array (legacy). With `limit` returns `{ rides, nextCursor, totalCount, hasMore }`. Server-side filters: `status` (comma-separated), `from`/`to` (date range), `search` (ILIKE). Cursor: base64-encoded `{t,i}`, order `requested_time DESC, id DESC`. Max limit: 200
+- **`GET /api/rides` pagination:** Without `limit` param returns flat array (legacy). With `limit` returns `{ rides, nextCursor, totalCount, hasMore }`. Supports `offset` param for page-based pagination (used by RidesPanel) and `cursor` param for keyset pagination. Server-side filters: `status` (comma-separated), `from`/`to` (date range), `search` (ILIKE). Order: `requested_time DESC, id DESC`. Max limit: 200
 - **Soft-delete users:** `DELETE /api/admin/users/:id` sets `deleted_at = NOW()` (no hard delete). `POST /api/admin/users/:id/restore` clears `deleted_at`. `GET /api/admin/users?include_deleted=true` shows deleted users
 - **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
 - **`NOTIFICATION_EVENT_TYPES`:** driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request, driver_missed_ride
@@ -410,7 +410,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 
 ### Test Suite
 - **Framework:** Playwright (config in `playwright.config.js`)
-- **Files:** `tests/e2e.spec.js` (~97 tests), `tests/uat.spec.js` (4 tests)
+- **Files:** `tests/e2e.spec.js` (~99 tests), `tests/uat.spec.js` (4 tests)
 - **Run:** `npx playwright test` (requires server running on port 3000)
 - **Server must be running** with `DEMO_MODE=true` for seed data
 
@@ -495,7 +495,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 
 ### Open Issues
-- **Rides pagination:** RidesPanel uses paginated API (50/page with Load More). Dispatch and driver still fetch all today's rides (date-filtered, no cursor pagination).
+- **Rides pagination:** RidesPanel uses offset-based pagination (25/50/100 per page with page navigation). Dispatch and driver still fetch all today's rides (date-filtered, no pagination).
 - **Railway custom domain:** `app.ride-ops.com` CNAME configured in Squarespace DNS pointing to Railway service.
 - **Phone numbers not validated:** `riderPhone` stored without format validation (server-side).
 - **Rate limiting disabled in dev:** Login allows 1000 req/15min in development (10 in production). Intentional.
