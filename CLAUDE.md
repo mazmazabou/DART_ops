@@ -154,6 +154,7 @@ Default login credentials (password: `demo123`):
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
+- `client/src/office/components/analytics/analytics.css` — Analytics-specific CSS classes (`ao-` prefix: empty states, tables, heatmaps, skeleton loaders, filter bar, report summary)
 - `client/src/office/components/analytics/constants.js` — Widget registry (WIDGET_REGISTRY, WIDGET_CATEGORIES, 31 widgets, 8 categories, per-tab default layouts, WIDGET_LAYOUT_VERSION = 7, isKPI flag for headerless KPI widgets)
 - `client/src/office/components/analytics/WidgetGrid.jsx` — Widget dashboard grid using react-grid-layout v2 (12-column, drag/resize/vertical-compact). WidgetCard uses React.forwardRef
 - `client/src/office/components/analytics/chartSetup.js` — Chart.js component registration (CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Filler, Legend, Tooltip). Imported once in AnalyticsPanel
@@ -305,7 +306,7 @@ users, shifts, rides, ride_events, recurring_rides, rider_miss_counts, vehicles,
 
 ### Key Gotchas
 - **IDs are text, not UUID:** Pattern `prefix_${random}` (e.g., `ride_abc123`). Always use `$1::text[]` for array casts, never `$1::uuid[]`
-- **rider_miss_counts:** Keyed by `email` (PK), not user ID — tracks consecutive no-shows per rider email
+- **rider_miss_counts:** Keyed by `rider_id` (PK, FK to `users.id`) — tracks consecutive no-shows per rider
 - **shifts.week_start:** When set (DATE), shift only appears that specific week. When NULL, acts as a recurring template
 - **users.active:** Only meaningful for drivers — TRUE when clocked in, FALSE otherwise
 - **users.deleted_at:** Soft-delete timestamp. NULL = active, non-NULL = deleted. Login, auth middleware, and all operational queries filter `WHERE deleted_at IS NULL`. Analytics/ride JOINs do NOT filter (preserve historical names). Username/email uniqueness enforced only among active users via partial unique indexes
@@ -401,7 +402,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Polling:** All polling intervals must pause via `visibilitychange` listener when tab is backgrounded
 - **URL references:** Use extensionless paths (`/login` not `/login.html`)
 - **Fetch response checks:** All `fetch()` calls MUST check `res.ok` before showing success feedback. Always handle error responses with `showToastNew(data.error, 'error')`
-- **NPM in client/:** `chart.js`, `react-chartjs-2`, and `react-grid-layout` are npm dependencies inside `client/`. The CDN rule ("Don't npm install Tabler, FullCalendar...") applies only to vanilla JS pages in `public/`. React components in `client/src/` should use npm imports
+- **NPM in client/:** `chart.js`, `react-chartjs-2`, and `react-grid-layout` are npm dependencies inside `client/`. The vendor rule ("Don't npm install Tabler, FullCalendar...") applies only to vanilla JS pages in `public/`. React components in `client/src/` should use npm imports
 - **KPI widgets are headerless** (`isKPI: true` in WIDGET_REGISTRY) — content scales with container. All widgets should be resizable (never use `noResize: true` or `static: true`)
 - **WidgetCard forwardRef:** react-grid-layout injects resize handle elements as children. `WidgetCard` must use `React.forwardRef` and include `{children}` at the end of its render output
 - **FullCalendar deferred mount:** FullCalendar and other dimension-dependent components must not mount while their panel is hidden. Use `isVisible` + `hasBeenVisible` deferred-mount pattern with a shimmer placeholder
@@ -427,14 +428,18 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 
 The frontend uses a Tabler-based design system.
 
-### CDN Dependencies (do NOT npm install these)
-- Tabler CSS: `https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css`
-- Tabler Icons: `https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.37.1/dist/tabler-icons.min.css`
-- FullCalendar: `https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js` (office view only)
-- DiceBear API: `https://api.dicebear.com/9.x` — client-side avatar generation, no API key needed
+### Vendored Assets (public/vendor/)
+All CSS/JS dependencies are vendored locally in `public/vendor/` for offline reliability (no CDN requests). Do NOT npm install these — they are loaded via `<link>` / `<script>` tags in HTML files:
+- Tabler CSS: `public/vendor/tabler/tabler.min.css`
+- Tabler Icons: `public/vendor/tabler-icons/tabler-icons.min.css` (+ fonts/ subdirectory)
+- FullCalendar: `public/vendor/fullcalendar/index.global.min.js` (office view only)
+- Quill: `public/vendor/quill/quill.snow.css` + `quill.min.js` (office view only)
+- GridStack: `public/vendor/gridstack/gridstack.min.css` + `gridstack-all.js` (legacy only)
+- Chart.js: `public/vendor/chartjs/chart.min.js` (legacy only — React uses npm)
+- DiceBear API: `https://api.dicebear.com/9.x` — runtime API (stays external), fails gracefully
 
 ### npm Dependencies in client/ (do NOT load from CDN)
-- `chart.js` + `react-chartjs-2` — Chart.js v4 for React (doughnut, bar, line/area charts). CDN tag removed from `office.html`. CDN version remains only in legacy `public/index-legacy.html`
+- `chart.js` + `react-chartjs-2` — Chart.js v4 for React (doughnut, bar, line/area charts). CDN tag removed from `office.html`
 - `react-grid-layout` v2 — 12-column widget dashboard layout (drag/resize/vertical-compact). Replaced GridStack.js entirely. CSS imported via `react-grid-layout/css/styles.css` and `react-resizable/css/styles.css`
 
 ### Color System (Three-Layer Theming)
@@ -480,7 +485,7 @@ pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed
 - Don't skip server-side validation — never trust client input
 - Don't hardcode hex colors in HTML or JS — use CSS custom properties from rideops-theme.css
 - Don't use Material Symbols — use Tabler Icons (ti ti-*)
-- Don't npm install Tabler or FullCalendar — load from CDN only. Chart.js and react-grid-layout are npm in `client/` (not CDN)
+- Don't npm install Tabler or FullCalendar — they are vendored in `public/vendor/`. Chart.js and react-grid-layout are npm in `client/` (not vendored)
 - Don't use GridStack — removed from the project. react-grid-layout is the widget layout library
 - Don't add Chart.js or GridStack CDN tags to `client/office.html` — they're npm packages now
 - Don't forget `{children}` in WidgetCard — react-grid-layout injects resize handles as children
@@ -501,3 +506,4 @@ All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 - **Rate limiting disabled in dev:** Login allows 1000 req/15min in development (10 in production). Intentional.
 - **Default credentials logged in dev:** Startup prints default logins to console when `NODE_ENV !== 'production'`.
 - **`/health` not wrapped in `wrapAsync()`:** Has its own try/catch, functionally safe but inconsistent.
+- **Recurring ride DST edge case:** If service hours include 2:00 AM, recurring rides at that time may behave unexpectedly on spring-forward day (when 2:00 AM doesn't exist). Low risk since most deployments use daytime hours. Timezone handling is otherwise robust (bare TIME storage, campus-aware day-of-week checks, PostgreSQL connection timezone).

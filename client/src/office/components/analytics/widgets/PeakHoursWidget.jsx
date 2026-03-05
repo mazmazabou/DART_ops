@@ -17,8 +17,8 @@ export default function PeakHoursWidget({ data }) {
 
   if (!data || !data.grid || data.grid.length === 0) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-flame" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-flame ao-empty-icon" />
         No peak hours data available
       </div>
     );
@@ -58,15 +58,15 @@ export default function PeakHoursWidget({ data }) {
   }
 
   return (
-    <div style={{ overflowX: 'auto', fontSize: '0.8rem' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+    <div className="ao-heatmap-wrap">
+      <table className="ao-heatmap-table">
         <thead>
           <tr>
-            <th style={{ padding: '0.25rem 0.5rem', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted, #6b7280)', fontSize: '0.7rem' }}>
+            <th className="ao-heatmap-th ao-heatmap-th--left">
               Hour
             </th>
             {DAY_LABELS.map((day) => (
-              <th key={day} style={{ padding: '0.25rem 0.5rem', fontWeight: 600, color: 'var(--color-text-muted, #6b7280)', fontSize: '0.7rem' }}>
+              <th key={day} className="ao-heatmap-th">
                 {day}
               </th>
             ))}
@@ -75,7 +75,7 @@ export default function PeakHoursWidget({ data }) {
         <tbody>
           {hours.map((h) => (
             <tr key={h}>
-              <td style={{ padding: '0.2rem 0.5rem', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 500, color: 'var(--color-text-muted, #6b7280)', fontSize: '0.7rem' }}>
+              <td className="ao-heatmap-hour">
                 {formatHour(h)}
               </td>
               {DAY_LABELS.map((_, dayIdx) => {
@@ -83,10 +83,8 @@ export default function PeakHoursWidget({ data }) {
                 return (
                   <td
                     key={dayIdx}
+                    className="ao-heatmap-cell"
                     style={{
-                      padding: '0.2rem',
-                      minWidth: '2.5rem',
-                      borderRadius: '3px',
                       fontWeight: count > 0 ? 600 : 400,
                       color: count > 0 ? 'var(--color-text, #1f2937)' : 'var(--color-text-muted, #d1d5db)',
                       ...getCellStyle(count),
@@ -103,16 +101,14 @@ export default function PeakHoursWidget({ data }) {
       </table>
 
       {/* Legend */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
+      <div className="ao-heatmap-legend">
         <span>Low</span>
-        <div style={{ display: 'flex', gap: '2px' }}>
+        <div className="ao-heatmap-legend-swatches">
           {[0.1, 0.25, 0.45, 0.65, 0.85].map((op) => (
             <div
               key={op}
+              className="ao-heatmap-swatch"
               style={{
-                width: '18px',
-                height: '12px',
-                borderRadius: '2px',
                 backgroundColor: 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + op + ')',
               }}
             />

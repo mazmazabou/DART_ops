@@ -35,48 +35,28 @@ export default function DriverLeaderboardWidget({ drivers }) {
 
   if (!drivers || drivers.length === 0) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-steering-wheel" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-steering-wheel ao-empty-icon" />
         No driver data available
       </div>
     );
   }
 
-  const thStyle = {
-    padding: '0.5rem 0.75rem',
-    textAlign: 'left',
-    fontWeight: 600,
-    fontSize: '0.75rem',
-    color: 'var(--color-text-muted, #6b7280)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    cursor: 'pointer',
-    userSelect: 'none',
-    borderBottom: '2px solid var(--color-border, #e5e7eb)',
-    whiteSpace: 'nowrap',
-  };
-
-  const tdStyle = {
-    padding: '0.5rem 0.75rem',
-    fontSize: '0.85rem',
-    borderBottom: '1px solid var(--color-border, #e5e7eb)',
-  };
-
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div className="ao-table-wrap">
+      <table className="ao-table">
         <thead>
           <tr>
-            <th style={thStyle} onClick={() => handleSort('driverName')}>
+            <th className="ao-th" onClick={() => handleSort('driverName')}>
               Driver{sortIcon('driverName')}
             </th>
-            <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('completed')}>
+            <th className="ao-th ao-th--right" onClick={() => handleSort('completed')}>
               Rides{sortIcon('completed')}
             </th>
-            <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('completionRate')}>
+            <th className="ao-th ao-th--right" onClick={() => handleSort('completionRate')}>
               Completion{sortIcon('completionRate')}
             </th>
-            <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('punctualityRate')}>
+            <th className="ao-th ao-th--right" onClick={() => handleSort('punctualityRate')}>
               On-Time{sortIcon('punctualityRate')}
             </th>
           </tr>
@@ -84,16 +64,16 @@ export default function DriverLeaderboardWidget({ drivers }) {
         <tbody>
           {sorted.map((driver, i) => (
             <tr key={i}>
-              <td style={{ ...tdStyle, fontWeight: 500 }}>
+              <td className="ao-td" style={{ fontWeight: 500 }}>
                 {driver.driverName || 'Unknown'}
               </td>
-              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+              <td className="ao-td ao-td--right ao-td--bold">
                 {(driver.completed || 0).toLocaleString()}
               </td>
-              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, ...getRateStyle(driver.completionRate || 0) }}>
+              <td className="ao-td ao-td--right ao-td--bold" style={getRateStyle(driver.completionRate || 0)}>
                 {(driver.completionRate || 0).toFixed(1)}%
               </td>
-              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, ...getRateStyle(driver.punctualityRate || 0) }}>
+              <td className="ao-td ao-td--right ao-td--bold" style={getRateStyle(driver.punctualityRate || 0)}>
                 {(driver.punctualityRate || 0).toFixed(1)}%
               </td>
             </tr>

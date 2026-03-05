@@ -16,8 +16,8 @@ export default function RiderCohortsWidget({ data }) {
 
   if (!data || !data.summary) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-users-group" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-users-group ao-empty-icon" />
         No rider cohort data available
       </div>
     );
@@ -25,30 +25,18 @@ export default function RiderCohortsWidget({ data }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.75rem' }}>
+      <div className="ao-cohort-grid">
         {COHORT_CARDS.map((card) => {
           const color = resolveColor(card.cssVar) || '#6b7280';
           const count = summary[card.key] || 0;
 
           return (
-            <div
-              key={card.key}
-              style={{
-                padding: '0.75rem',
-                borderRadius: '0.5rem',
-                border: '1px solid var(--color-border, #e5e7eb)',
-                background: 'var(--color-card-bg, #fff)',
-                textAlign: 'center',
-              }}
-            >
-              <i
-                className={card.icon}
-                style={{ fontSize: '1.25rem', color, display: 'block', marginBottom: '0.25rem' }}
-              />
-              <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
+            <div key={card.key} className="ao-cohort-card">
+              <i className={card.icon + ' ao-cohort-icon'} style={{ color }} />
+              <div className="ao-metric-value">
                 {count.toLocaleString()}
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div className="ao-metric-label">
                 {card.label}
               </div>
             </div>
@@ -57,7 +45,7 @@ export default function RiderCohortsWidget({ data }) {
       </div>
 
       {retentionRate != null && (
-        <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.85rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
+        <div className="ao-cohort-footer">
           Retention Rate: <strong style={{ color: 'var(--color-text, #1f2937)', fontSize: '1rem' }}>{retentionRate.toFixed(1)}%</strong>
         </div>
       )}

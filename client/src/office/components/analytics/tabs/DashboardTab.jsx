@@ -193,7 +193,7 @@ export default function DashboardTab({ dateRange, userId, onSummaryData }) {
 
   return (
     <div id="analytics-dashboard-view">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+      <div className="ao-toolbar-row">
         <WidgetToolbar
           editMode={editMode}
           onToggleEdit={() => { setEditMode(!editMode); if (editMode) setLibraryOpen(false); }}

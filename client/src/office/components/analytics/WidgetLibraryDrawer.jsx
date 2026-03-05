@@ -42,13 +42,13 @@ export default function WidgetLibraryDrawer({ open, onClose, visibleWidgetIds, a
         onClick={onClose}
       />
       <div className={`widget-library-drawer${open ? ' open' : ''}`}>
-        <div className="widget-library-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid var(--color-border-light)' }}>
-          <h3 style={{ margin: 0, fontSize: '16px' }}>Widget Library</h3>
+        <div className="widget-library-header ao-drawer-header">
+          <h3 className="ao-drawer-title">Widget Library</h3>
           <button className="ro-btn ro-btn--ghost ro-btn--sm" onClick={onClose}>
             <i className="ti ti-x"></i>
           </button>
         </div>
-        <div id="widget-library-list" style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
+        <div id="widget-library-list" className="ao-drawer-body">
           {available.length === 0 ? (
             <div className="ro-empty">
               <i className="ti ti-check"></i>

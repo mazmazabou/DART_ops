@@ -1,0 +1,457 @@
+/* analytics.css — Shared styles for analytics widgets and panels.
+ * Prefix: ao- (analytics-office) to avoid collisions.
+ */
+
+/* ── Empty States ─────────────────────────────────────────────── */
+.ao-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-muted, #6b7280);
+}
+.ao-empty-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Chart Wrapper ────────────────────────────────────────────── */
+.ao-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Metric Label (uppercase muted) ───────────────────────────── */
+.ao-metric-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted, #6b7280);
+}
+
+/* ── Metric Value ─────────────────────────────────────────────── */
+.ao-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* ── Summary Row (flex wrap with gap) ─────────────────────────── */
+.ao-summary-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.ao-summary-row--bordered {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #6b7280);
+}
+
+/* ── Toolbar Row (right-aligned) ──────────────────────────────── */
+.ao-toolbar-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+/* ── Toolbar Actions (inline button group) ────────────────────── */
+.ao-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Filter Bar ───────────────────────────────────────────────── */
+.ao-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ao-filter-input {
+  width: 140px;
+}
+.ao-filter-sep {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.ao-filter-quick {
+  display: flex;
+  gap: 4px;
+}
+.ao-filter-terms {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ── Table Styles (sortable widget tables) ────────────────────── */
+.ao-table-wrap {
+  overflow-x: auto;
+}
+.ao-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ao-th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 2px solid var(--color-border, #e5e7eb);
+  white-space: nowrap;
+}
+.ao-th--right {
+  text-align: right;
+}
+.ao-td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+.ao-td--right {
+  text-align: right;
+}
+.ao-td--bold {
+  font-weight: 600;
+}
+.ao-td--compact {
+  padding: 0.4rem 0.75rem;
+}
+
+/* ── Progress Bar ─────────────────────────────────────────────── */
+.ao-progress-track {
+  flex: 1;
+  height: 20px;
+  background: var(--color-border, #e5e7eb);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Fleet Vehicle Row ────────────────────────────────────────── */
+.ao-vehicle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.ao-vehicle-name {
+  width: 100px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ao-vehicle-count {
+  width: 40px;
+  text-align: right;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ── Cohort Grid ──────────────────────────────────────────────── */
+.ao-cohort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+.ao-cohort-card {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--color-card-bg, #fff);
+  text-align: center;
+}
+.ao-cohort-icon {
+  font-size: 1.25rem;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.ao-cohort-footer {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--color-text-muted, #6b7280);
+}
+
+/* ── Heatmap (PeakHours) ──────────────────────────────────────── */
+.ao-heatmap-wrap {
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+.ao-heatmap-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
+.ao-heatmap-th {
+  padding: 0.25rem 0.5rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #6b7280);
+  font-size: 0.7rem;
+}
+.ao-heatmap-th--left {
+  text-align: left;
+}
+.ao-heatmap-hour {
+  padding: 0.2rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--color-text-muted, #6b7280);
+  font-size: 0.7rem;
+}
+.ao-heatmap-cell {
+  padding: 0.2rem;
+  min-width: 2.5rem;
+  border-radius: 3px;
+}
+.ao-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--color-text-muted, #6b7280);
+}
+.ao-heatmap-legend-swatches {
+  display: flex;
+  gap: 2px;
+}
+.ao-heatmap-swatch {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* ── Report Summary Bar ───────────────────────────────────────── */
+.ao-report-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--color-surface-dim);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+.ao-report-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ao-report-stat-icon {
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+.ao-report-stat-value {
+  font-size: 13px;
+  font-weight: 700;
+}
+.ao-report-stat-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ── Section Label (uppercase heading) ────────────────────────── */
+.ao-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+/* ── Sheet List ───────────────────────────────────────────────── */
+.ao-sheet-list {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+}
+.ao-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.ao-sheet-icon {
+  font-size: 16px;
+  color: var(--color-primary);
+  opacity: 0.7;
+  width: 20px;
+  text-align: center;
+}
+.ao-sheet-name {
+  font-weight: 600;
+  font-size: 13px;
+  min-width: 130px;
+}
+.ao-sheet-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ── Report Description ───────────────────────────────────────── */
+.ao-report-desc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+}
+.ao-report-desc-date {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+/* ── Report Header Actions ────────────────────────────────────── */
+.ao-report-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Widget Library Drawer Header ─────────────────────────────── */
+.ao-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.ao-drawer-title {
+  margin: 0;
+  font-size: 16px;
+}
+.ao-drawer-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* ── Widget Grid Empty State ──────────────────────────────────── */
+.ao-grid-empty {
+  padding: 64px 24px;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+/* ── Skeleton: Chart Bars ─────────────────────────────────────── */
+.ao-skeleton-chart {
+  height: 200px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 16px;
+}
+.ao-skeleton-bar {
+  flex: 1;
+  background: var(--color-border);
+  border-radius: 4px 4px 0 0;
+}
+
+/* ── Skeleton: Donut ──────────────────────────────────────────── */
+.ao-skeleton-donut {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ao-skeleton-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 24px solid var(--color-border);
+  opacity: 0.4;
+}
+
+/* ── Skeleton: KPI Single ─────────────────────────────────────── */
+.ao-skeleton-kpi-single {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 6px;
+  opacity: 0.5;
+}
+.ao-skeleton-block {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+/* ── Skeleton: Heatmap ────────────────────────────────────────── */
+.ao-skeleton-heatmap {
+  height: 280px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 60px repeat(5, 1fr);
+  gap: 4px;
+}
+.ao-skeleton-cell {
+  background: var(--color-border);
+  border-radius: 3px;
+  opacity: 0.3;
+}
+
+/* ── Punctuality Progress ─────────────────────────────────────── */
+.ao-punct-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+.ao-punct-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ao-punct-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.ao-punct-pct {
+  font-size: 0.85rem;
+  min-width: 40px;
+}
+.ao-punct-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-color, #e9ecef);
+  overflow: hidden;
+}
+.ao-punct-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* ── Term Dropdown Position ───────────────────────────────────── */
+.ao-term-more {
+  position: relative;
+}
+.ao-term-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+}

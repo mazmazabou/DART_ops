@@ -17,8 +17,8 @@ export default function FleetUtilWidget({ data }) {
 
   if (!data || activeVehicles.length === 0) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-bus" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-bus ao-empty-icon" />
         No fleet utilization data available
       </div>
     );
@@ -36,11 +36,11 @@ export default function FleetUtilWidget({ data }) {
           const color = palette[i % palette.length];
 
           return (
-            <div key={vehicle.name + '-' + i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ width: '100px', flexShrink: 0, fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={vehicle.name}>
+            <div key={vehicle.name + '-' + i} className="ao-vehicle-row">
+              <div className="ao-vehicle-name" title={vehicle.name}>
                 {vehicle.name}
               </div>
-              <div style={{ flex: 1, height: '20px', backgroundColor: 'var(--color-border, #e5e7eb)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+              <div className="ao-progress-track">
                 <div
                   style={{
                     height: '100%',
@@ -52,7 +52,7 @@ export default function FleetUtilWidget({ data }) {
                   }}
                 />
               </div>
-              <div style={{ width: '40px', textAlign: 'right', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>
+              <div className="ao-vehicle-count">
                 {rides}
               </div>
             </div>
@@ -61,7 +61,7 @@ export default function FleetUtilWidget({ data }) {
       </div>
 
       {/* Summary footer */}
-      <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)', flexWrap: 'wrap' }}>
+      <div className="ao-summary-row ao-summary-row--bordered">
         <span>Total Fleet: <strong style={{ color: 'var(--color-text, #1f2937)' }}>{summary.totalFleet || 0}</strong></span>
         <span>Available: <strong style={{ color: '#2fb344' }}>{summary.available || 0}</strong></span>
         {summary.overdueCount > 0 && (

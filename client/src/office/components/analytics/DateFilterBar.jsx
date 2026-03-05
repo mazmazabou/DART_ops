@@ -54,28 +54,26 @@ export default function DateFilterBar({ dateRange, onDateChange, onRefresh }) {
   }
 
   return (
-    <div className="analytics-date-bar" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+    <div className="analytics-date-bar ao-filter-bar">
       <input
         type="date"
         id="analytics-from"
         value={dateRange.from}
         onChange={e => { setActivePreset(null); onDateChange({ ...dateRange, from: e.target.value }); }}
-        className="ro-input ro-input--sm"
-        style={{ width: '140px' }}
+        className="ro-input ro-input--sm ao-filter-input"
       />
-      <span style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>to</span>
+      <span className="ao-filter-sep">to</span>
       <input
         type="date"
         id="analytics-to"
         value={dateRange.to}
         onChange={e => { setActivePreset(null); onDateChange({ ...dateRange, to: e.target.value }); }}
-        className="ro-input ro-input--sm"
-        style={{ width: '140px' }}
+        className="ro-input ro-input--sm ao-filter-input"
       />
       <button id="analytics-refresh-btn" className="ro-btn ro-btn--primary ro-btn--sm" onClick={onRefresh}>
         <i className="ti ti-refresh"></i> Refresh
       </button>
-      <div className="analytics-quick-select" style={{ display: 'flex', gap: '4px' }}>
+      <div className="analytics-quick-select ao-filter-quick">
         {[{ key: 'today', label: 'Today' }, { key: '7d', label: 'Week' }, { key: 'this-month', label: 'Month' }].map(p => (
           <button
             key={p.key}
@@ -88,7 +86,7 @@ export default function DateFilterBar({ dateRange, onDateChange, onRefresh }) {
         ))}
       </div>
       {terms.length > 0 && (
-        <div id="analytics-term-buttons" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+        <div id="analytics-term-buttons" className="ao-filter-terms">
           {inlineTerms.map(term => (
             <button
               key={term.id}
@@ -99,7 +97,7 @@ export default function DateFilterBar({ dateRange, onDateChange, onRefresh }) {
             </button>
           ))}
           {dropdownTerms.length > 0 && (
-            <div className="analytics-term-more" style={{ position: 'relative' }}>
+            <div className="analytics-term-more ao-term-more">
               <button
                 className="ro-btn ro-btn--ghost ro-btn--xs"
                 onClick={e => { e.stopPropagation(); setMoreOpen(!moreOpen); }}
@@ -107,7 +105,7 @@ export default function DateFilterBar({ dateRange, onDateChange, onRefresh }) {
                 More <i className="ti ti-chevron-down" style={{ fontSize: '12px' }}></i>
               </button>
               {moreOpen && (
-                <div className="analytics-term-dropdown open" style={{ position: 'absolute', top: '100%', left: 0, zIndex: 10 }}>
+                <div className="analytics-term-dropdown open ao-term-dropdown">
                   {dropdownTerms.map(term => (
                     <button
                       key={term.id}

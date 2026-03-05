@@ -89,15 +89,15 @@ export default function RideOutcomesWidget({ data }) {
   const dist = data?.distribution;
   if (!dist || total === 0) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-chart-donut-3" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-chart-donut-3 ao-empty-icon" />
         No ride outcome data available
       </div>
     );
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className="ao-chart-wrap">
       <Doughnut data={chartData} options={chartOptions} plugins={[centerTextPlugin]} />
     </div>
   );

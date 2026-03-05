@@ -63,7 +63,7 @@ const WidgetCard = React.forwardRef(function WidgetCard(
           <i className={`ti ${def.icon}`} /> {def.title}
         </h4>
         {editMode && (
-          <div className="widget-card__actions" style={{ display: 'flex' }}>
+          <div className="widget-card__actions">
             <button
               className="widget-action widget-action--remove"
               onClick={(e) => { e.stopPropagation(); onRemove(widgetId); }}
@@ -189,15 +189,7 @@ export default function WidgetGrid({ gridId, layout, editMode, onLayoutChange, o
   if (!layout || layout.length === 0) {
     return (
       <div ref={containerRef} id={gridId}>
-        <div
-          className="ro-empty"
-          style={{
-            padding: '64px 24px',
-            border: '2px dashed var(--color-border)',
-            borderRadius: 'var(--radius-md)',
-            textAlign: 'center',
-          }}
-        >
+        <div className="ro-empty ao-grid-empty">
           <i className="ti ti-layout-dashboard" />
           <div className="ro-empty__title">No widgets on this tab</div>
           <div className="ro-empty__message">Click &quot;Customize&quot; to add widgets.</div>

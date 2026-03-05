@@ -17,7 +17,7 @@ export default function ChartCanvas({ chartConfig, plugins }) {
   const chartProps = { data, options, plugins: plugins || [] };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className="ao-chart-wrap">
       {type === 'doughnut' && <Doughnut {...chartProps} />}
       {type === 'line' && <Line {...chartProps} />}
       {type === 'bar' && <Bar {...chartProps} />}

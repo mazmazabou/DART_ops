@@ -129,7 +129,7 @@ export default function AttendanceTab({ dateRange, userId }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+      <div className="ao-toolbar-row">
         <WidgetToolbar
           editMode={editMode}
           onToggleEdit={() => { setEditMode(!editMode); if (editMode) setLibraryOpen(false); }}

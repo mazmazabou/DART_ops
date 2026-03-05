@@ -162,7 +162,7 @@ export default function ReportsTab({ dateRange }) {
       <div className="widget-card widget-card--accent">
         <div className="widget-card__header">
           <h4 className="widget-card__title"><i className="ti ti-file-spreadsheet" /> Excel Report</h4>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="ao-report-header-actions">
             <select
               id="report-type-select"
               value={reportType}
@@ -191,39 +191,39 @@ export default function ReportsTab({ dateRange }) {
           <div id="report-preview-table">
             {/* Data summary bar */}
             {summaryData && (
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', padding: '12px 16px', background: 'var(--color-surface-dim)', borderRadius: 'var(--radius-sm)', marginBottom: '12px' }}>
+              <div className="ao-report-summary">
                 {[
                   { icon: 'ti-receipt', label: 'Rides', value: summaryData.totalRides },
                   { icon: 'ti-circle-check', label: 'Completed', value: summaryData.completedRides },
                   { icon: 'ti-steering-wheel', label: 'Drivers', value: summaryData.uniqueDrivers },
                   { icon: 'ti-users', label: 'Riders', value: summaryData.uniqueRiders },
                 ].map(item => (
-                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <i className={`ti ${item.icon}`} style={{ fontSize: '14px', color: 'var(--color-text-muted)' }}></i>
-                    <span style={{ fontSize: '13px', fontWeight: 700 }}>{item.value}</span>
-                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{item.label}</span>
+                  <div key={item.label} className="ao-report-stat">
+                    <i className={`ti ${item.icon} ao-report-stat-icon`}></i>
+                    <span className="ao-report-stat-value">{item.value}</span>
+                    <span className="ao-report-stat-label">{item.label}</span>
                   </div>
                 ))}
               </div>
             )}
 
             {/* Description */}
-            <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
+            <div className="ao-report-desc">
               <i className="ti ti-info-circle" style={{ marginRight: '4px', opacity: 0.6 }}></i>
               {info.desc}
-              {dateLabel && <span style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}> ({dateLabel})</span>}
+              {dateLabel && <span className="ao-report-desc-date"> ({dateLabel})</span>}
             </div>
 
             {/* Sheets list */}
-            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+            <div className="ao-section-label">
               Included Sheets ({info.sheets.length})
             </div>
-            <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 'var(--radius-sm)', padding: '4px 12px' }}>
+            <div className="ao-sheet-list">
               {info.sheets.map(s => (
-                <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0' }}>
-                  <i className={`ti ${s.icon}`} style={{ fontSize: '16px', color: 'var(--color-primary)', opacity: 0.7, width: '20px', textAlign: 'center' }}></i>
-                  <span style={{ fontWeight: 600, fontSize: '13px', minWidth: '130px' }}>{s.name}</span>
-                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{s.desc}</span>
+                <div key={s.name} className="ao-sheet-row">
+                  <i className={`ti ${s.icon} ao-sheet-icon`}></i>
+                  <span className="ao-sheet-name">{s.name}</span>
+                  <span className="ao-sheet-desc">{s.desc}</span>
                 </div>
               ))}
             </div>

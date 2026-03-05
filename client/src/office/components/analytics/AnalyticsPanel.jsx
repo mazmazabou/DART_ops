@@ -1,4 +1,5 @@
 import './chartSetup';
+import './analytics.css';
 import { useState, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { clearAnalyticsCache } from './hooks/useAnalyticsFetch';

@@ -36,43 +36,23 @@ export default function TopRoutesWidget({ routes }) {
 
   if (!routes || routes.length === 0) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-route" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-route ao-empty-icon" />
         No route data available
       </div>
     );
   }
 
-  const thStyle = {
-    padding: '0.5rem 0.75rem',
-    textAlign: 'left',
-    fontWeight: 600,
-    fontSize: '0.75rem',
-    color: 'var(--color-text-muted, #6b7280)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    cursor: 'pointer',
-    userSelect: 'none',
-    borderBottom: '2px solid var(--color-border, #e5e7eb)',
-    whiteSpace: 'nowrap',
-  };
-
-  const tdStyle = {
-    padding: '0.5rem 0.75rem',
-    fontSize: '0.85rem',
-    borderBottom: '1px solid var(--color-border, #e5e7eb)',
-  };
-
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div className="ao-table-wrap">
+      <table className="ao-table">
         <thead>
           <tr>
-            <th style={thStyle}>Route</th>
-            <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('total')}>
+            <th className="ao-th">Route</th>
+            <th className="ao-th ao-th--right" onClick={() => handleSort('total')}>
               Rides{sortIcon('total')}
             </th>
-            <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('completionRate')}>
+            <th className="ao-th ao-th--right" onClick={() => handleSort('completionRate')}>
               Completion{sortIcon('completionRate')}
             </th>
           </tr>
@@ -80,15 +60,15 @@ export default function TopRoutesWidget({ routes }) {
         <tbody>
           {sorted.map((route, i) => (
             <tr key={i}>
-              <td style={tdStyle}>
+              <td className="ao-td">
                 <span style={{ fontWeight: 500 }}>{route.pickupLocation}</span>
                 <span style={{ color: 'var(--color-text-muted, #6b7280)', margin: '0 0.25rem' }}>&rarr;</span>
                 <span>{route.dropoffLocation}</span>
               </td>
-              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+              <td className="ao-td ao-td--right ao-td--bold">
                 {(route.total || 0).toLocaleString()}
               </td>
-              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, ...getCompletionStyle(route.completionRate || 0) }}>
+              <td className="ao-td ao-td--right ao-td--bold" style={getCompletionStyle(route.completionRate || 0)}>
                 {(route.completionRate || 0).toFixed(1)}%
               </td>
             </tr>

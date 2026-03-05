@@ -62,14 +62,10 @@ export default function PunctualityTableWidget({ byDriver }) {
         else dotClass = 'poor';
 
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+          <div className="ao-punct-row">
             <span
-              className={`punctuality-dot punctuality-dot--${dotClass}`}
+              className={`punctuality-dot punctuality-dot--${dotClass} ao-punct-dot`}
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                flexShrink: 0,
                 background:
                   dotClass === 'good'
                     ? 'var(--status-completed)'
@@ -78,31 +74,19 @@ export default function PunctualityTableWidget({ byDriver }) {
                     : 'var(--status-no-show)',
               }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: '0.85rem', minWidth: 40 }}>{pct.toFixed(1)}%</span>
-              <div
-                className="progress-bar-track"
-                style={{
-                  flex: 1,
-                  height: 6,
-                  borderRadius: 3,
-                  background: 'var(--border-color, #e9ecef)',
-                  overflow: 'hidden',
-                }}
-              >
+            <div className="ao-punct-bar-wrap">
+              <span className="ao-punct-pct">{pct.toFixed(1)}%</span>
+              <div className="ao-punct-track">
                 <div
-                  className="progress-bar-fill"
+                  className="ao-punct-fill"
                   style={{
                     width: `${pct}%`,
-                    height: '100%',
-                    borderRadius: 3,
                     background:
                       dotClass === 'good'
                         ? 'var(--status-completed)'
                         : dotClass === 'warning'
                         ? 'var(--status-on-the-way)'
                         : 'var(--status-no-show)',
-                    transition: 'width 0.4s ease',
                   }}
                 />
               </div>

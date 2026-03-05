@@ -43,15 +43,15 @@ export default function RidesByHourWidget({ data }) {
 
   if (!data || data.length === 0) {
     return (
-      <div className="ro-empty" style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted, #6b7280)' }}>
-        <i className="ti ti-clock-hour-4" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+      <div className="ro-empty ao-empty">
+        <i className="ti ti-clock-hour-4 ao-empty-icon" />
         No hourly data available
       </div>
     );
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className="ao-chart-wrap">
       <Bar data={chartData} options={chartOptions} />
     </div>
   );

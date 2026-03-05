@@ -8,7 +8,7 @@ export default function WidgetToolbar({ editMode, onToggleEdit, onAdd, onSetDefa
   }
 
   return (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+    <div className="ao-toolbar-actions">
       <button className="ro-btn ro-btn--primary ro-btn--sm" onClick={onToggleEdit}>
         <i className="ti ti-check"></i> Done
       </button>
