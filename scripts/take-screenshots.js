@@ -380,10 +380,14 @@ async function officeScreenshots(browser, campus) {
       try {
         await clickAnalyticsTab(page, 'attendance', 1000);
 
-        // Try clicking "Today" date preset for focused data
-        const todayBtn = await page.$('button[data-range="today"]');
-        if (todayBtn) {
-          await todayBtn.click();
+        // Use "Month" filter for historical clock-event data (today has no attendance data)
+        const monthBtn = await page.$('button[data-range="this-month"]');
+        const weekBtn = await page.$('button[data-range="7d"]');
+        if (monthBtn) {
+          await monthBtn.click();
+          await delay(500);
+        } else if (weekBtn) {
+          await weekBtn.click();
           await delay(500);
         }
 
