@@ -138,6 +138,82 @@ const TEMPLATES = {
     `)
   }),
 
+  driver_upcoming_ride: (data) => ({
+    subject: `Ride coming up at ${data.time}`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Upcoming Ride</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Heads up ${data.driverName} — you've got a ride coming up!
+      </p>
+      <div style="background: #EFF6FF; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Rider:</strong> ${data.riderName}</div>
+        <div><strong>Pickup:</strong> ${data.pickup}</div>
+        <div><strong>Drop-off:</strong> ${data.dropoff}</div>
+        <div><strong>Time:</strong> ${data.time}</div>
+      </div>
+    `)
+  }),
+
+  driver_new_assignment: (data) => ({
+    subject: `New ride assigned`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">New Ride Assigned</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        You've got a new ride, ${data.driverName}!
+      </p>
+      <div style="background: #EFF6FF; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Rider:</strong> ${data.riderName}</div>
+        <div><strong>From:</strong> ${data.pickup}</div>
+        <div><strong>To:</strong> ${data.dropoff}</div>
+        <div><strong>When:</strong> ${data.time}</div>
+      </div>
+    `)
+  }),
+
+  driver_ride_cancelled: (data) => ({
+    subject: `Ride cancelled`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Ride Cancelled</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Heads up ${data.driverName} — ${data.riderName}'s ride at ${data.time} was cancelled. You're free!
+      </p>
+      <div style="background: #FFF7ED; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Rider:</strong> ${data.riderName}</div>
+        <div><strong>Route:</strong> ${data.pickup} &rarr; ${data.dropoff}</div>
+        <div><strong>Was scheduled for:</strong> ${data.time}</div>
+      </div>
+    `)
+  }),
+
+  driver_late_clock_in: (data) => ({
+    subject: `Running late today?`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Late Clock-In</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hey ${data.driverName}, looks like you ran a bit late today. No worries if you let your supervisor know!
+      </p>
+      <div style="background: #FEF2F2; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Shift start:</strong> ${data.scheduledStart}</div>
+        <div><strong>Clocked in:</strong> ${data.clockInTime}</div>
+        <div><strong>Late by:</strong> ${data.tardyMinutes} minutes</div>
+      </div>
+    `)
+  }),
+
+  driver_missed_shift: (data) => ({
+    subject: `Missed shift check-in`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Missed Shift</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hey ${data.driverName} — it looks like you may have missed your shift today. If you already talked to your supervisor, ignore this!
+      </p>
+      <div style="background: #FFF7ED; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Shift:</strong> ${data.shiftStart} &ndash; ${data.shiftEnd}</div>
+        <div><strong>Date:</strong> ${data.date}</div>
+      </div>
+    `)
+  }),
+
   // ── Rider-facing templates ──
 
   rider_no_show_notice: (data) => ({
@@ -191,6 +267,89 @@ const TEMPLATES = {
         If you believe this is an error or would like to request reinstatement, please contact the office directly.
       </p>
     `)
+  }),
+
+  rider_ride_approved: (data) => ({
+    subject: `Your ride has been approved`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Ride Approved</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hi ${data.riderName}, your ride request has been approved!
+      </p>
+      <div style="background: #ECFDF5; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>From:</strong> ${data.pickup}</div>
+        <div><strong>To:</strong> ${data.dropoff}</div>
+        <div><strong>When:</strong> ${data.requestedTime}</div>
+      </div>
+    `)
+  }),
+
+  rider_ride_denied: (data) => ({
+    subject: `Ride request update`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Ride Not Approved</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hi ${data.riderName}, unfortunately your ride request could not be approved at this time.
+      </p>
+      <div style="background: #FEF2F2; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>From:</strong> ${data.pickup}</div>
+        <div><strong>To:</strong> ${data.dropoff}</div>
+      </div>
+      <p style="color: #6B7280; font-size: 12px; margin-top: 12px;">
+        Please contact the office if you have questions.
+      </p>
+    `)
+  }),
+
+  rider_driver_on_way: (data) => ({
+    subject: `Your driver is on the way`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Driver On The Way</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hi ${data.riderName}, ${data.driverName} is heading to your pickup location!
+      </p>
+      <div style="background: #EFF6FF; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Pickup:</strong> ${data.pickup}</div>
+        <div><strong>Driver:</strong> ${data.driverName}</div>
+      </div>
+    `)
+  }),
+
+  rider_driver_arrived: (data) => ({
+    subject: `Your driver has arrived`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Driver Arrived</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hi ${data.riderName}, ${data.driverName} is waiting for you at ${data.pickup}!
+      </p>
+      <div style="background: #ECFDF5; border-radius: 8px; padding: 12px 16px; font-size: 13px;">
+        <div><strong>Pickup:</strong> ${data.pickup}</div>
+        <div><strong>Driver:</strong> ${data.driverName}</div>
+      </div>
+    `)
+  }),
+
+  rider_ride_completed: (data) => ({
+    subject: `Ride completed`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Ride Complete</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hi ${data.riderName}, your ride to ${data.dropoff} is complete. Thanks for riding with us!
+      </p>
+    `)
+  }),
+
+  rider_ride_cancelled: (data) => ({
+    subject: `Ride cancelled`,
+    html: wrapTemplate(`
+      <h2 style="font-size: 16px; color: #111827; margin: 0 0 8px;">Ride Cancelled</h2>
+      <p style="color: #6B7280; font-size: 13px; margin: 0 0 16px;">
+        Hi ${data.riderName}, your ride from ${data.pickup} to ${data.dropoff} has been cancelled.
+      </p>
+      <p style="color: #6B7280; font-size: 12px; margin-top: 12px;">
+        If you didn't request this, please contact the office.
+      </p>
+    `)
   })
 };
 
@@ -224,6 +383,26 @@ const IN_APP_TEMPLATES = {
   new_ride_request: (data) => ({
     title: 'New Ride Request',
     body: `${data.riderName}: ${data.pickup} → ${data.dropoff} at ${data.requestedTime}`
+  }),
+  driver_upcoming_ride: (data) => ({
+    title: 'Upcoming Ride',
+    body: `Heads up ${data.driverName} — ride with ${data.riderName} at ${data.time} from ${data.pickup}`
+  }),
+  driver_new_assignment: (data) => ({
+    title: 'New Ride Assigned',
+    body: `You've got a new ride! ${data.riderName} from ${data.pickup} to ${data.dropoff} at ${data.time}`
+  }),
+  driver_ride_cancelled: (data) => ({
+    title: 'Ride Cancelled',
+    body: `${data.driverName}, heads up — ${data.riderName}'s ride at ${data.time} was cancelled. You're free!`
+  }),
+  driver_late_clock_in: (data) => ({
+    title: 'Late Clock-In',
+    body: `Hey ${data.driverName}, looks like you ran a bit late today (${data.tardyMinutes}m). No worries!`
+  }),
+  driver_missed_shift: (data) => ({
+    title: 'Missed Shift',
+    body: `Hey ${data.driverName} — it looks like you may have missed your shift today (${data.shiftStart}–${data.shiftEnd})`
   })
 };
 
@@ -264,6 +443,42 @@ const RIDER_IN_APP_TEMPLATES = {
   ride_unassigned: (data) => ({
     title: 'Driver Removed',
     body: `Driver removed from your ride`
+  }),
+  rider_ride_approved: (data) => ({
+    title: 'Ride Approved',
+    body: `Your ride from ${data.pickup} to ${data.dropoff} has been approved!`
+  }),
+  rider_ride_denied: (data) => ({
+    title: 'Ride Not Approved',
+    body: `Your ride from ${data.pickup} to ${data.dropoff} could not be approved`
+  }),
+  rider_driver_on_way: (data) => ({
+    title: 'Driver On The Way',
+    body: `${data.driverName} is heading to ${data.pickup}`
+  }),
+  rider_driver_arrived: (data) => ({
+    title: 'Driver Arrived',
+    body: `${data.driverName} is waiting at ${data.pickup}`
+  }),
+  rider_ride_completed: (data) => ({
+    title: 'Ride Complete',
+    body: `Your ride to ${data.dropoff} is complete. Thanks for riding!`
+  }),
+  rider_ride_cancelled: (data) => ({
+    title: 'Ride Cancelled',
+    body: `Your ride from ${data.pickup} to ${data.dropoff} was cancelled`
+  }),
+  rider_no_show_notice: (data) => ({
+    title: 'Missed Ride',
+    body: `You were marked as a no-show at ${data.pickup}`
+  }),
+  rider_strike_warning: (data) => ({
+    title: 'Service Notice',
+    body: `You have ${data.consecutiveMisses} consecutive missed rides. ${data.missesRemaining} remaining before service pause`
+  }),
+  rider_terminated_notice: (data) => ({
+    title: 'Service Paused',
+    body: `Your ride service has been paused due to ${data.consecutiveMisses} consecutive no-shows. Contact the office for help.`
   })
 };
 
@@ -283,6 +498,38 @@ async function createInAppNotification(userId, eventType, title, body, metadata,
     );
   } catch (err) {
     console.error('[Notifications] In-app write error:', err.message);
+  }
+}
+
+// ── User-targeted notification sender (checks per-user preferences) ──
+
+async function sendUserNotification(userId, eventType, data, queryFn) {
+  try {
+    const prefResult = await queryFn(
+      `SELECT np.channel, np.enabled, u.email, u.name as user_name
+       FROM notification_preferences np
+       JOIN users u ON u.id = np.user_id
+       WHERE np.user_id = $1 AND np.event_type = $2 AND np.enabled = true`,
+      [userId, eventType]
+    );
+
+    if (!prefResult.rowCount) return;
+
+    for (const pref of prefResult.rows) {
+      if (pref.channel === 'email') {
+        const template = TEMPLATES[eventType];
+        if (!template) continue;
+        const { subject, html } = template(data);
+        await sendEmail(pref.email, subject, html);
+      } else if (pref.channel === 'in_app') {
+        const template = IN_APP_TEMPLATES[eventType] || RIDER_IN_APP_TEMPLATES[eventType];
+        if (!template) continue;
+        const { title, body } = template(data);
+        await createInAppNotification(userId, eventType, title, body, data, queryFn);
+      }
+    }
+  } catch (err) {
+    console.error('[Notifications] sendUserNotification error for', eventType, ':', err.message);
   }
 }
 
@@ -372,4 +619,4 @@ async function createRiderNotification(eventType, data, queryFn) {
   }
 }
 
-module.exports = { dispatchNotification, sendRiderEmail, createRiderNotification, setTenantConfig, TEMPLATES };
+module.exports = { dispatchNotification, sendRiderEmail, createRiderNotification, sendUserNotification, setTenantConfig, TEMPLATES };
