@@ -134,6 +134,7 @@ Default login credentials (password: `demo123`):
 - `client/src/components/rides/` — MyRidesPanel, HeroCard, GraceTimer
 - `client/src/components/history/` — HistoryPanel, HistoryRow, RecurringSection
 - `client/src/components/drawers/` — SettingsDrawer, ProfileForm, AvatarPicker, PasswordChange, NotificationDrawer
+- `client/src/components/NotificationToggles.jsx` — Shared notification preference toggle UI for driver and rider views. Grouped toggles, save-on-toggle with optimistic UI
 - `client/src/contexts/` — AuthContext, TenantContext, ToastContext
 - `client/src/hooks/` — usePolling, useRides, useLocations, useOpsConfig, useNotifications
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
@@ -156,7 +157,7 @@ Default login credentials (password: `demo123`):
 - `tenants/uci-locations.js` — 25 UCI campus locations
 - `tenants/default-locations.js` — 32 generic campus locations (default when no tenant)
 - `email.js` — Email sending (nodemailer) with tenant-aware brand colors
-- `notification-service.js` — Notification dispatch engine: `dispatchNotification()` sends to office staff via preferences, `sendRiderEmail()` sends directly to riders, `setTenantConfig()` injects org branding into email templates. Includes templates for driver_missed_ride notifications
+- `notification-service.js` — Notification dispatch engine: `dispatchNotification()` sends to office staff via preferences, `sendRiderEmail()` sends directly to riders, `sendUserNotification(userId, eventType, data, queryFn)` checks any user's preferences before dispatching (used for driver + rider notifications), `setTenantConfig()` injects org branding into email templates. Includes templates for all 21 event types across office/driver/rider roles
 - `demo-seed.js` — Seeds demo data: 650+ rides, 5 weeks of shifts, clock events, recurring rides, vehicles, notifications
 - `public/favicon.svg` — RideOps favicon (blue circle with RO)
 - `db/schema.sql` — PostgreSQL schema reference
@@ -214,6 +215,7 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - Clock button: renders text "CLOCK IN" or "CLOCK OUT" (test selectors preserved)
 - Clock out triggers confirmation via shared `useModal()` (modal class: `ro-modal-overlay.open`)
 - Account tab uses shared `<ProfileForm idPrefix="profile-" />` producing `#profile-name` and `#profile-phone`
+- Account tab includes `NotificationToggles` for driver notification preferences (Ride Reminders, Shift & Attendance groups). Preferences default: in-app ON, email OFF
 - **Contexts:** AuthProvider(expectedRole="driver"), TenantProvider(roleLabel="Driver")
 
 ### Rider Console (React — client/src/)
@@ -225,6 +227,7 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - Grace timer: `GraceTimer.jsx` with SVG countdown circle
 - Account settings via gear button (`#gear-btn`) → `SettingsDrawer` (ProfileForm, AvatarPicker, PasswordChange)
 - Notifications via bell button → `NotificationDrawer` (selection, bulk read/clear)
+- Settings drawer includes `NotificationToggles` for rider notification preferences (Ride Updates, Account groups). Preferences default: in-app ON, email ON
 - **Contexts:** AuthContext (user, logout), TenantContext (config, theming), ToastContext (showToast)
 - **Hooks:** usePolling (5s rides, 30s notifications, visibilitychange pause), useRides, useLocations, useOpsConfig, useNotifications
 - **All test-critical element IDs preserved** from vanilla version (#book-panel, #myrides-panel, #pickup-location, etc.)
@@ -254,7 +257,8 @@ users, shifts, rides, ride_events, recurring_rides, rider_miss_counts, vehicles,
 - **shifts.week_start:** When set (DATE), shift only appears that specific week. When NULL, acts as a recurring template
 - **users.active:** Only meaningful for drivers — TRUE when clocked in, FALSE otherwise
 - **users.deleted_at:** Soft-delete timestamp. NULL = active, non-NULL = deleted. Login, auth middleware, and all operational queries filter `WHERE deleted_at IS NULL`. Analytics/ride JOINs do NOT filter (preserve historical names). Username/email uniqueness enforced only among active users via partial unique indexes
-- **notification_preferences:** UNIQUE(user_id, event_type, channel) — lazy-seeded on first GET
+- **notification_preferences:** UNIQUE(user_id, event_type, channel) — lazy-seeded on first GET, role-aware (seeds only targetRole-matching event types)
+- **rides.ride_upcoming_notified_at:** TIMESTAMPTZ — set when driver_upcoming_ride notification sent, prevents duplicate reminders
 
 ### Configurable Settings (tenant_settings)
 | Key | Default | Type | Category |
@@ -324,7 +328,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **`GET /api/rides` pagination:** Without `limit` param returns flat array (legacy). With `limit` returns `{ rides, nextCursor, totalCount, hasMore }`. Supports `offset` param for page-based pagination (used by RidesPanel) and `cursor` param for keyset pagination. Server-side filters: `status` (comma-separated), `from`/`to` (date range), `search` (ILIKE). Order: `requested_time DESC, id DESC`. Max limit: 200
 - **Soft-delete users:** `DELETE /api/admin/users/:id` sets `deleted_at = NOW()` (no hard delete). `POST /api/admin/users/:id/restore` clears `deleted_at`. `GET /api/admin/users?include_deleted=true` shows deleted users
 - **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
-- **`NOTIFICATION_EVENT_TYPES`:** driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, new_ride_request, driver_missed_ride
+- **`NOTIFICATION_EVENT_TYPES`:** Office: driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, driver_missed_ride, new_ride_request. Driver: driver_upcoming_ride, driver_new_assignment, driver_ride_cancelled, driver_late_clock_in, driver_missed_shift. Rider: rider_ride_approved, rider_ride_denied, rider_driver_on_way, rider_driver_arrived, rider_ride_completed, rider_ride_cancelled, rider_no_show_notice, rider_strike_warning, rider_terminated_notice. Each entry has `targetRole` field ('office'|'driver'|'rider')
 - **Dev-only:** `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
 
 ## Code Conventions
