@@ -31,6 +31,20 @@ const OUT = path.join(__dirname, '..', 'screenshots');
 const DESKTOP = { width: 1920, height: 1080 };
 const MOBILE = { width: 390, height: 844 };
 
+// When --only=analytics is passed, skip all non-analytics shots
+const ONLY_ANALYTICS = process.argv.includes('--only=analytics');
+
+// ── Saved widget layouts ──
+// Inject into localStorage before analytics panels load so the custom
+// arrangement is applied instead of the default grid.
+const SAVED_LAYOUTS = {
+  'rideops_widget_layout_dashboard_office': '{"version":11,"widgets":[{"id":"kpi-total-rides","x":0,"y":0,"w":2,"h":1},{"id":"kpi-completion-rate","x":2,"y":0,"w":2,"h":1},{"id":"kpi-no-show-rate","x":4,"y":0,"w":2,"h":1},{"id":"kpi-active-riders","x":6,"y":0,"w":2,"h":1},{"id":"kpi-driver-punctuality","x":8,"y":0,"w":2,"h":1},{"id":"kpi-fleet-available","x":10,"y":0,"w":2,"h":1},{"id":"ride-volume","x":1,"y":1,"w":3,"h":3},{"id":"ride-outcomes","x":7,"y":1,"w":2,"h":3},{"id":"rides-by-dow","x":4,"y":1,"w":3,"h":3},{"id":"rides-by-hour","x":1,"y":4,"w":4,"h":3},{"id":"top-routes","x":5,"y":4,"w":4,"h":6},{"id":"driver-leaderboard","x":1,"y":7,"w":4,"h":3},{"id":"shift-coverage","x":9,"y":1,"w":3,"h":6},{"id":"fleet-utilization","x":9,"y":7,"w":3,"h":2},{"id":"rider-cohorts","x":0,"y":1,"w":1,"h":8},{"id":"peak-hours","x":0,"y":10,"w":4,"h":5}]}',
+  'rideops_widget_custom_default_dashboard_office': '{"version":11,"widgets":[{"id":"kpi-total-rides","x":0,"y":0,"w":2,"h":1},{"id":"kpi-completion-rate","x":2,"y":0,"w":2,"h":1},{"id":"kpi-no-show-rate","x":4,"y":0,"w":2,"h":1},{"id":"kpi-active-riders","x":6,"y":0,"w":2,"h":1},{"id":"kpi-driver-punctuality","x":8,"y":0,"w":2,"h":1},{"id":"kpi-fleet-available","x":10,"y":0,"w":2,"h":1},{"id":"ride-volume","x":1,"y":1,"w":3,"h":3},{"id":"ride-outcomes","x":7,"y":1,"w":2,"h":3},{"id":"rides-by-dow","x":4,"y":1,"w":3,"h":3},{"id":"rides-by-hour","x":1,"y":4,"w":4,"h":3},{"id":"top-routes","x":5,"y":4,"w":4,"h":6},{"id":"driver-leaderboard","x":1,"y":7,"w":4,"h":3},{"id":"shift-coverage","x":9,"y":1,"w":3,"h":6},{"id":"fleet-utilization","x":9,"y":7,"w":3,"h":2},{"id":"rider-cohorts","x":0,"y":1,"w":1,"h":8},{"id":"peak-hours","x":0,"y":10,"w":4,"h":5}]}',
+  'rideops_widget_layout_hotspots_office': '{"version":11,"widgets":[{"id":"hotspot-pickups","x":0,"y":0,"w":3,"h":4},{"id":"hotspot-dropoffs","x":3,"y":0,"w":3,"h":4},{"id":"hotspot-top-routes","x":6,"y":0,"w":6,"h":4},{"id":"route-demand-matrix","x":0,"y":4,"w":12,"h":7}]}',
+  'rideops_widget_layout_milestones_office': '{"version":11,"widgets":[{"id":"driver-milestones","x":0,"y":0,"w":6,"h":8},{"id":"rider-milestones","x":6,"y":0,"w":6,"h":8}]}',
+  'rideops_widget_layout_attendance_office': '{"version":11,"widgets":[{"id":"kpi-total-clock-ins","x":0,"y":0,"w":3,"h":1},{"id":"kpi-on-time-rate","x":3,"y":0,"w":2,"h":1},{"id":"kpi-tardy-count","x":5,"y":0,"w":2,"h":1},{"id":"kpi-avg-tardiness","x":7,"y":0,"w":2,"h":1},{"id":"kpi-missed-shifts","x":9,"y":0,"w":3,"h":1},{"id":"attendance-donut","x":0,"y":1,"w":4,"h":4},{"id":"tardiness-by-dow","x":4,"y":1,"w":4,"h":4},{"id":"tardiness-trend","x":8,"y":1,"w":4,"h":4},{"id":"punctuality-table","x":0,"y":5,"w":12,"h":5}]}',
+};
+
 // Tracking
 let captured = 0;
 let skipped = [];
@@ -64,12 +78,22 @@ function skip(name, reason) {
 /**
  * Login to a campus-scoped URL. Returns { ctx, page } -- caller must close ctx.
  * Creates a fresh browser context to avoid session bleed between campuses.
+ * Pass `layouts` to inject localStorage keys before login (for analytics widget layouts).
  */
-async function loginCampus(browser, campus, username, viewport) {
+async function loginCampus(browser, campus, username, viewport, layouts = null) {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
 
   await page.goto(`${BASE}/${campus}/login`, { waitUntil: 'domcontentloaded' });
+
+  // Inject localStorage on the app origin before filling credentials.
+  // localStorage is origin-scoped (localhost:3000), so this works for all paths.
+  if (layouts) {
+    await page.evaluate((ls) => {
+      Object.entries(ls).forEach(([k, v]) => localStorage.setItem(k, v));
+    }, layouts);
+  }
+
   await page.waitForSelector('#username', { timeout: 8000 });
   await page.fill('#username', username);
   await page.fill('#password', 'demo123');
@@ -144,12 +168,14 @@ async function hideE2EDispatchRows(page) {
 
 async function officeScreenshots(browser, campus) {
   console.log(`  -- Office (desktop 1920x1080) --`);
-  const { ctx, page } = await loginCampus(browser, campus, 'office', DESKTOP);
+  const { ctx, page } = await loginCampus(browser, campus, 'office', DESKTOP, SAVED_LAYOUTS);
 
   try {
     // -----------------------------------------------------------------------
     // 1. Dispatch Dashboard
     // -----------------------------------------------------------------------
+    if (!ONLY_ANALYTICS) {
+
     {
       const name = `${campus}-office-dispatch.png`;
       try {
@@ -309,6 +335,8 @@ async function officeScreenshots(browser, campus) {
         skip(name, err.message);
       }
     }
+
+    } // end if (!ONLY_ANALYTICS) — shots 1–6
 
     // -----------------------------------------------------------------------
     // 7. Analytics Dashboard
@@ -673,17 +701,21 @@ async function screenshotCampus(browser, campus) {
   }
 
   // Driver screenshots (3 per campus)
-  try {
-    await driverScreenshots(browser, campus);
-  } catch (err) {
-    console.error(`  [ERROR] Driver screenshots for ${campus} failed:`, err.message);
+  if (!ONLY_ANALYTICS) {
+    try {
+      await driverScreenshots(browser, campus);
+    } catch (err) {
+      console.error(`  [ERROR] Driver screenshots for ${campus} failed:`, err.message);
+    }
   }
 
   // Rider screenshots (4 per campus)
-  try {
-    await riderScreenshots(browser, campus);
-  } catch (err) {
-    console.error(`  [ERROR] Rider screenshots for ${campus} failed:`, err.message);
+  if (!ONLY_ANALYTICS) {
+    try {
+      await riderScreenshots(browser, campus);
+    } catch (err) {
+      console.error(`  [ERROR] Rider screenshots for ${campus} failed:`, err.message);
+    }
   }
 }
 
@@ -709,7 +741,12 @@ async function main() {
 
   console.log(`[INFO] Output directory: ${OUT}`);
   console.log(`[INFO] Campuses: ${CAMPUSES.join(', ')}`);
-  console.log(`[INFO] Expected: ${CAMPUSES.length * 18} screenshots (18 per campus)`);
+  if (ONLY_ANALYTICS) {
+    console.log(`[INFO] Mode: --only=analytics (5 shots per campus: dashboard, hotspots, milestones, attendance, reports)`);
+    console.log(`[INFO] Expected: ${CAMPUSES.length * 5} screenshots`);
+  } else {
+    console.log(`[INFO] Expected: ${CAMPUSES.length * 18} screenshots (18 per campus)`);
+  }
 
   const browser = await chromium.launch({ headless: true });
 
@@ -726,7 +763,7 @@ async function main() {
   console.log('  Summary');
   console.log('===============================');
 
-  const totalExpected = CAMPUSES.length * 18;
+  const totalExpected = ONLY_ANALYTICS ? CAMPUSES.length * 5 : CAMPUSES.length * 18;
   console.log(`  Captured: ${captured}/${totalExpected}`);
 
   if (skipped.length > 0) {
