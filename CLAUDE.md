@@ -34,8 +34,7 @@ RideOps is an accessible campus transportation operations platform. It provides 
 See `tenants/usc-dart.json` for shape. Key fields: `orgName`, `primaryColor`, `secondaryColor`, `locationsFile`, `idFieldPattern`, `mapEmbeddable`, `rules`.
 
 ### Server-Side Campus Configs (tenants/campus-configs.js)
-Defines complete per-campus overrides merged into `/api/tenant-config` response: orgName, orgShortName, orgTagline, orgInitials, primaryColor, secondaryColor, secondaryTextColor, sidebarBg, sidebarText, sidebarActiveBg, sidebarHover, sidebarBorder, headerBg, mapUrl, mapEmbeddable, campusKey, locationsKey, idFieldLabel, idFieldPattern, idFieldMaxLength, idFieldPlaceholder, serviceScopeText, timezone, rules. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding).
-- **`mapEmbeddable`:** Boolean flag. `true` for all four campuses (USC, Stanford, UCLA, UCI). Office/driver views render fallback "Open Campus Map" card when `false`.
+Defines per-campus overrides (colors, branding, map, locations, ID field, timezone, rules) merged into `/api/tenant-config`. When no campus slug is active, DEFAULT_TENANT values are used (SteelBlue RideOps branding). `mapEmbeddable: true` for all four campuses.
 
 ## Tech Stack
 - **Backend:** Node.js (>=18) + Express + express-session + bcryptjs
@@ -74,13 +73,7 @@ PORT=3000                      # Server port (default: 3000)
 DATABASE_URL=postgres://...    # PostgreSQL connection string (default: postgres://localhost/rideops)
 TENANT_FILE=tenants/usc-dart.json  # Tenant config file path (optional)
 DISABLE_RIDER_SIGNUP=true      # Disable public rider signup (default: false)
-SMTP_HOST=                     # SMTP server hostname (optional — falls back to console logging)
-SMTP_PORT=587                  # SMTP port (default: 587)
-SMTP_SECURE=false              # Use TLS (default: false)
-SMTP_USER=                     # SMTP username
-SMTP_PASS=                     # SMTP password
-NOTIFICATION_FROM=noreply@ride-ops.com  # Notification sender address
-NOTIFICATION_FROM_NAME=RideOps          # Notification sender name
+SMTP_HOST=                     # SMTP server (optional — falls back to console logging)
 SESSION_SECRET=                # Required in production, random fallback in development
 NODE_ENV=production            # Set for secure cookies and strict validation
 ```
@@ -93,16 +86,11 @@ Default login credentials (password: `demo123`):
 ## Deployment
 
 ### Railway (Production)
-- **URL:** https://app.ride-ops.com (custom domain) / https://rideops-app-production.up.railway.app (Railway default)
-- **Config:** `railway.json` defines health check, restart policy, Nixpacks builder, and `buildCommand` (runs `npm install && npm run build` to build React rider app)
-- **Database:** Railway PostgreSQL addon (auto-provisions, sets DATABASE_URL)
-- **SSL:** Required for database connections in production (`ssl: { rejectUnauthorized: false }`)
-- **Health check:** `GET /health` — used by Railway for readiness checks
-- **Environment:** All config via Railway environment variables (see `.env.example`)
-- **Demo mode:** `DEMO_MODE=true` seeds 650+ rides on first startup (skips if data already exists), enables demo role picker at `/demo`
-- **Deploys:** Automatic on push to `main` branch (Railway watches GitHub repo)
-- **Deploy exclusions:** `.railwayignore` excludes screenshots/, docs/, tests/, scripts/ to reduce image size
-- **No TENANT_FILE needed:** Multi-campus routing handled entirely by `campus-configs.js` + org-scoped URLs. Do NOT set `TENANT_FILE` env var.
+- **URL:** https://app.ride-ops.com (custom domain) / https://rideops-app-production.up.railway.app
+- **Config:** `railway.json` (health check, restart policy, Nixpacks). `buildCommand` runs `npm install && npm run build`
+- **Database:** Railway PostgreSQL addon (auto-provisions DATABASE_URL). SSL required in production
+- **Deploys:** Automatic on push to `main`. `.railwayignore` excludes screenshots/, docs/, tests/, scripts/
+- **No TENANT_FILE needed:** Multi-campus routing handled by `campus-configs.js` + org-scoped URLs
 
 ### Marketing Site (Separate)
 - **URL:** https://ride-ops.com
@@ -148,25 +136,14 @@ Default login credentials (password: `demo123`):
 - `client/src/components/drawers/` — SettingsDrawer, ProfileForm, AvatarPicker, PasswordChange, NotificationDrawer
 - `client/src/contexts/` — AuthContext, TenantContext, ToastContext
 - `client/src/hooks/` — usePolling, useRides, useLocations, useOpsConfig, useNotifications
-- `public/rider-legacy.html` — Vanilla rider (legacy reference, fallback if React build not present)
-- `public/app.js` — **Legacy** office/admin console logic (~4,800 lines). Used only by `public/index-legacy.html`. Not loaded by the React office app (`client/office.html`)
-- `public/utils.js` — Shared UI utilities: empty state, dev-mode detection, toast icon helper (toast/modal functions moved to rideops-utils.js)
-- `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `initSidebar()`, `initBottomTabs()`, `formatTime()`, `formatDate()`, `renderNotificationDrawer()`, `pollNotificationCount()`
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
-- `client/src/office/components/analytics/analytics.css` — Analytics-specific CSS classes (`ao-` prefix: empty states, tables, heatmaps, skeleton loaders, filter bar, report summary)
+- `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `formatTime()`, `formatDate()`
 - `client/src/office/components/analytics/constants.js` — Widget registry (WIDGET_REGISTRY, WIDGET_CATEGORIES, 31 widgets, 8 categories, per-tab default layouts, WIDGET_LAYOUT_VERSION = 7, isKPI flag for headerless KPI widgets)
 - `client/src/office/components/analytics/WidgetGrid.jsx` — Widget dashboard grid using react-grid-layout v2 (12-column, drag/resize/vertical-compact). WidgetCard uses React.forwardRef
-- `client/src/office/components/analytics/chartSetup.js` — Chart.js component registration (CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Filler, Legend, Tooltip). Imported once in AnalyticsPanel
-- `client/src/office/components/analytics/widgets/KPISingleWidget.jsx` — Individual KPI card widget (headerless, fluid sizing, used for both dashboard and attendance KPIs)
-- `public/js/widget-registry.js` — **Legacy** widget definitions for vanilla JS office (22 widgets, 9 categories, per-tab default layouts). Used only by `public/index-legacy.html`
-- `public/js/widget-system.js` — **Legacy** widget dashboard runtime: GridStack.js 12-column grid. Used only by `public/index-legacy.html`
-- `public/js/chart-utils.js` — **Legacy** Chart.js instance registry. Used only by `public/index-legacy.html`
-- `public/js/analytics.js` — **Legacy** analytics renderers (~1,800 lines). Used only by `public/index-legacy.html`
-- ~~`public/driver.html`~~ — **Migrated to React** (see `client/src/driver/`). Legacy version at `public/driver-legacy.html`
-- `client/src/driver/` — React driver app (Vite + React 19). Components, hooks, driver.css. Builds to `client/dist/driver.html`
-- ~~`public/rider.html`~~ — **Migrated to React** (see `client/`). Legacy version at `public/rider-legacy.html`
-- `public/index-legacy.html` — Legacy vanilla JS office/admin console (fallback when React build not present)
+- `client/src/office/components/analytics/chartSetup.js` — Chart.js component registration. Imported once in AnalyticsPanel
+- `client/src/driver/` — React driver app (Vite + React 19). Builds to `client/dist/driver.html`
+- Legacy files (`public/app.js`, `public/index-legacy.html`, `public/js/analytics.js`, `public/js/widget-*.js`, `public/js/chart-utils.js`) — used only by `index-legacy.html`, not loaded by React apps
 - `tests/e2e.spec.js` — Comprehensive E2E/API test suite (~99 tests): auth, rides, lifecycle, recurring, vehicles, analytics, settings, UI panels, clock events, authorization, pagination, soft-delete/restore
 - `tests/uat.spec.js` — User acceptance tests (4 tests): office login, rider booking flow, office approval, driver clock-in
 - `public/login.html` / `signup.html` — Auth pages with org-scoped URL support. `/login` shows campus selector (no login form); `/:slug/login` shows campus-branded login form
@@ -186,24 +163,6 @@ Default login credentials (password: `demo123`):
 - `docs/reference/AUDIT_REPORT.md` — Post-analytics-overhaul platform audit (2026-03-02)
 - `docs/reference/SECURITY.md` — Security posture overview for university IT evaluators
 
-## Project Structure
-
-### Documentation (`docs/`)
-- `docs/reference/` — Living reference docs (tooling, audit reports, campus research, theme specs)
-- `docs/architecture/` — Technical design documents (analytics architecture, redesign plans)
-- `docs/prompts/` — Saved Claude Code prompt templates for complex features
-- `docs/audits/` — Historical audit reports (.docx)
-
-### Screenshots (`screenshots/`)
-- `screenshots/marketing/` — Automated product screenshots (19 images: dispatch, rides, analytics, driver, rider, rider wizard carousel, themes)
-- `screenshots/linkedin/` — Marketing screenshots for social media
-- `screenshots/design-inspiration/` — UI reference material with subdirectories by feature area
-- `screenshots/development/` — Development verification screenshots (theme checks, UI states, etc.)
-
-### Scripts (`scripts/`)
-- `scripts/take-screenshots.js` — Playwright screenshot automation for marketing/README images (requires server running with `DEMO_MODE=true`)
-- Utility scripts for screenshot automation and dev workflows. Not part of the app runtime.
-
 ## Architecture
 
 ### Backend Architecture
@@ -220,27 +179,12 @@ Default login credentials (password: `demo123`):
 - DB helpers: `query()`, `generateId()`, `addRideEvent()`, `mapRide()`, `getSetting()`
 - Startup recovery: `recoverStuckRides` reverts in-progress rides to `scheduled`, resets driver `active` states
 
-### Frontend Architecture
-- Frontend uses vanilla JS with `fetch()` to call REST API
-- No SPA router — navigation via buttons that show/hide `.tab-panel` sections
-- Each HTML page is self-contained:
-  - `index.html` loads chart-utils.js → analytics.js → app.js for office console logic
-  - `driver.html` has inline `<script>` for driver interface
-  - `rider.html` has inline `<script>` for rider interface
-- **Script loading order** (index.html): utils.js → rideops-utils.js → widget-registry.js → widget-system.js → chart-utils.js → analytics.js → app.js. All are plain `<script>` globals (no module system)
-- Tenant theming: pages fetch `/api/tenant-config` and apply dynamic branding
-- Campus detection: URL path parsing (`/usc/office` → campus=usc) + session fallback
-- Polling intervals (all pause via `visibilitychange` when tab is backgrounded):
-  - Office console: rides refresh every 5s
-  - Driver console: data refresh every 3s, grace timers update every 1s
-  - Rider console: rides refresh every 5s
-
 ### Office Console (React — client/src/office/)
 - **Built with React 19 + Vite**, served from `client/dist/office.html` via `/app/` static route. Legacy fallback at `public/index-legacy.html`
 - Sidebar navigation with 8 nav items: dispatch, rides, staff, fleet, analytics, map, settings, profile
 - **All 8 panels fully migrated:** Map + Profile + Settings (Phase 3a), Rides (Phase 3c), Staff & Shifts + Fleet (Phase 3b), Dispatch (Phase 3d), Analytics (Phase 3e)
-- **Settings sub-tabs:** Users, Business Rules, Notifications, Guidelines, Data, Academic Terms
-- **Rides panel:** Table view (sortable columns, page-based pagination with 25/50/100 rows per page), schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export
+- **Settings sub-tabs:** Users (sortable columns, create user modal, drawer), Business Rules, Notifications, Guidelines, Data, Academic Terms
+- **Rides panel:** Table view (sortable columns, page-based pagination with 25/50/100 rows per page), schedule grid view, filter bar, bulk ops, drawer, edit modal, CSV export, "New Ride" create modal (office creates rides on behalf of riders)
 - **Dispatch panel:** KPIBar, PendingQueue, DispatchGrid with per-driver rows and ride strips, 5s polling
 - **Staff panel:** EmployeeBar + ShiftCalendar (FullCalendar with deferred mount, drag-to-create, context menu, per-driver campus palette colors)
 - **Fleet panel:** VehicleCard grid, VehicleDrawer, add/retire/delete/reactivate/maintenance modals
@@ -376,6 +320,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Bulk-delete:** Rides and notifications use `POST /api/rides/bulk-delete` / `POST /api/notifications/bulk-delete` with `{ ids: [...] }` body. Notifications also have `DELETE /api/notifications/all` for clearing beyond the 50-item page limit
 - **Analytics endpoints** all support `?from=&to=` date filtering (except `milestones`). Use `GET /api/analytics/{endpoint}`
 - **Ride lifecycle actions:** `POST /api/rides/:id/{action}` where action is `approve|deny|claim|on-the-way|here|complete|no-show|cancel`. Office can claim on behalf with `{ driverId }` in body
+- **Office-created rides:** `POST /api/rides` by an office user reads `riderName`, `riderEmail`, `riderPhone` from the request body (instead of session). Ride is created with status `pending`
 - **`GET /api/rides` pagination:** Without `limit` param returns flat array (legacy). With `limit` returns `{ rides, nextCursor, totalCount, hasMore }`. Supports `offset` param for page-based pagination (used by RidesPanel) and `cursor` param for keyset pagination. Server-side filters: `status` (comma-separated), `from`/`to` (date range), `search` (ILIKE). Order: `requested_time DESC, id DESC`. Max limit: 200
 - **Soft-delete users:** `DELETE /api/admin/users/:id` sets `deleted_at = NOW()` (no hard delete). `POST /api/admin/users/:id/restore` clears `deleted_at`. `GET /api/admin/users?include_deleted=true` shows deleted users
 - **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
@@ -458,12 +403,6 @@ rideops-theme.css contains these rules that make navigation work:
 .sub-panel.active { display: block; }
 ```
 
-### Profile Cards & Avatars
-- Profile cards use `.profile-card`, `.profile-avatar` classes from rideops-theme.css (Section 26)
-- Avatar picker (`.avatar-picker`, `.avatar-option`) and helper functions in rideops-utils.js
-- Helpers: `profileCardHTML(user, opts)`, `profileAvatarHTML(avatarUrl, name, size)`, `avatarPickerHTML(url, userId)`, `initAvatarPicker(containerId, userId, onSelect)`
-- Default avatar: DiceBear `initials` style (`defaultAvatarUrl(name)`) when no `avatar_url` is set
-
 ### Status Names (immutable — referenced across entire codebase)
 pending, approved, scheduled, driver_on_the_way, driver_arrived_grace, completed, no_show, denied, cancelled
 
@@ -501,9 +440,7 @@ All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 
 ### Open Issues
 - **Rides pagination:** RidesPanel uses offset-based pagination (25/50/100 per page with page navigation). Dispatch and driver still fetch all today's rides (date-filtered, no pagination).
-- **Railway custom domain:** `app.ride-ops.com` CNAME configured in Squarespace DNS pointing to Railway service.
 - **Phone numbers not validated:** `riderPhone` stored without format validation (server-side).
 - **Rate limiting disabled in dev:** Login allows 1000 req/15min in development (10 in production). Intentional.
-- **Default credentials logged in dev:** Startup prints default logins to console when `NODE_ENV !== 'production'`.
-- **`/health` not wrapped in `wrapAsync()`:** Has its own try/catch, functionally safe but inconsistent.
-- **Recurring ride DST edge case:** If service hours include 2:00 AM, recurring rides at that time may behave unexpectedly on spring-forward day (when 2:00 AM doesn't exist). Low risk since most deployments use daytime hours. Timezone handling is otherwise robust (bare TIME storage, campus-aware day-of-week checks, PostgreSQL connection timezone).
+- **Inline styles in React components:** 422 `style=` usages across 77 files in `client/src/`. Most are spacing/flex values. Low priority — extract to CSS utility classes over time.
+- **No SSO/SAML:** Auth is session-based only. SSO integration is a potential future enhancement for enterprise campus deployments.
