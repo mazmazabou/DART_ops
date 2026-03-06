@@ -124,7 +124,7 @@ Default login credentials (password: `demo123`):
 - `client/src/driver/App.jsx` — Driver root component: clock in/out, ride lifecycle, grace timer, vehicle selection
 - `client/src/office/App.jsx` — Office root component: sidebar nav, panel switching, notification drawer, rules modal
 - `client/src/office/components/layout/` — OfficeLayout, Sidebar, OfficeHeader, MobileWarning
-- `client/src/office/components/settings/` — SettingsPanel + 6 sub-panels (Users, BusinessRules, Notifications, Guidelines, Data, AcademicTerms) + UserDrawer
+- `client/src/office/components/settings/` — SettingsPanel + 6 sub-panels (Users, BusinessRules, Notifications, Guidelines, Data, AcademicTerms) + UserDrawer. Notifications sub-panel uses save-on-toggle switches (same pattern as driver/rider)
 - `client/src/office/components/dispatch/` — DispatchPanel, KPIBar, PendingQueue, DispatchGrid, DriverRow, RideStrip, NowLine (5s polling, reuses RideDrawer/RideEditModal from rides/)
 - `client/src/office/components/rides/` — RidesPanel + FilterBar, Toolbar, RidesTable, RideRow, Pagination, ScheduleGrid, RideChip, RideDrawer, RideEditModal
 - `client/src/office/components/staff/` — StaffPanel, EmployeeBar, ShiftCalendar (FullCalendar with deferred mount, drag-to-create, right-click context menu, per-driver campus palette colors)
@@ -134,7 +134,7 @@ Default login credentials (password: `demo123`):
 - `client/src/components/rides/` — MyRidesPanel, HeroCard, GraceTimer
 - `client/src/components/history/` — HistoryPanel, HistoryRow, RecurringSection
 - `client/src/components/drawers/` — SettingsDrawer, ProfileForm, AvatarPicker, PasswordChange, NotificationDrawer
-- `client/src/components/NotificationToggles.jsx` — Shared notification preference toggle UI for driver and rider views. Grouped toggles, save-on-toggle with optimistic UI
+- `client/src/components/NotificationToggles.jsx` — Shared notification preference toggle UI for driver and rider views. Grouped toggles, save-on-toggle with optimistic UI. Office uses same toggle switch CSS classes but has its own component (NotifSettingsSubPanel)
 - `client/src/contexts/` — AuthContext, TenantContext, ToastContext
 - `client/src/hooks/` — usePolling, useRides, useLocations, useOpsConfig, useNotifications
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
