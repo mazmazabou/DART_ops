@@ -442,5 +442,5 @@ All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 - **Rides pagination:** RidesPanel uses offset-based pagination (25/50/100 per page with page navigation). Dispatch and driver still fetch all today's rides (date-filtered, no pagination).
 - **Phone numbers not validated:** `riderPhone` stored without format validation (server-side).
 - **Rate limiting disabled in dev:** Login allows 1000 req/15min in development (10 in production). Intentional.
-- **Inline styles in React components:** 422 `style=` usages across 77 files in `client/src/`. Most are spacing/flex values. Low priority — extract to CSS utility classes over time.
+- **Inline styles in React components:** Resolved — 419→239 occurrences (43% reduction). Utility classes in rideops-theme.css Section 22. Remaining 239 are genuinely dynamic (computed values, conditional logic, CSS variable colors).
 - **No SSO/SAML:** Auth is session-based only. SSO integration is a potential future enhancement for enterprise campus deployments.
