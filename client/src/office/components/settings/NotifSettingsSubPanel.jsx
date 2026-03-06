@@ -7,7 +7,7 @@ export default function NotifSettingsSubPanel() {
   const [prefs, setPrefs] = useState(null);
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingKey, setSavingKey] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -28,44 +28,39 @@ export default function NotifSettingsSubPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  const toggleChannel = (eventType, channel) => {
-    setPrefs(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      const ch = next.preferences[eventType]?.channels?.[channel];
-      if (ch) ch.enabled = !ch.enabled;
+  const toggleChannel = async (eventType, channel) => {
+    const prev = prefs.preferences[eventType]?.channels?.[channel];
+    if (!prev) return;
+    const newEnabled = !prev.enabled;
+
+    // Optimistic update
+    setPrefs(p => {
+      const next = JSON.parse(JSON.stringify(p));
+      next.preferences[eventType].channels[channel].enabled = newEnabled;
       return next;
     });
-  };
 
-  const handleSave = async () => {
-    setSaving(true);
+    setSavingKey(`${eventType}-${channel}`);
     try {
-      // Save notification preferences
-      const prefPayload = [];
-      Object.entries(prefs.preferences).forEach(([eventType, pref]) => {
-        Object.entries(pref.channels).forEach(([channel, ch]) => {
-          prefPayload.push({
-            eventType,
-            channel,
-            enabled: ch.enabled,
-            thresholdValue: ch.thresholdValue,
-          });
-        });
+      await saveNotifPreferences({
+        preferences: [{
+          eventType,
+          channel,
+          enabled: newEnabled,
+          thresholdValue: prev.thresholdValue,
+        }]
       });
-      await saveNotifPreferences({ preferences: prefPayload });
-
-      // Save related settings
-      const settingsArr = [
-        { key: 'notify_office_tardy', value: String(settings.notify_office_tardy ?? 'true') },
-        { key: 'notify_rider_no_show', value: String(settings.notify_rider_no_show ?? 'true') },
-        { key: 'notify_rider_strike_warning', value: String(settings.notify_rider_strike_warning ?? 'true') },
-      ];
-      await saveSettings(settingsArr);
-      showToast('Notification settings saved.', 'success');
+      showToast('Preference saved', 'success');
     } catch (e) {
+      // Revert on error
+      setPrefs(p => {
+        const next = JSON.parse(JSON.stringify(p));
+        next.preferences[eventType].channels[channel].enabled = !newEnabled;
+        return next;
+      });
       showToast(e.message, 'error');
     } finally {
-      setSaving(false);
+      setSavingKey(null);
     }
   };
 
@@ -97,30 +92,24 @@ export default function NotifSettingsSubPanel() {
             </div>
             <div className="flex gap-16" style={{ flexShrink: 0 }}>
               {Object.entries(pref.channels).map(([channel, ch]) => (
-                <label
-                  key={channel}
-                  className="flex items-center gap-4 text-13 cursor-pointer"
-                >
+                <label key={channel} className="notif-toggle-label">
                   <input
                     type="checkbox"
+                    className="notif-toggle-input"
                     checked={ch.enabled}
                     onChange={() => toggleChannel(eventType, channel)}
+                    disabled={savingKey === `${eventType}-${channel}`}
                   />
-                  {channel === 'email' ? 'Email' : 'In-App'}
+                  <span className="notif-toggle-switch" />
+                  <span className="notif-toggle-text">
+                    {channel === 'email' ? 'Email' : 'In-App'}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
         ));
       })()}
-
-      <button
-        className="ro-btn ro-btn--primary mt-8"
-        onClick={handleSave}
-        disabled={saving}
-      >
-        <i className="ti ti-device-floppy"></i> {saving ? 'Saving...' : 'Save'}
-      </button>
     </div>
   );
 }
