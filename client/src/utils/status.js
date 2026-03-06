@@ -24,3 +24,26 @@ export function isTerminalStatus(status) {
 export function statusLabel(status) {
   return STATUS_LABELS[status] || (status || '').replace(/_/g, ' ').replace('driver ', '');
 }
+
+// Vehicle status helpers
+const VEHICLE_STATUS_LABELS = {
+  available: 'Active',
+  in_use: 'In Use',
+  maintenance: 'Maintenance',
+  retired: 'Retired',
+};
+
+const VEHICLE_STATUS_COLORS = {
+  available: 'var(--status-completed)',
+  in_use: 'var(--status-scheduled)',
+  maintenance: 'var(--status-pending)',
+  retired: 'var(--color-text-muted)',
+};
+
+export function vehicleStatusLabel(status) {
+  return VEHICLE_STATUS_LABELS[status] || (status || '').replace(/_/g, ' ');
+}
+
+export function vehicleStatusColor(status) {
+  return VEHICLE_STATUS_COLORS[status] || 'var(--color-text-muted)';
+}

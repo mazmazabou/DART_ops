@@ -1,3 +1,5 @@
+import { vehicleStatusLabel } from '../../../utils/status';
+
 export default function VehicleCard({ vehicle, onLogMaintenance, onRetire, onDelete, onReactivate, onClick }) {
   const lastMaint = vehicle.last_maintenance_date
     ? new Date(vehicle.last_maintenance_date).toLocaleDateString() : 'Never';
@@ -44,7 +46,7 @@ export default function VehicleCard({ vehicle, onLogMaintenance, onRetire, onDel
         {vehicle.name}
         {vehicle.status === 'retired' && <span className="retired-badge">Retired</span>}
       </div>
-      <div className="vehicle-meta">Type: {vehicle.type} &middot; Status: {vehicle.status}</div>
+      <div className="vehicle-meta">Type: {vehicle.type} &middot; Status: {vehicleStatusLabel(vehicle.status)}</div>
       <div className="vehicle-meta">Completed rides: {vehicle.rideCount} &middot; Last used: {lastUsed}</div>
       <div className="vehicle-meta">Last maintenance: {lastMaint}</div>
       {vehicle.maintenanceOverdue && (

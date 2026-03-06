@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Drawer from '../../../components/ui/Drawer';
 import { fetchMaintenanceLogs } from '../../../api';
+import { vehicleStatusLabel, vehicleStatusColor } from '../../../utils/status';
 
 export default function VehicleDrawer({ vehicle, onClose, onLogMaintenance, onRetire, onDelete, onReactivate }) {
   const [logs, setLogs] = useState([]);
@@ -21,7 +22,7 @@ export default function VehicleDrawer({ vehicle, onClose, onLogMaintenance, onRe
     ? new Date(vehicle.last_maintenance_date).toLocaleDateString() : 'Never';
   const lastUsed = vehicle.lastUsed
     ? new Date(vehicle.lastUsed).toLocaleDateString() : 'Never';
-  const statusColor = vehicle.status === 'retired' ? 'var(--color-text-muted)' : 'var(--status-completed)';
+  const statusColor = vehicleStatusColor(vehicle.status);
 
   let actionButtons;
   if (vehicle.status === 'retired') {
@@ -59,7 +60,7 @@ export default function VehicleDrawer({ vehicle, onClose, onLogMaintenance, onRe
       <div className="mb-16">
         <div className="flex items-center gap-8 mb-8">
           <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: statusColor }} />
-          <span className="text-13 fw-600" style={{ textTransform: 'capitalize' }}>{vehicle.status}</span>
+          <span className="text-13 fw-600">{vehicleStatusLabel(vehicle.status)}</span>
           <span className="text-sm text-muted ml-auto">{vehicle.type}</span>
         </div>
         {vehicle.maintenanceOverdue && (
