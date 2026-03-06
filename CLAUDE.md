@@ -127,6 +127,7 @@ node scripts/retake-grace-timer.js
 - **URL:** https://ride-ops.com
 - **Host:** Vercel (Next.js)
 - **Repo:** rideops-site (separate repository)
+- **Status:** Overhauled 2026-03-06 — 13-section homepage with brand copy, origin story, founder bio, 19 screenshots from 4 campuses, persona-first structure
 
 ## Key Files
 
