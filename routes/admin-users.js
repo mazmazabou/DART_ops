@@ -28,8 +28,8 @@ module.exports = function(app, ctx) {
   app.get('/api/admin/users', requireOffice, wrapAsync(async (req, res) => {
     const includeDeleted = req.query.include_deleted === 'true';
     const result = includeDeleted
-      ? await query(`SELECT id, username, name, email, member_id, phone, role, active, deleted_at FROM users ORDER BY role, name`)
-      : await query(`SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE deleted_at IS NULL ORDER BY role, name`);
+      ? await query(`SELECT id, username, name, email, member_id, phone, role, active, avatar_url, deleted_at FROM users ORDER BY role, name`)
+      : await query(`SELECT id, username, name, email, member_id, phone, role, active, avatar_url FROM users WHERE deleted_at IS NULL ORDER BY role, name`);
     res.json(result.rows);
   }));
 
@@ -37,7 +37,7 @@ module.exports = function(app, ctx) {
     const member_id = req.query.member_id || req.query.usc_id;
     if (!member_id || !isValidMemberId(member_id)) return res.status(400).json({ error: `Invalid ${TENANT.idFieldLabel}` });
     const result = await query(
-      `SELECT id, username, name, email, member_id, phone, role, active FROM users WHERE member_id = $1 AND deleted_at IS NULL`,
+      `SELECT id, username, name, email, member_id, phone, role, active, avatar_url FROM users WHERE member_id = $1 AND deleted_at IS NULL`,
       [member_id]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'No user found' });
@@ -198,7 +198,7 @@ module.exports = function(app, ctx) {
   app.get('/api/admin/users/:id/profile', requireOffice, wrapAsync(async (req, res) => {
     const key = req.params.id;
     const userRes = await query(
-      `SELECT id, username, name, email, member_id, phone, role, active, deleted_at FROM users WHERE id = $1 OR email = $1 OR username = $1`,
+      `SELECT id, username, name, email, member_id, phone, role, active, avatar_url, deleted_at FROM users WHERE id = $1 OR email = $1 OR username = $1`,
       [key]
     );
     if (!userRes.rowCount) return res.status(404).json({ error: 'User not found' });
