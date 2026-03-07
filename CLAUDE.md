@@ -154,7 +154,8 @@ node scripts/retake-grace-timer.js
 - `client/` — React rider app (Vite + React 19). Source in `client/src/`, builds to `client/dist/`
 - `client/src/rider/App.jsx` — Rider root component: auth/tenant/toast providers, tab state, auto-switch logic
 - `client/src/driver/App.jsx` — Driver root component: clock in/out, ride lifecycle, grace timer, vehicle selection
-- `client/src/office/App.jsx` — Office root component: sidebar nav, panel switching, notification drawer, rules modal
+- `client/src/office/App.jsx` — Office root component: sidebar nav, panel switching, notification drawer, rules modal. `TenantProvider roleLabel="Admin"` (DB role stays `'office'`)
+- `client/src/utils/displayRole.js` — Maps DB role values to user-facing labels: `'office'→'Admin'`, `'driver'→'Driver'`, `'rider'→'Rider'`
 - `client/src/office/components/layout/` — OfficeLayout, Sidebar, OfficeHeader, MobileWarning
 - `client/src/office/components/settings/` — SettingsPanel + 6 sub-panels (Users, BusinessRules, Notifications, Guidelines, Data, AcademicTerms) + UserDrawer. Notifications sub-panel uses save-on-toggle switches (same pattern as driver/rider)
 - `client/src/office/components/dispatch/` — DispatchPanel, KPIBar, PendingQueue, DispatchGrid, DriverRow, RideStrip, NowLine (5s polling, reuses RideDrawer/RideEditModal from rides/)
@@ -172,7 +173,7 @@ node scripts/retake-grace-timer.js
 - `public/css/rideops-theme.css` — All CSS custom properties, component styles, layout classes
 - `public/campus-themes.js` — Per-campus color palettes for charts/UI (`getCampusPalette()`)
 - `public/js/rideops-utils.js` — Shared UI utilities: `statusBadge()`, `showToastNew()`, `showModalNew()`, `formatTime()`, `formatDate()`
-- `client/src/office/components/analytics/constants.js` — Widget registry (WIDGET_REGISTRY, WIDGET_CATEGORIES, 31 widgets, 8 categories, per-tab default layouts, WIDGET_LAYOUT_VERSION = 7, isKPI flag for headerless KPI widgets)
+- `client/src/office/components/analytics/constants.js` — Widget registry (WIDGET_REGISTRY, WIDGET_CATEGORIES, 29 widgets, 8 categories, per-tab default layouts, WIDGET_LAYOUT_VERSION = 12, isKPI flag for headerless KPI widgets). Milestones widgets removed (tab uses direct rendering)
 - `client/src/office/components/analytics/WidgetGrid.jsx` — Widget dashboard grid using react-grid-layout v2 (12-column, drag/resize/vertical-compact). WidgetCard uses React.forwardRef
 - `client/src/office/components/analytics/chartSetup.js` — Chart.js component registration. Imported once in AnalyticsPanel
 - `client/src/driver/` — React driver app (Vite + React 19). Builds to `client/dist/driver.html`
@@ -265,10 +266,10 @@ Analytics dashboard uses `#widget-grid` container (not a KPI grid). Date filters
 - **All test-critical element IDs preserved** from vanilla version (#book-panel, #myrides-panel, #pickup-location, etc.)
 
 ### Analytics Architecture (React — client/src/office/components/analytics/)
-- **Widget System:** 31 widgets across 8 categories on 4 tabs (Dashboard, Hotspots, Milestones, Attendance). Reports tab is hardcoded (no widget grid). **react-grid-layout v2** (npm in `client/`) for 12-column drag-and-drop layout with vertical compaction.
+- **Widget System:** 29 widgets across 8 categories on 3 widget tabs (Dashboard, Hotspots, Attendance). Milestones tab uses full-width direct rendering (no widget grid). Reports tab is hardcoded. **react-grid-layout v2** (npm in `client/`) for 12-column drag-and-drop layout with vertical compaction.
 - **react-grid-layout:** Replaced GridStack.js entirely. React-native, handles drag/resize/compact natively. `WidgetCard` uses `React.forwardRef` — react-grid-layout injects resize handle elements as `{children}`.
 - **KPI widgets are individual:** 6 dashboard KPIs (`kpi-total-rides`, `kpi-completion-rate`, `kpi-no-show-rate`, `kpi-active-riders`, `kpi-driver-punctuality`, `kpi-fleet-available`) and 5 attendance KPIs (`kpi-total-clock-ins`, `kpi-on-time-rate`, `kpi-tardy-count`, `kpi-avg-tardiness`, `kpi-missed-shifts`). All headerless (`isKPI: true`), min 2×2, individually removable/resizable.
-- **Layout Version:** `WIDGET_LAYOUT_VERSION = 7` in `constants.js` — bump to force localStorage layout reset when changing default layouts.
+- **Layout Version:** `WIDGET_LAYOUT_VERSION = 12` in `constants.js` — bump to force localStorage layout reset when changing default layouts.
 - **Chart.js v4 (npm):** `chart.js` + `react-chartjs-2` installed in `client/`. `chartSetup.js` registers all components once. CDN Chart.js removed from `office.html` (remains only in legacy `public/index-legacy.html`).
 - **Chart Colors:** All charts use `getCampusPalette()` from `campus-themes.js` for campus-aware theming.
 - **Doughnut charts:** Must include `hoverOffset: 6` and `hoverBorderWidth: 3` in datasets for the pop-out hover effect.
@@ -361,6 +362,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Soft-delete users:** `DELETE /api/admin/users/:id` sets `deleted_at = NOW()` (no hard delete). `POST /api/admin/users/:id/restore` clears `deleted_at`. `GET /api/admin/users?include_deleted=true` shows deleted users
 - **`GET /api/tenant-config?campus=slug`** is public (no auth) — used for FOUC prevention
 - **`NOTIFICATION_EVENT_TYPES`:** Office: driver_tardy, rider_no_show, rider_approaching_termination, rider_terminated, ride_pending_stale, driver_missed_ride, new_ride_request. Driver: driver_upcoming_ride, driver_new_assignment, driver_ride_cancelled, driver_late_clock_in, driver_missed_shift. Rider: rider_ride_approved, rider_ride_denied, rider_driver_on_way, rider_driver_arrived, rider_ride_completed, rider_ride_cancelled, rider_no_show_notice, rider_strike_warning, rider_terminated_notice. Each entry has `targetRole` field ('office'|'driver'|'rider')
+- **`POST /api/auth/change-password`** rejects same-as-current password (400 error)
 - **Dev-only:** `POST /api/dev/seed-rides` (disabled in production), `POST /api/dev/reseed` (DEMO_MODE only)
 
 ## Code Conventions
@@ -375,6 +377,7 @@ Riders can cancel pending/approved rides. Office can cancel any non-terminal rid
 - **Branding:** Never hardcode org-specific text (USC, DART, etc.) — use tenant config. Default to "RideOps"
 - **ID format:** Text-based IDs like `ride_abc123`, `notif_xyz789` — NOT UUIDs. Use `$1::text[]` for array casts, never `$1::uuid[]`
 - **Password minimum:** 8 characters (`MIN_PASSWORD_LENGTH` constant) — enforced in signup, change-password, admin-create, and admin-reset
+- **Password change rejects same-as-current:** Validated server-side in `POST /api/auth/change-password` (400 error) and client-side in `PasswordChange.jsx` + `login.html`
 - **Multi-step DB operations:** Always wrap in transactions (`BEGIN`/`COMMIT`/`ROLLBACK` via `pool.connect()`)
 - **`addRideEvent()` transactions:** Accepts optional `txClient` parameter for transaction passthrough
 - **Toast notifications:** Use `showToastNew()` from `rideops-utils.js` (never `showToast` from `utils.js`)
@@ -476,6 +479,12 @@ All resolved items documented in `docs/reference/AUDIT_REPORT.md`.
 
 ### Open Issues
 - **Rides pagination:** RidesPanel uses offset-based pagination (25/50/100 per page with page navigation). Dispatch and driver still fetch all today's rides (date-filtered, no pagination).
+- **Office→Admin UI rename complete:** DB role stays `'office'`, only user-facing labels changed to "Admin". `displayRole()` utility in `client/src/utils/displayRole.js`.
+- **Password change in demo mode:** Restriction removed — password changes work in demo mode.
+- **Milestones tab:** No longer uses WidgetGrid — renders full-width with direct section layout.
+- **StaffPanel:** Re-fetches opsConfig when panel becomes visible (no longer stale after settings change).
+- **ShiftCalendar:** Refetches events after opsConfig option changes; forces updateSize after initial render.
+- **Driver vehicle flow:** ActiveRideCard skips vehicle selection modal if vehicle already selected inline.
 - **Phone numbers not validated:** `riderPhone` stored without format validation (server-side).
 - **Rate limiting disabled in dev:** Login allows 1000 req/15min in development (10 in production). Intentional.
 - **Inline styles in React components:** Resolved — 419→239 occurrences (43% reduction). Utility classes in rideops-theme.css Section 22. Remaining 239 are genuinely dynamic (computed values, conditional logic, CSS variable colors).
