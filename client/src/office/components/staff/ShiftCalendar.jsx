@@ -248,6 +248,11 @@ export default function ShiftCalendar({ employees, opsConfig }) {
     });
     calendarRef.current = cal;
     cal.render();
+    setTimeout(() => {
+      if (calendarRef.current) {
+        calendarRef.current.updateSize();
+      }
+    }, 100);
     updateLegend();
 
     return () => {
