@@ -21,6 +21,16 @@ function getMondayOfWeek(date) {
   return d;
 }
 
+// FullCalendar's fetchInfo.start is Sunday when all 7 days are visible (firstDay=0).
+// getMondayOfWeek treats Sunday as the last day of the ISO week, returning the
+// PREVIOUS Monday. But for FullCalendar, Sunday starts the view week, so we need
+// the NEXT Monday (the one within the visible range).
+function viewStartToMonday(viewStart) {
+  const d = new Date(viewStart);
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  return getMondayOfWeek(d);
+}
+
 function formatDateLocal(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -227,9 +237,10 @@ export default function ShiftCalendar({ employees, opsConfig }) {
       nowIndicator: true,
       events: async (fetchInfo, successCallback) => {
         try {
-          const weekStart = formatDateLocal(getMondayOfWeek(fetchInfo.start));
+          const monday = viewStartToMonday(fetchInfo.start);
+          const weekStart = formatDateLocal(monday);
           const shifts = await fetchShiftsForWeek(weekStart);
-          successCallback(mapShiftsToCalEvents(shifts, fetchInfo.start, employeesRef.current, buildDriverColorMap(employeesRef.current)));
+          successCallback(mapShiftsToCalEvents(shifts, monday, employeesRef.current, buildDriverColorMap(employeesRef.current)));
         } catch {
           successCallback([]);
         }
