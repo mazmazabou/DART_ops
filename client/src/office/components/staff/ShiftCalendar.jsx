@@ -274,6 +274,8 @@ export default function ShiftCalendar({ employees, opsConfig }) {
     cal.setOption('slotMinTime', slotMin);
     cal.setOption('slotMaxTime', slotMax);
     cal.setOption('hiddenDays', hiddenDays);
+    cal.refetchEvents();
+    cal.updateSize();
   }, [opsConfig]);
 
   // Refetch when employees change (color map changes)

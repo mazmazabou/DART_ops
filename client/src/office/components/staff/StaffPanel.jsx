@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePolling } from '../../../hooks/usePolling';
 import { fetchEmployees, fetchTodayDriverStatus, fetchOpsConfig } from '../../../api';
 import EmployeeBar from './EmployeeBar';
@@ -9,7 +9,6 @@ export default function StaffPanel({ isVisible }) {
   const [todayStatus, setTodayStatus] = useState([]);
   const [opsConfig, setOpsConfig] = useState(null);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
-  const loadedOnce = useRef(false);
 
   // Defer FullCalendar mount until panel is visible (prevents garbled flash)
   useEffect(() => {
@@ -18,12 +17,12 @@ export default function StaffPanel({ isVisible }) {
     }
   }, [isVisible, hasBeenVisible]);
 
-  // Load opsConfig once
+  // Re-fetch opsConfig every time panel becomes visible (picks up settings changes)
   useEffect(() => {
-    if (loadedOnce.current) return;
-    loadedOnce.current = true;
-    fetchOpsConfig().then(setOpsConfig).catch(() => {});
-  }, []);
+    if (isVisible) {
+      fetchOpsConfig().then(setOpsConfig).catch(() => {});
+    }
+  }, [isVisible]);
 
   // Poll employees + today status (5s)
   const pollData = useCallback(async () => {
