@@ -16,7 +16,7 @@ The platform is **white-label and multi-tenant** — each university gets its ow
 
 | Role | Interface | Purpose |
 |------|-----------|---------|
-| **Office** | Desktop console | Approve/deny rides, manage dispatch, monitor drivers, configure settings, run analytics |
+| **Admin** | Desktop console | Approve/deny rides, manage dispatch, monitor drivers, configure settings, run analytics |
 | **Driver** | Mobile-optimized view | Clock in/out, claim rides, navigate pickup flow (On My Way → Arrived → Complete/No-Show) |
 | **Rider** | Mobile-optimized view | Request rides, view status, manage recurring ride templates, see ride history |
 
@@ -53,10 +53,11 @@ Adding a new campus requires only a configuration file with branding, colors, an
 - Vehicle assignment per ride
 
 **Analytics & Reporting**
-- Customizable widget dashboard (16 widgets, drag-and-drop layout)
+- Customizable widget dashboard (29 widgets across Dashboard, Hotspots, and Attendance tabs)
 - Ride volume, peak hours, route intelligence, driver performance, rider cohorts
 - Multi-sheet Excel export with conditional formatting
 - Date range presets including academic period awareness (semester/quarter/trimester)
+- Driver and rider milestone tracking with animated progress
 
 **Notifications**
 - In-app notification system with per-user, per-event preferences
@@ -70,18 +71,44 @@ Adding a new campus requires only a configuration file with branding, colors, an
 
 ## Screenshots
 
-| Office Dispatch | Analytics Dashboard |
-|:---:|:---:|
-| ![Dispatch](screenshots/linkedin/03_office_dispatch.png) | ![Analytics](screenshots/linkedin/07_office_analytics.png) |
+### Admin Console
 
-| Driver View | Rider Booking |
+| Dispatch Board | Analytics Dashboard |
 |:---:|:---:|
-| ![Driver](screenshots/linkedin/10_driver_home.png) | ![Rider](screenshots/linkedin/14_rider_book_step1.png) |
+| ![Dispatch](screenshots/usc-office-dispatch.png) | ![Analytics](screenshots/usc-office-analytics-dashboard.png) |
+
+| Rides Management | Ride Details |
+|:---:|:---:|
+| ![Rides](screenshots/usc-office-rides-filtered.png) | ![Ride Drawer](screenshots/usc-office-ride-drawer.png) |
+
+| Shift Calendar | Fleet Management |
+|:---:|:---:|
+| ![Shifts](screenshots/usc-office-staff-calendar.png) | ![Fleet](screenshots/usc-office-fleet-drawer.png) |
+
+### Driver App
+
+| Home (Online) | Grace Timer |
+|:---:|:---:|
+| ![Driver Home](screenshots/usc-driver-home.png) | ![Grace Timer](screenshots/usc-driver-grace-timer.png) |
+
+### Rider App
+
+| Book a Ride | My Rides |
+|:---:|:---:|
+| ![Booking](screenshots/usc-rider-booking-where.png) | ![My Rides](screenshots/usc-rider-driver-otw.png) |
+
+### Multi-Campus Theming
+
+Every campus gets its own colors, branding, and locations — no code changes.
+
+| USC | UCLA | Stanford | UCI |
+|:---:|:---:|:---:|:---:|
+| ![USC](screenshots/usc-office-dispatch.png) | ![UCLA](screenshots/ucla-office-dispatch.png) | ![Stanford](screenshots/stanford-office-dispatch.png) | ![UCI](screenshots/uci-office-dispatch.png) |
 
 <details>
-<summary>More screenshots</summary>
+<summary>Full screenshot set (18 views x 4 campuses)</summary>
 
-See the full set in [`screenshots/linkedin/`](screenshots/linkedin/) — includes login, all office tabs, driver ride flow, rider history, and mobile views.
+The `screenshots/` directory contains the complete set — every view rendered across USC, UCLA, Stanford, and UCI. Screenshots are generated via `scripts/take-screenshots.js`.
 
 </details>
 
@@ -93,13 +120,14 @@ See the full set in [`screenshots/linkedin/`](screenshots/linkedin/) — include
 |-------|------------|
 | Backend | Node.js + Express |
 | Database | PostgreSQL with connection pooling |
-| Frontend | Vanilla HTML/CSS/JS — no build step |
-| UI Framework | Tabler CSS + Tabler Icons (CDN) |
+| Frontend | React 19 + Vite (rider, driver, office consoles) |
+| UI Framework | Tabler CSS + Tabler Icons |
 | Authentication | Session-based with bcrypt password hashing |
 | Session Store | PostgreSQL-backed (connect-pg-simple) |
 | Email | Nodemailer with configurable SMTP |
 | Reports | ExcelJS for multi-sheet .xlsx generation |
-| Charts | FullCalendar (calendar view), campus-themed palettes |
+| Charts | Chart.js + react-chartjs-2, react-grid-layout v2 |
+| Calendar | FullCalendar with campus-themed driver colors |
 
 ### Deployment
 
@@ -109,7 +137,7 @@ RideOps runs as a single Node.js process backed by PostgreSQL. Designed for plat
 - **Graceful shutdown:** SIGTERM/SIGINT handlers drain connections (15s timeout)
 - **Startup recovery:** Rides stuck in transient states are automatically recovered on restart
 - **Configuration:** All settings via environment variables — no config files required for deployment
-- **Zero build step:** Frontend is served as static files — no webpack, no compilation
+- **Vite build:** `npm run build` compiles React apps to `client/dist/`, served as static files
 
 ### Security
 
@@ -191,7 +219,7 @@ Seeds 650+ historical rides across 5 weeks, driver shifts with clock events, rec
 <summary>Demo credentials</summary>
 
 All accounts use password `demo123`:
-- **Office:** `office`
+- **Admin:** `office`
 - **Drivers:** `alex`, `jordan`, `taylor`, `morgan`
 - **Riders:** `casey`, `riley`
 
@@ -229,37 +257,40 @@ Tenant configs define: org name, colors, tagline, campus map URL, location list,
 ### Project Structure
 
 ```
-server.js                     Main server — routes, DB, auth, business logic
+server.js                     Thin orchestrator (~310 lines)
+lib/                          Backend modules (config, db, helpers, auth-middleware)
+routes/                       15 route modules (auth, rides, analytics, etc.)
 email.js                      Email sending with tenant-aware branding
 notification-service.js       Notification dispatch engine
 demo-seed.js                  Demo data seeder
 
+client/
+  src/rider/                  React rider app
+  src/driver/                 React driver app
+  src/office/                 React office/admin console
+  src/components/             Shared React components
+  src/contexts/               Auth, Tenant, Toast contexts
+  src/hooks/                  Shared hooks (usePolling, useRides, etc.)
+  dist/                       Built output (served via /app/)
+
 public/
-  index.html                  Office console (desktop)
-  app.js                      Office console logic
-  driver.html                 Driver interface (mobile-optimized)
-  rider.html                  Rider interface (mobile-optimized)
   login.html / signup.html    Authentication pages
+  demo.html                   Demo mode role picker
   css/rideops-theme.css       Design system (CSS custom properties)
-  js/rideops-utils.js         Shared UI utilities
   campus-themes.js            Per-campus color palettes
+  vendor/                     Vendored CSS/JS (Tabler, FullCalendar)
 
 tenants/
-  campus-configs.js            Campus branding definitions
-  usc-dart.json                USC DART tenant config
-  *-locations.js               Campus location lists (25-304 per campus)
+  campus-configs.js           Campus branding definitions
+  usc-dart.json               USC DART tenant config
+  *-locations.js              Campus location lists (25-304 per campus)
 
-db/
-  schema.sql                   Database schema reference
-
-docs/
-  reference/SECURITY.md        Security posture overview
-  reference/AUDIT_REPORT.md    Platform audit report
+screenshots/                  Platform screenshots (18 views x 4 campuses)
 ```
 
 ### Database
 
-PostgreSQL with 13 tables. Schema auto-initializes on first startup — no manual migration step. See `db/schema.sql` for the full schema.
+PostgreSQL with 14 tables. Schema auto-initializes on first startup — no manual migration step. See `db/schema.sql` for the full schema.
 
 ### API
 
