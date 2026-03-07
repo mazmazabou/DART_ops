@@ -253,7 +253,7 @@ export default function BusinessRulesSubPanel() {
           <div className="settings-field">
             <div className="settings-field__info">
               <div className="settings-field__label">Tardy Threshold</div>
-              <p className="settings-field__help">Minutes after shift start before a clock-in is marked as tardy. Office can be notified when this occurs.</p>
+              <p className="settings-field__help">Minutes after shift start before a clock-in is marked as tardy. Admins can be notified when this occurs.</p>
             </div>
             <div className="settings-field__control">
               <input

@@ -76,7 +76,7 @@ export default function Sidebar({ activePanel, onPanelChange, user, tenantConfig
             onClick={() => onPanelChange('profile-panel')}
           >
             <i className="ti ti-user-circle"></i>
-            <span className="ro-nav-label" id="sidebar-user-name">{user?.name || 'Office'}</span>
+            <span className="ro-nav-label" id="sidebar-user-name">{user?.name || 'Admin'}</span>
           </button>
           <div className="ro-sidebar-footer-actions">
             <button onClick={onShowRules} title="Program Rules"><i className="ti ti-book"></i></button>

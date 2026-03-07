@@ -5,6 +5,7 @@ import PasswordChange from '../../../components/drawers/PasswordChange';
 import AvatarPicker from '../../../components/drawers/AvatarPicker';
 import { updateProfile } from '../../../api';
 import { useToast } from '../../../contexts/ToastContext';
+import { displayRole } from '../../../utils/displayRole';
 
 const cardStyle = {
   border: '1px solid var(--color-border)',
@@ -44,7 +45,7 @@ export default function ProfilePanel() {
 
   const displayName = profileData?.name || user.name || user.username;
   const displayEmail = profileData?.email || '';
-  const displayRole = user.role === 'office' ? 'Administrator' : user.role === 'driver' ? 'Driver' : 'Rider';
+  const roleLabel = displayRole(user.role);
   const displayAvatar = avatarUrl || profileData?.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(displayName)}`;
 
   return (
@@ -82,7 +83,7 @@ export default function ProfilePanel() {
           <div className="min-w-0 flex-1">
             <div className="text-18 fw-600 lh-tight">{displayName}</div>
             <div className="text-13" style={{ color: 'var(--color-muted)', marginTop: '2px' }}>
-              {displayRole}{displayEmail ? ` \u00B7 ${displayEmail}` : ''}
+              {roleLabel}{displayEmail ? ` \u00B7 ${displayEmail}` : ''}
             </div>
           </div>
         </div>

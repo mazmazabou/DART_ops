@@ -3,6 +3,7 @@ import { fetchAdminUserProfile, resetMissCount } from '../../../api';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import Drawer from '../../../components/ui/Drawer';
+import { displayRole } from '../../../utils/displayRole';
 
 const DICEBEAR_BASE = 'https://api.dicebear.com/9.x';
 
@@ -57,7 +58,7 @@ export default function UserDrawer({ userId, onClose, onResetPassword, onDeleteU
             <div>
               <div className="fw-600 text-16">{user.name}</div>
               <span className={`status-badge status-badge--${user.role === 'office' ? 'approved' : user.role === 'driver' ? 'scheduled' : 'pending'}`}>
-                {user.role}
+                {displayRole(user.role)}
               </span>
             </div>
           </div>

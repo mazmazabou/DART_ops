@@ -15,7 +15,7 @@ export default function TerminationBanner({ visible }) {
       }}
     >
       <i className="ti ti-alert-circle mr-4" style={{ verticalAlign: 'middle' }} />
-      Your ride privileges have been suspended due to repeated no-shows. Please contact the transportation office to reinstate your account.
+      Your ride privileges have been suspended due to repeated no-shows. Please contact your transportation admin to reinstate your account.
     </div>
   );
 }

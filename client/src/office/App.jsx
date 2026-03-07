@@ -79,7 +79,7 @@ export default function App() {
     <ToastProvider>
       <ModalProvider>
         <AuthProvider expectedRole="office">
-          <TenantProvider roleLabel="Office">
+          <TenantProvider roleLabel="Admin">
             <OfficeApp />
           </TenantProvider>
         </AuthProvider>

@@ -4,6 +4,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { useModal } from '../../../components/ui/Modal';
 import UserDrawer from './UserDrawer';
 import Pagination from '../rides/Pagination';
+import { displayRole } from '../../../utils/displayRole';
 
 const USER_COLUMNS = [
   { key: 'name', label: 'Name' },
@@ -164,7 +165,7 @@ export default function UsersSubPanel() {
             <select className="ro-input" defaultValue="rider" onChange={e => { formData.role = e.target.value; }}>
               <option value="rider">Rider</option>
               <option value="driver">Driver</option>
-              <option value="office">Office</option>
+              <option value="office">Admin</option>
             </select>
           </div>
           <div><label className="ro-label">Password</label><input className="ro-input" type="password" placeholder="Min 8 characters" onChange={e => { formData.password = e.target.value; }} /></div>
@@ -288,7 +289,7 @@ export default function UsersSubPanel() {
       </div>
       <div className="ro-section">
         <div className="text-sm text-muted mb-16">
-          Manage riders, drivers, and office accounts. You cannot delete your own office account.
+          Manage riders, drivers, and admin accounts. You cannot delete your own admin account.
         </div>
         <div className="ro-table-wrap">
           <table className="ro-table" id="admin-users-table">
@@ -330,7 +331,7 @@ export default function UsersSubPanel() {
                     </td>
                     <td>{u.email || '\u2014'}</td>
                     <td className="text-muted">{u.username}</td>
-                    <td><span className={roleBadgeClass(u.role)}>{u.role}</span></td>
+                    <td><span className={roleBadgeClass(u.role)}>{displayRole(u.role)}</span></td>
                     <td className="text-muted">{u.member_id || '\u2014'}</td>
                     <td className="text-muted">{u.phone || '\u2014'}</td>
                     <td onClick={e => e.stopPropagation()}>
@@ -396,7 +397,7 @@ export default function UsersSubPanel() {
                         border: 'none', background: roleFilter === r ? 'var(--color-primary-subtle)' : 'transparent',
                         cursor: 'pointer', fontSize: '13px',
                       }} onClick={() => { setRoleFilter(r); setShowRoleDropdown(false); }}>
-                        {r === 'all' ? 'All Roles' : r.charAt(0).toUpperCase() + r.slice(1)}
+                        {r === 'all' ? 'All Roles' : displayRole(r)}
                       </button>
                     ))}
                   </div>
