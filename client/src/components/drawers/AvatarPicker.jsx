@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 
 const MAX_RAW_SIZE = 2 * 1024 * 1024; // 2MB
@@ -35,12 +35,15 @@ export default function AvatarPicker({ currentUrl, userId, userName, onSelect })
   const displayUrl = currentUrl || defaultUrl;
   const hasCustomAvatar = currentUrl && !currentUrl.includes('api.dicebear.com');
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const [dragging, setDragging] = useState(false);
+
+  const processFile = async (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      showToast('Please drop an image file', 'error');
+      return;
+    }
     if (file.size > MAX_RAW_SIZE) {
       showToast('Image must be under 2MB', 'error');
-      e.target.value = '';
       return;
     }
     try {
@@ -56,15 +59,37 @@ export default function AvatarPicker({ currentUrl, userId, userName, onSelect })
         reader.readAsDataURL(file);
       }
     }
+  };
+
+  const handleFileUpload = (e) => {
+    processFile(e.target.files[0]);
     e.target.value = '';
   };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    processFile(e.dataTransfer.files[0]);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragging(true);
+  };
+
+  const handleDragLeave = () => setDragging(false);
 
   const handleRemove = () => {
     onSelect(null);
   };
 
   return (
-    <div className="avatar-picker">
+    <div
+      className={`avatar-picker${dragging ? ' avatar-picker--drag' : ''}`}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
       <div className="avatar-preview">
         <img src={displayUrl} alt="Avatar preview" />
       </div>
