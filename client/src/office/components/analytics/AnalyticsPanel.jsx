@@ -63,7 +63,6 @@ export default function AnalyticsPanel() {
       {activeTab === 'milestones' && (
         <MilestonesTab
           key={'milestones-' + refreshKey}
-          userId={userId}
         />
       )}
       {activeTab === 'attendance' && (

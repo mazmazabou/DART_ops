@@ -1,6 +1,6 @@
 // Widget Registry — defines all available analytics widgets (ported from widget-registry.js)
 
-export const WIDGET_LAYOUT_VERSION = 11;
+export const WIDGET_LAYOUT_VERSION = 12;
 
 export const WIDGET_CATEGORIES = {
   overview: 'Overview',
@@ -161,20 +161,6 @@ export const WIDGET_REGISTRY = {
     skeletonType: 'table',
     minW: 3, maxW: 12, minH: 3, maxH: 6,
   },
-  'driver-milestones': {
-    title: 'Driver Milestones',
-    icon: 'ti-trophy',
-    category: 'achievements',
-    skeletonType: 'chart',
-    minW: 3, maxW: 12, minH: 3, maxH: 8,
-  },
-  'rider-milestones': {
-    title: 'Rider Milestones',
-    icon: 'ti-award',
-    category: 'achievements',
-    skeletonType: 'chart',
-    minW: 3, maxW: 12, minH: 3, maxH: 8,
-  },
   // -- Attendance KPI widgets (5) --
   'kpi-total-clock-ins': {
     title: 'Total Clock-Ins',
@@ -274,11 +260,6 @@ export const DEFAULT_HOTSPOTS_LAYOUT = [
   { id: 'route-demand-matrix',  x: 0,  y: 8,  w: 12, h: 5 },
 ];
 
-export const DEFAULT_MILESTONES_LAYOUT = [
-  { id: 'driver-milestones',  x: 0,  y: 0,  w: 6,  h: 4 },
-  { id: 'rider-milestones',   x: 6,  y: 0,  w: 6,  h: 4 },
-];
-
 export const DEFAULT_ATTENDANCE_LAYOUT = [
   // Row 0: 5 KPI widgets (2+3+2+2+3 = 12 columns)
   { id: 'kpi-total-clock-ins',   x: 0,  y: 0, w: 2, h: 1 },
@@ -310,11 +291,6 @@ export const TAB_CONFIGS = {
     storagePrefix: 'hotspots',
     defaultLayout: DEFAULT_HOTSPOTS_LAYOUT,
     allowedWidgets: ['hotspot-pickups', 'hotspot-dropoffs', 'hotspot-top-routes', 'route-demand-matrix'],
-  },
-  milestones: {
-    storagePrefix: 'milestones',
-    defaultLayout: DEFAULT_MILESTONES_LAYOUT,
-    allowedWidgets: ['driver-milestones', 'rider-milestones'],
   },
   attendance: {
     storagePrefix: 'attendance',
