@@ -77,7 +77,11 @@ export default function AvatarPicker({ currentUrl, userId, userName, onSelect })
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
-    const file = e.dataTransfer?.files?.[0];
+    let file = e.dataTransfer?.files?.[0];
+    if (!file && e.dataTransfer?.items?.length) {
+      const item = e.dataTransfer.items[0];
+      if (item.kind === 'file') file = item.getAsFile();
+    }
     processFile(file);
   };
 
