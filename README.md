@@ -75,27 +75,27 @@ Adding a new campus requires only a configuration file with branding, colors, an
 
 | Dispatch Board | Analytics Dashboard |
 |:---:|:---:|
-| ![Dispatch](screenshots/usc-office-dispatch.png) | ![Analytics](screenshots/usc-office-analytics-dashboard.png) |
+| ![Dispatch](docs/images/usc-office-dispatch.png) | ![Analytics](docs/images/usc-office-analytics-dashboard.png) |
 
 | Rides Management | Ride Details |
 |:---:|:---:|
-| ![Rides](screenshots/usc-office-rides-filtered.png) | ![Ride Drawer](screenshots/usc-office-ride-drawer.png) |
+| ![Rides](docs/images/usc-office-rides-filtered.png) | ![Ride Drawer](docs/images/usc-office-ride-drawer.png) |
 
 | Shift Calendar | Fleet Management |
 |:---:|:---:|
-| ![Shifts](screenshots/usc-office-staff-calendar.png) | ![Fleet](screenshots/usc-office-fleet-drawer.png) |
+| ![Shifts](docs/images/usc-office-staff-calendar.png) | ![Fleet](docs/images/usc-office-fleet-drawer.png) |
 
 ### Driver App
 
 | Home (Online) | Grace Timer |
 |:---:|:---:|
-| ![Driver Home](screenshots/usc-driver-home.png) | ![Grace Timer](screenshots/usc-driver-grace-timer.png) |
+| ![Driver Home](docs/images/usc-driver-home.png) | ![Grace Timer](docs/images/usc-driver-grace-timer.png) |
 
 ### Rider App
 
 | Book a Ride | My Rides |
 |:---:|:---:|
-| ![Booking](screenshots/usc-rider-booking-where.png) | ![My Rides](screenshots/usc-rider-driver-otw.png) |
+| ![Booking](docs/images/usc-rider-booking-where.png) | ![My Rides](docs/images/usc-rider-driver-otw.png) |
 
 ### Multi-Campus Theming
 
@@ -103,7 +103,7 @@ Every campus gets its own colors, branding, and locations — no code changes.
 
 | USC | UCLA | Stanford | UCI |
 |:---:|:---:|:---:|:---:|
-| ![USC](screenshots/usc-office-dispatch.png) | ![UCLA](screenshots/ucla-office-dispatch.png) | ![Stanford](screenshots/stanford-office-dispatch.png) | ![UCI](screenshots/uci-office-dispatch.png) |
+| ![USC](docs/images/usc-office-dispatch.png) | ![UCLA](docs/images/ucla-office-dispatch.png) | ![Stanford](docs/images/stanford-office-dispatch.png) | ![UCI](docs/images/uci-office-dispatch.png) |
 
 <details>
 <summary>Full screenshot set (18 views x 4 campuses)</summary>
