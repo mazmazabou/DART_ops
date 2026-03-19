@@ -38,6 +38,7 @@ export default function Sidebar({ activePanel, onPanelChange, user, tenantConfig
           className="ro-brand-icon"
           id="org-initials"
           style={{ objectFit: 'cover' }}
+          onClick={toggleSidebar}
         />
         <div className="ro-brand-text">
           <span className="fw-700 text-14" id="org-short-name">
