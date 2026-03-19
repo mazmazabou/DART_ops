@@ -60,6 +60,7 @@ const campusConfigs = require('./tenants/campus-configs');
 
 // ----- Express app + database -----
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/rideops';
 const SIGNUP_ENABLED = process.env.DISABLE_RIDER_SIGNUP !== 'true';
@@ -100,6 +101,31 @@ const sessionSecret = process.env.SESSION_SECRET || 'rideops-dev-only-secret-do-
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
+    "img-src 'self' data: https://api.dicebear.com",
+    "frame-src https://maps.usc.edu https://campus-map.stanford.edu https://map.ucla.edu https://map.uci.edu",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'"
+  ].join('; '));
+  next();
+});
+
 app.use(session({
   store: new PgSession({
     pool,

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://app.ride-ops.com/login</loc></url>
+  <url><loc>https://app.ride-ops.com/signup</loc></url>
+  <url><loc>https://app.ride-ops.com/usc/login</loc></url>
+  <url><loc>https://app.ride-ops.com/usc/signup</loc></url>
+  <url><loc>https://app.ride-ops.com/stanford/login</loc></url>
+  <url><loc>https://app.ride-ops.com/stanford/signup</loc></url>
+  <url><loc>https://app.ride-ops.com/ucla/login</loc></url>
+  <url><loc>https://app.ride-ops.com/ucla/signup</loc></url>
+  <url><loc>https://app.ride-ops.com/uci/login</loc></url>
+  <url><loc>https://app.ride-ops.com/uci/signup</loc></url>
+</urlset>
